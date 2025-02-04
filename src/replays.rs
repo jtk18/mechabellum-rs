@@ -1,21 +1,12 @@
-mod player_record;
+mod battle_record;
 
 use anyhow::{bail, Result};
-use serde::Deserialize;
 use quick_xml::de::from_str;
 
-use player_record::PlayerRecord;
+pub use battle_record::BattleRecord;
 
-use core::str;
 use std::fs;
 use std::path::Path;
-
-#[derive(Debug, PartialEq, Default, Deserialize)]
-#[serde(default)]
-pub struct BattleRecord {
-    #[serde(rename="playerRecords")]
-    pub player_records: Vec<PlayerRecord>,
-}
 
 
 impl BattleRecord {
