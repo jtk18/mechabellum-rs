@@ -1,7 +1,7 @@
 mod battle_record;
 
 use anyhow::{bail, Result};
-use quick_xml::de::from_str;
+use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
 

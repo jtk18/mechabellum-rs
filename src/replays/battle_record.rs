@@ -1,12 +1,10 @@
-use serde::{Deserialize, Serialize};
-
-// Auto generated from https://github.com/Thomblin/xml_schema_generator
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct BattleRecord {
-    #[serde(rename = "@xmlns:xsd")]
+    #[serde(rename = "xmlns:xsd")]
     pub xmlns_xsd: String,
-    #[serde(rename = "@xmlns:xsi")]
+    #[serde(rename = "xmlns:xsi")]
     pub xmlns_xsi: String,
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -98,7 +96,6 @@ pub struct UnitDatasUnitDataTechs {
 
 #[derive(Debug, Deserialize)]
 pub struct UnitDatasUnitDataTechsTech {
-    #[serde(rename = "@data")]
     pub data: String,
 }
 
@@ -106,47 +103,46 @@ pub struct UnitDatasUnitDataTechsTech {
 pub struct UnitDatasUnitDataUnlockedTechs {
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Style {
-    #[serde(rename = "$text")]
-    pub text: Option<String>,
-    #[serde(rename = "unitStyles")]
-    pub unit_styles: UnitStyles,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct Style {
+//     #[serde(rename = "$text")]
+//     pub text: Option<String>,
+//     #[serde(rename = "unitStyles")]
+//     pub unit_styles: UnitStyles,
+// }
 
-#[derive(Debug, Deserialize)]
-pub struct UnitStyles {
-    #[serde(rename = "$text")]
-    pub text: Option<String>,
-    #[serde(rename = "unitStyle")]
-    pub unit_style: Option<UnitStyle>,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct UnitStyles {
+//     #[serde(rename = "$text")]
+//     pub text: Option<String>,
+//     #[serde(rename = "unitStyle")]
+//     pub unit_style: Option<UnitStyle>,
+// }
 
-#[derive(Debug, Deserialize)]
-pub struct UnitStyle {
-    #[serde(rename = "$text")]
-    pub text: Option<String>,
-    #[serde(rename = "unitID")]
-    pub unit_id: String,
-    #[serde(rename = "allLevelSkinID")]
-    pub all_level_skin_id: String,
-    #[serde(rename = "skinStyles")]
-    pub skin_styles: SkinStyles,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct UnitStyle {
+//     #[serde(rename = "$text")]
+//     pub text: Option<String>,
+//     #[serde(rename = "unitID")]
+//     pub unit_id: String,
+//     #[serde(rename = "allLevelSkinID")]
+//     pub all_level_skin_id: String,
+//     #[serde(rename = "skinStyles")]
+//     pub skin_styles: SkinStyles,
+// }
 
-#[derive(Debug, Deserialize)]
-pub struct SkinStyles {
-    #[serde(rename = "$text")]
-    pub text: Option<String>,
-    #[serde(rename = "skinStyle")]
-    pub skin_style: SkinStyle,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct SkinStyles {
+//     #[serde(rename = "$text")]
+//     pub text: Option<String>,
+//     #[serde(rename = "skinStyle")]
+//     pub skin_style: SkinStyle,
+// }
 
-#[derive(Debug, Deserialize)]
-pub struct SkinStyle {
-    #[serde(rename = "@data")]
-    pub data: String,
-}
+// #[derive(Debug, Deserialize)]
+// pub struct SkinStyle {
+//     pub data: String,
+// }
 
 #[derive(Debug, Deserialize)]
 pub struct PlayerRoundRecords {
@@ -299,7 +295,6 @@ pub struct ActiveTechnologiesUnitDataTechs {
 
 #[derive(Debug, Deserialize)]
 pub struct ActiveTechnologiesUnitDataTechsTech {
-    #[serde(rename = "@data")]
     pub data: String,
 }
 
@@ -397,7 +392,7 @@ pub struct ActionRecords {
 
 #[derive(Debug, Deserialize)]
 pub struct MatchActionData {
-    #[serde(rename = "@type")]
+    #[serde(rename = "type")]
     pub xsi_type: String,
     #[serde(rename = "$text")]
     pub text: Option<String>,
