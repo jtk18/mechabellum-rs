@@ -78,7 +78,8 @@ pub struct UnitDatasUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
     pub id: String,
-    pub techs: UnitDatasUnitDataTechs,
+    #[serde(default)]
+    pub techs: Vec<UnitDatasUnitDataTechs>,
     #[serde(rename = "unlockedTechs")]
     pub unlocked_techs: UnitDatasUnitDataUnlockedTechs,
 }
@@ -268,8 +269,8 @@ pub struct RangeItems {}
 pub struct ActiveTechnologies {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "UnitData")]
-    pub unit_data: Option<ActiveTechnologiesUnitData>,
+    #[serde(rename = "UnitData", default)]
+    pub unit_data: Vec<ActiveTechnologiesUnitData>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,7 +278,8 @@ pub struct ActiveTechnologiesUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
     pub id: String,
-    pub techs: ActiveTechnologiesUnitDataTechs,
+    #[serde(default)]
+    pub techs: Vec<ActiveTechnologiesUnitDataTechs>,
     #[serde(rename = "unlockedTechs")]
     pub unlocked_techs: ActiveTechnologiesUnitDataUnlockedTechs,
 }
@@ -286,7 +288,8 @@ pub struct ActiveTechnologiesUnitData {
 pub struct ActiveTechnologiesUnitDataTechs {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    pub tech: ActiveTechnologiesUnitDataTechsTech,
+    #[serde(default)]
+    pub tech: Vec<ActiveTechnologiesUnitDataTechsTech>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -336,8 +339,8 @@ pub struct LockedUnits {
 pub struct PlayerDataContraptions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "ContraptionData")]
-    pub contraption_data: Option<PlayerDataContraptionsContraptionData>,
+    #[serde(rename = "ContraptionData", default)]
+    pub contraption_data: Vec<PlayerDataContraptionsContraptionData>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -548,10 +551,6 @@ pub struct LastFightResult {
     pub text: Option<String>,
     #[serde(rename = "Reports")]
     pub reports: Reports,
-    #[serde(rename = "SnapshotDataBeforeFightHash")]
-    pub snapshot_data_before_fight_hash: String,
-    #[serde(rename = "SnapshotDataAfterFightHash")]
-    pub snapshot_data_after_fight_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -588,8 +587,8 @@ pub struct FightReport {
 pub struct FightReportContraptions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "ContraptionData")]
-    pub contraption_data: Option<FightReportContraptionsContraptionData>,
+    #[serde(rename = "ContraptionData", default)]
+    pub contraption_data: Vec<FightReportContraptionsContraptionData>,
 }
 
 #[derive(Debug, Deserialize)]
