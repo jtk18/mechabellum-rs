@@ -37,11 +37,30 @@ impl BattleRecord {
                 } else {
                     continue;
                 };
-                let record: BattleRecord = from_str(&chunk.valid()[start_position..end])?;
+                let embedded_document = &chunk.valid()[start_position..end];
+                //println!("{embedded_document}");
+                let record: BattleRecord = from_str(embedded_document)?;
                 return Ok(record);
             }
         }
 
         bail!("Unable to find BattleRecord in {}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_parse() {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+        let _ = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
+            .expect("this shouldn't die");
+
+        let _ = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"))
+            .expect("this shouldn't die");
     }
 }

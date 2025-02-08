@@ -698,18 +698,3 @@ pub struct BattleInfo {
     #[serde(rename = "SurviveModeDifficulty")]
     pub survive_mode_difficulty: String,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_parse() {
-        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
-        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
-            .expect("this shouldn't die");
-        println!("{:#?}", record);
-    }
-}
