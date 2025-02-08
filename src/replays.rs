@@ -8,7 +8,6 @@ pub use battle_record::BattleRecord;
 use std::fs;
 use std::path::Path;
 
-
 impl BattleRecord {
     pub fn new_from_files<P: AsRef<Path>>(files: &[P]) -> Result<Vec<BattleRecord>> {
         let mut v = Vec::new();
@@ -17,7 +16,10 @@ impl BattleRecord {
             let file_path = file.as_ref();
             match Self::new_from_file(file_path) {
                 Ok(record) => v.push(record),
-                Err(e) => println!("File {:?} was not a battle record or we had issues parsing it: {e}", file_path),
+                Err(e) => println!(
+                    "File {:?} was not a battle record or we had issues parsing it: {e}",
+                    file_path
+                ),
             }
         }
 

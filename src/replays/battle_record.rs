@@ -97,8 +97,7 @@ pub struct UnitDatasUnitDataTechsTech {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UnitDatasUnitDataUnlockedTechs {
-}
+pub struct UnitDatasUnitDataUnlockedTechs {}
 
 // #[derive(Debug, Deserialize)]
 // pub struct Style {
@@ -263,8 +262,7 @@ pub struct CommanderSkillData {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RangeItems {
-}
+pub struct RangeItems {}
 
 #[derive(Debug, Deserialize)]
 pub struct ActiveTechnologies {
@@ -297,12 +295,10 @@ pub struct ActiveTechnologiesUnitDataTechsTech {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ActiveTechnologiesUnitDataUnlockedTechs {
-}
+pub struct ActiveTechnologiesUnitDataUnlockedTechs {}
 
 #[derive(Debug, Deserialize)]
-pub struct Equipments {
-}
+pub struct Equipments {}
 
 #[derive(Debug, Deserialize)]
 pub struct Shop {
@@ -655,16 +651,13 @@ pub struct FightReportUnitDatasNewUnitDataPosition {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct FightReportCommanderSkills {
-}
+pub struct FightReportCommanderSkills {}
 
 #[derive(Debug, Deserialize)]
-pub struct FightRecord {
-}
+pub struct FightRecord {}
 
 #[derive(Debug, Deserialize)]
-pub struct ReinforceItems {
-}
+pub struct ReinforceItems {}
 
 #[derive(Debug, Deserialize)]
 pub struct BattleInfo {
@@ -706,7 +699,6 @@ pub struct BattleInfo {
     pub survive_mode_difficulty: String,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,7 +708,8 @@ mod tests {
     #[test]
     fn test_parse() {
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
-        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml")).expect("this shouldn't die");
+        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
+            .expect("this shouldn't die");
         println!("{:#?}", record);
     }
 }
