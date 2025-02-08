@@ -2,10 +2,6 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct BattleRecord {
-    #[serde(rename = "xmlns:xsd")]
-    pub xmlns_xsd: String,
-    #[serde(rename = "xmlns:xsi")]
-    pub xmlns_xsi: String,
     #[serde(rename = "$text")]
     pub text: Option<String>,
     #[serde(rename = "playerRecords")]
@@ -28,7 +24,7 @@ pub struct BattleRecord {
 pub struct PlayerRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "PlayerRecord")]
+    #[serde(rename = "PlayerRecord", default)]
     pub player_record: Vec<PlayerRecord>,
 }
 
@@ -73,7 +69,7 @@ pub struct Data {
 pub struct DataUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "unitData")]
+    #[serde(rename = "unitData", default)]
     pub unit_data: Vec<UnitDatasUnitData>,
 }
 
@@ -91,6 +87,7 @@ pub struct UnitDatasUnitData {
 pub struct UnitDatasUnitDataTechs {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub tech: Vec<UnitDatasUnitDataTechsTech>,
 }
 
@@ -148,7 +145,7 @@ pub struct UnitDatasUnitDataUnlockedTechs {
 pub struct PlayerRoundRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "PlayerRoundRecord")]
+    #[serde(rename = "PlayerRoundRecord", default)]
     pub player_round_record: Vec<PlayerRoundRecord>,
 }
 
@@ -198,7 +195,7 @@ pub struct PlayerData {
 pub struct Units {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "NewUnitData")]
+    #[serde(rename = "NewUnitData", default)]
     pub new_unit_data: Vec<UnitsNewUnitData>,
 }
 
@@ -239,6 +236,7 @@ pub struct PlayerDataUnitsNewUnitDataPosition {
 pub struct Officers {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -246,7 +244,7 @@ pub struct Officers {
 pub struct PlayerDataCommanderSkills {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "CommanderSkillData")]
+    #[serde(rename = "CommanderSkillData", default)]
     pub commander_skill_data: Vec<CommanderSkillData>,
 }
 
@@ -326,6 +324,7 @@ pub struct Shop {
 pub struct UnlockedUnits {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -333,6 +332,7 @@ pub struct UnlockedUnits {
 pub struct LockedUnits {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -365,6 +365,7 @@ pub struct PlayerDataContraptionsContraptionDataPosition {
 pub struct Bluepints {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -379,6 +380,7 @@ pub struct EnergyTowerSkills {
 pub struct TowerStrengthenLevels {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -386,7 +388,7 @@ pub struct TowerStrengthenLevels {
 pub struct ActionRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "MatchActionData")]
+    #[serde(rename = "MatchActionData", default)]
     pub match_action_data: Vec<MatchActionData>,
 }
 
@@ -448,7 +450,7 @@ pub struct PlayerRoundRecordActionRecordsMatchActionDataPosition {
 pub struct Positions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "MapVector")]
+    #[serde(rename = "MapVector", default)]
     pub map_vector: Vec<MapVector>,
 }
 
@@ -464,7 +466,7 @@ pub struct MapVector {
 pub struct MoveUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "MoveUnitData")]
+    #[serde(rename = "MoveUnitData", default)]
     pub move_unit_data: Vec<MoveUnitData>,
 }
 
@@ -493,7 +495,7 @@ pub struct MatchActionDataMoveUnitDatasMoveUnitDataPosition {
 pub struct MatchDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "MatchSnapshotData")]
+    #[serde(rename = "MatchSnapshotData", default)]
     pub match_snapshot_data: Vec<MatchSnapshotData>,
 }
 
@@ -524,7 +526,7 @@ pub struct RandomStateData {
 pub struct RandomStates {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "unsignedLong")]
+    #[serde(rename = "unsignedLong", default)]
     pub unsigned_long: Vec<String>,
 }
 
@@ -532,6 +534,7 @@ pub struct RandomStates {
 pub struct ReinforcePool {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -539,6 +542,7 @@ pub struct ReinforcePool {
 pub struct UnitReinforceRounds {
     #[serde(rename = "$text")]
     pub text: Option<String>,
+    #[serde(default)]
     pub int: Vec<String>,
 }
 
@@ -558,7 +562,7 @@ pub struct LastFightResult {
 pub struct Reports {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "FightReport")]
+    #[serde(rename = "FightReport", default)]
     pub fight_report: Vec<FightReport>,
 }
 
@@ -613,7 +617,7 @@ pub struct FightReportContraptionsContraptionDataPosition {
 pub struct FightReportUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "NewUnitData")]
+    #[serde(rename = "NewUnitData", default)]
     pub new_unit_data: Vec<UnitDatasNewUnitData>,
 }
 
@@ -702,3 +706,17 @@ pub struct BattleInfo {
     pub survive_mode_difficulty: String,
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_parse() {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml")).expect("this shouldn't die");
+        println!("{:#?}", record);
+    }
+}
