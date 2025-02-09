@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+/// Created with https://github.com/Thomblin/xml_schema_generator
+
 #[derive(Debug, Deserialize)]
 pub struct BattleRecord {
     #[serde(rename = "$text")]
