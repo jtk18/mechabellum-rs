@@ -2,11 +2,12 @@ mod cli_args;
 mod replays;
 
 use cli_args::Args;
-use replays::BattleRecord;
+use replays::*;
 
 use clap::Parser;
 
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
@@ -29,12 +30,22 @@ fn main() {
         vec![args.file_or_dir]
     };
 
-    println!("FILES {:?}", files);
+    let (records, errors) = BattleRecord::new_from_files(&files);
 
-    let records = match BattleRecord::new_from_files(&files) {
-        Ok(records) => records,
-        Err(e) => panic!("One or more of the files passed in could not be parsed: {e}"),
-    };
+    println!("Found {} total replays with {} successfully parsed and {} unsuccessfully", records.len() + errors.len(), records.len(), errors.len());
 
-    println!("Records {:#?}", records);
+    if errors.len() > 0 {
+        println!("Saving errors to {}", args.error_output_file.display());
+        let mut file = fs::File::create_new(args.error_output_file).expect("Couldn't open error output file for writing!");
+        for error in errors.into_iter() {
+            if let ParseError::UnableToParse(_, doc, err) = error {
+                let _ = file.write_all(doc.0.as_bytes());
+                let _ = file.write_all(&[b'\n']);
+                let _ = file.write_all(err.0.as_bytes());
+                let _ = file.write_all(&[b'\n']);
+            }
+        }
+
+        let _ = file.flush();
+    }
 }

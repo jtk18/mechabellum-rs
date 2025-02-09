@@ -100,46 +100,46 @@ pub struct UnitDatasUnitDataTechsTech {
 #[derive(Debug, Deserialize)]
 pub struct UnitDatasUnitDataUnlockedTechs {}
 
-// #[derive(Debug, Deserialize)]
-// pub struct Style {
-//     #[serde(rename = "$text")]
-//     pub text: Option<String>,
-//     #[serde(rename = "unitStyles")]
-//     pub unit_styles: UnitStyles,
-// }
+#[derive(Debug, Deserialize)]
+pub struct Style {
+    #[serde(rename = "$text")]
+    pub text: Option<String>,
+    #[serde(rename = "unitStyles")]
+    pub unit_styles: UnitStyles,
+}
 
-// #[derive(Debug, Deserialize)]
-// pub struct UnitStyles {
-//     #[serde(rename = "$text")]
-//     pub text: Option<String>,
-//     #[serde(rename = "unitStyle")]
-//     pub unit_style: Option<UnitStyle>,
-// }
+#[derive(Debug, Deserialize)]
+pub struct UnitStyles {
+    #[serde(rename = "$text")]
+    pub text: Option<String>,
+    #[serde(rename = "unitStyle")]
+    pub unit_style: Option<UnitStyle>,
+}
 
-// #[derive(Debug, Deserialize)]
-// pub struct UnitStyle {
-//     #[serde(rename = "$text")]
-//     pub text: Option<String>,
-//     #[serde(rename = "unitID")]
-//     pub unit_id: String,
-//     #[serde(rename = "allLevelSkinID")]
-//     pub all_level_skin_id: String,
-//     #[serde(rename = "skinStyles")]
-//     pub skin_styles: SkinStyles,
-// }
+#[derive(Debug, Deserialize)]
+pub struct UnitStyle {
+    #[serde(rename = "$text")]
+    pub text: Option<String>,
+    #[serde(rename = "unitID")]
+    pub unit_id: String,
+    #[serde(rename = "allLevelSkinID")]
+    pub all_level_skin_id: String,
+    #[serde(rename = "skinStyles")]
+    pub skin_styles: SkinStyles,
+}
 
-// #[derive(Debug, Deserialize)]
-// pub struct SkinStyles {
-//     #[serde(rename = "$text")]
-//     pub text: Option<String>,
-//     #[serde(rename = "skinStyle")]
-//     pub skin_style: SkinStyle,
-// }
+#[derive(Debug, Deserialize)]
+pub struct SkinStyles {
+    #[serde(rename = "$text")]
+    pub text: Option<String>,
+    #[serde(rename = "skinStyle")]
+    pub skin_style: SkinStyle,
+}
 
-// #[derive(Debug, Deserialize)]
-// pub struct SkinStyle {
-//     pub data: String,
-// }
+#[derive(Debug, Deserialize)]
+pub struct SkinStyle {
+    pub data: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PlayerRoundRecords {

@@ -2,10 +2,14 @@ use clap::Parser;
 
 use std::path::PathBuf;
 
-/// Parse Mechabellum replays and gather stats
+/// Parse Mechabellum replays tester
+/// Output some basic run statistics and save any parse errors to a file.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// The replay file or directory containing replays
     pub file_or_dir: PathBuf,
+    /// Path to output any parse errors to
+    #[arg(default_value = "parse_errors.mbpe")]
+    pub error_output_file: PathBuf,
 }
