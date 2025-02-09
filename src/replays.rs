@@ -29,7 +29,7 @@ impl BattleRecord {
         let path = file.as_ref();
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,
-            Err(e) => return Err(ParseError::UnableToRead(path.into(), e.to_string().into()))
+            Err(e) => return Err(ParseError::UnableToRead(path.into(), e.to_string().into())),
         };
 
         for chunk in bytes.utf8_chunks() {
@@ -42,8 +42,12 @@ impl BattleRecord {
                 let embedded_document = &chunk.valid()[start_position..end];
                 return match from_str(embedded_document) {
                     Ok(record) => Ok(record),
-                    Err(e) => Err(ParseError::UnableToParse(path.into(), embedded_document.to_owned().into(), e.to_string().into()))
-                }
+                    Err(e) => Err(ParseError::UnableToParse(
+                        path.into(),
+                        embedded_document.to_owned().into(),
+                        e.to_string().into(),
+                    )),
+                };
             }
         }
 

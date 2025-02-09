@@ -32,11 +32,17 @@ fn main() {
 
     let (records, errors) = BattleRecord::new_from_files(&files);
 
-    println!("Found {} total replays with {} successfully parsed and {} unsuccessfully", records.len() + errors.len(), records.len(), errors.len());
+    println!(
+        "Found {} total replays with {} successfully parsed and {} unsuccessfully",
+        records.len() + errors.len(),
+        records.len(),
+        errors.len()
+    );
 
     if errors.len() > 0 {
         println!("Saving errors to {}", args.error_output_file.display());
-        let mut file = fs::File::create_new(args.error_output_file).expect("Couldn't open error output file for writing!");
+        let mut file = fs::File::create_new(args.error_output_file)
+            .expect("Couldn't open error output file for writing!");
         for error in errors.into_iter() {
             if let ParseError::UnableToParse(_, doc, err) = error {
                 let _ = file.write_all(doc.0.as_bytes());
