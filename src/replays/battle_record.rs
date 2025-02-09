@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-/// Created with https://github.com/Thomblin/xml_schema_generator
+/// Created with https://github.com/Thomblin/xml_schema_generator then hand edited from parse error output.
 
 #[derive(Debug, Deserialize)]
 pub struct BattleRecord {
