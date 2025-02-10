@@ -64,7 +64,7 @@ pub struct Data {
     pub data_type: String,
     #[serde(rename = "unitDatas")]
     pub unit_datas: DataUnitDatas,
-    // pub style: Style,
+    pub style: Style,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,8 +114,8 @@ pub struct Style {
 pub struct UnitStyles {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "unitStyle")]
-    pub unit_style: Option<UnitStyle>,
+    #[serde(rename = "unitStyle", default)]
+    pub unit_style: Vec<UnitStyle>,
 }
 
 #[derive(Debug, Deserialize)]

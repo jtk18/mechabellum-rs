@@ -5,7 +5,7 @@ mod parse_error;
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
-pub use parse_error::{ParseError, ParsedDocument, ParsedErrorMessage, ParsedReplay};
+pub use parse_error::ParseError;
 
 use std::fs;
 use std::path::Path;

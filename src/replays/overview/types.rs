@@ -12,6 +12,7 @@ pub enum GameModeParseError {
     PlayerMismatch(u8, u8, Vec<String>),
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug)]
 pub enum GameMode {
     VS_2_2((PlayerName, PlayerName), (PlayerName, PlayerName)),
