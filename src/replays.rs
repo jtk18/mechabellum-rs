@@ -6,6 +6,7 @@ use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
+pub use overview::BattleOverview;
 pub use parse_error::ParseError;
 
 use std::fs;

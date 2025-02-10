@@ -56,4 +56,15 @@ fn main() {
 
         let _ = file.flush();
     }
+
+    let overviews: Vec<BattleOverview> = records
+        .iter()
+        .filter_map(|r| {
+            BattleOverview::new_from_record(r)
+                .map_err(|e| println!("Error parsing BattleOverview: {e}"))
+                .ok()
+        })
+        .collect();
+
+    println!("Overviews: {overviews:#?}");
 }
