@@ -134,8 +134,8 @@ pub struct UnitStyle {
 pub struct SkinStyles {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    #[serde(rename = "skinStyle")]
-    pub skin_style: SkinStyle,
+    #[serde(rename = "skinStyle", default)]
+    pub skin_style: Vec<SkinStyle>,
 }
 
 #[derive(Debug, Deserialize)]
