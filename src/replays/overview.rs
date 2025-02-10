@@ -18,7 +18,7 @@ impl BattleOverview {
     pub fn new_from_record(record: &BattleRecord) -> Result<Self> {
         Ok(
             BattleOverview {
-                occurred_on: record.battle_info.start_time.to_owned(),
+                occurred_on: record.create_time.to_owned(),
                 mode: GameMode::try_from(record)?,
                 winners: Vec::new(),
                 losers: Vec::new(),

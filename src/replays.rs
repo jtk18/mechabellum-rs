@@ -2,6 +2,7 @@ mod battle_record;
 mod overview;
 mod parse_error;
 
+use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
@@ -28,10 +29,9 @@ impl BattleRecord {
 
     pub fn new_from_file<P: AsRef<Path>>(file: P) -> Result<BattleRecord, ParseError> {
         let path = file.as_ref();
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
-            Err(e) => return Err(ParseError::UnableToRead(path.into(), e.to_string().into())),
-        };
+        let creation_system_time: DateTime<Utc> = path.metadata().and_then(|md| md.created()).map_err(|err| { ParseError::UnableToRead(path.into(), err.to_string().into()) })?.into();
+        let creation_time = creation_system_time.to_rfc3339_opts(SecondsFormat::Secs, true);
+        let bytes = fs::read(path).map_err(|err| { ParseError::UnableToRead(path.into(), err.to_string().into()) })?;
 
         for chunk in bytes.utf8_chunks() {
             if let Some(start_position) = chunk.valid().find("<?xml") {
@@ -41,14 +41,17 @@ impl BattleRecord {
                     continue;
                 };
                 let embedded_document = &chunk.valid()[start_position..end];
-                return match from_str(embedded_document) {
-                    Ok(record) => Ok(record),
-                    Err(e) => Err(ParseError::UnableToParse(
+                let mut record: BattleRecord =  from_str(embedded_document).map_err(|e| {
+                    ParseError::UnableToParse(
                         path.into(),
                         embedded_document.to_owned().into(),
                         e.to_string().into(),
-                    )),
-                };
+                    )
+                })?;
+
+                record.create_time = creation_time;
+
+                return Ok(record);
             }
         }
 
@@ -56,19 +59,5 @@ impl BattleRecord {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_parse() {
-        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
-        let _ = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
-            .expect("this shouldn't die");
-
-        let _ = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"))
-            .expect("this shouldn't die");
-    }
-}
+// tested in src/replays/overview.rs
