@@ -102,6 +102,21 @@ impl From<String> for PlayerName {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct PlayerResult {
+    pub name: PlayerName,
+    pub ending_hp: i32,
+}
+
+impl From<(PlayerName, i32)> for PlayerResult {
+    fn from((name, ending_hp): (PlayerName, i32)) -> Self {
+        PlayerResult {
+            name: name.into(),
+            ending_hp: ending_hp.into(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PlayerData {
     pub name: PlayerName,

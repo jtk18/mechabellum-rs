@@ -10,17 +10,25 @@ use anyhow::Result;
 pub struct BattleOverview {
     pub occurred_on: String,
     pub mode: GameMode,
-    pub winners: Vec<PlayerData>,
-    pub losers: Vec<PlayerData>,
+    pub winners: Vec<PlayerResult>,
+    pub losers: Vec<PlayerResult>,
 }
 
-impl BattleOverview {
-    pub fn new_from_record(record: &BattleRecord) -> Result<Self> {
-        Ok(BattleOverview {
-            occurred_on: record.create_time.to_owned(),
-            mode: GameMode::try_from(record)?,
-            winners: Vec::new(),
-            losers: Vec::new(),
+impl BattleRecord {
+    pub fn get_battle_overview(&self) -> Result<BattleOverview> {
+        let mut winners = Vec::new();
+        let mut losers = Vec::new();
+
+        for player in self.player_records.player_record.iter() {
+            let name: PlayerName = player.name.clone().into();
+            //let end_hp =
+        }
+
+        Ok(BattleOverview{
+            occurred_on: self.create_time.to_owned(),
+            mode: GameMode::try_from(self)?,
+            winners,
+            losers
         })
     }
 }
@@ -37,13 +45,13 @@ mod tests {
 
         let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
             .expect("this shouldn't die");
-        let overview = BattleOverview::new_from_record(&record).expect("Shouldn't die");
+        let overview = record.get_battle_overview().expect("Shouldn't die");
         println!("{:?}", overview);
 
         let record = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"))
             .expect("this shouldn't die");
 
-        let overview = BattleOverview::new_from_record(&record).expect("Shouldn't die");
+        let overview = record.get_battle_overview().expect("Shouldn't die");
         println!("{:?}", overview);
     }
 }

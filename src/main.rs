@@ -60,7 +60,7 @@ fn main() {
     let overviews: Vec<BattleOverview> = records
         .iter()
         .filter_map(|r| {
-            BattleOverview::new_from_record(r)
+            r.get_battle_overview()
                 .map_err(|e| println!("Error parsing BattleOverview: {e}"))
                 .ok()
         })
