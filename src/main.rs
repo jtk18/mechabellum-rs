@@ -23,7 +23,12 @@ fn main() {
         {
             let entry = maybe_entry.expect("Could not unwrap directory entry");
             let path = entry.path();
-            if path.is_file() && path.extension().map(|s| s == "grbr").unwrap_or(false) {
+            if path.is_file()
+                && path
+                    .extension()
+                    .map(|s| s == "grbr" || s == "xml")
+                    .unwrap_or(false)
+            {
                 v.push(path);
             }
         }
