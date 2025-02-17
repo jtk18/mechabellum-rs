@@ -24,11 +24,11 @@ impl BattleRecord {
             //let end_hp =
         }
 
-        Ok(BattleOverview{
+        Ok(BattleOverview {
             occurred_on: self.create_time.to_owned(),
             mode: GameMode::try_from(self)?,
             winners,
-            losers
+            losers,
         })
     }
 }

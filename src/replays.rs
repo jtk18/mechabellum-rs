@@ -15,7 +15,10 @@ use std::io::Write;
 use std::path::Path;
 
 impl BattleRecord {
-    pub fn new_from_files<P: AsRef<Path>>(files: &[P], save_embedded_delete_original: bool) -> (Vec<Self>, Vec<ParseError>) {
+    pub fn new_from_files<P: AsRef<Path>>(
+        files: &[P],
+        save_embedded_delete_original: bool,
+    ) -> (Vec<Self>, Vec<ParseError>) {
         let mut v = Vec::new();
         let mut e = Vec::new();
 
@@ -30,7 +33,10 @@ impl BattleRecord {
         (v, e)
     }
 
-    pub fn new_from_file<P: AsRef<Path>>(file: P, save_embedded_delete_original: bool) -> Result<Self, ParseError> {
+    pub fn new_from_file<P: AsRef<Path>>(
+        file: P,
+        save_embedded_delete_original: bool,
+    ) -> Result<Self, ParseError> {
         let path = file.as_ref();
         let creation_system_time: DateTime<Utc> = path
             .metadata()
@@ -61,11 +67,12 @@ impl BattleRecord {
 
                 if save_embedded_delete_original && path.extension() == Some(&OsStr::new("grbr")) {
                     let mk_file = path.with_extension("xml");
-                    fs::File::create(&mk_file).and_then(|mut f| write!(f, "{}\n", embedded_document)).and_then(|_| {
-                        fs::remove_file(path)
-                    }).map_err(|e| {
-                        ParseError::UnableToRemoveOriginal(path.into(), e.to_string().into())
-                    })?;
+                    fs::File::create(&mk_file)
+                        .and_then(|mut f| write!(f, "{}\n", embedded_document))
+                        .and_then(|_| fs::remove_file(path))
+                        .map_err(|e| {
+                            ParseError::UnableToRemoveOriginal(path.into(), e.to_string().into())
+                        })?;
                 }
 
                 return Ok(record);
