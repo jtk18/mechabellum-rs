@@ -43,12 +43,12 @@ mod tests {
     fn test_parse() {
         let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
 
-        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"))
+        let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"), false)
             .expect("this shouldn't die");
         let overview = record.get_battle_overview().expect("Shouldn't die");
         println!("{:?}", overview);
 
-        let record = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"))
+        let record = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"), false)
             .expect("this shouldn't die");
 
         let overview = record.get_battle_overview().expect("Shouldn't die");

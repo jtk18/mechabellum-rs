@@ -9,6 +9,10 @@ pub enum ParseError {
     UnableToRead(ParsedReplay, ParsedErrorMessage),
     #[error("Unable to parse {0}: {2}")]
     UnableToParse(ParsedReplay, ParsedDocument, ParsedErrorMessage),
+    #[error("Unable to save xml copy of replay {0}: {1}")]
+    UnableToSaveCopy(ParsedReplay, ParsedErrorMessage),
+    #[error("Unable to remove original replay file after saving xml content {0}: {1}")]
+    UnableToRemoveOriginal(ParsedReplay, ParsedErrorMessage),
     #[error("No battle record detected in {0}")]
     NoBattleRecord(ParsedReplay),
 }

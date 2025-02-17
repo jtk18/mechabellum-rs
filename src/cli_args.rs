@@ -12,4 +12,7 @@ pub struct Args {
     /// Path to output any parse errors to
     #[arg(default_value = "parse_errors.mbpe")]
     pub error_output_file: PathBuf,
+    /// Save xml file to save some space
+    #[arg(short)]
+    pub delete_original: bool,
 }

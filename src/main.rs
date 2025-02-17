@@ -32,7 +32,7 @@ fn main() {
         vec![args.file_or_dir]
     };
 
-    let (records, errors) = BattleRecord::new_from_files(&files);
+    let (records, errors) = BattleRecord::new_from_files(&files, args.delete_original);
 
     println!(
         "Found {} total replays with {} successfully parsed and {} unsuccessfully",
@@ -45,12 +45,15 @@ fn main() {
         println!("Saving errors to {}", args.error_output_file.display());
         let mut file = fs::File::create_new(args.error_output_file)
             .expect("Couldn't open error output file for writing!");
+        let mut other_errors: Vec<ParseError> = Vec::new();
         for error in errors.into_iter() {
             if let ParseError::UnableToParse(_, doc, err) = error {
                 let _ = file.write_all(doc.0.as_bytes());
                 let _ = file.write_all(&[b'\n']);
                 let _ = file.write_all(err.0.as_bytes());
                 let _ = file.write_all(&[b'\n']);
+            } else {
+                other_errors.push(error);
             }
         }
 
