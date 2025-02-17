@@ -87,32 +87,32 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>8</id>
+            <id>8</id> <!-- Steel Ball? -->
             <techs>
-              <tech data="308" />
-              <tech data="3008" />
-              <tech data="10208" />
-              <tech data="1308" />
+              <tech data="308" /> <!-- Energy Absorption -->
+              <tech data="3008" /> <!-- Armor -->
+              <tech data="10208" /> <!-- Range Enhancement -->
+              <tech data="1308" /> <!-- Mechanical Division -->
             </techs>
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>9</id>
+            <id>9</id> <!-- Fang? -->
             <techs>
-              <tech data="180209" />
-              <tech data="10209" />
-              <tech data="10509" />
-              <tech data="209" />
+              <tech data="180209" /> <!-- Ignite -->
+              <tech data="10209" /> <!-- Range Enhancement -->
+              <tech data="10509" /> <!-- Mechanical Rage -->
+              <tech data="209" /> <!-- Portable Shield -->
             </techs>
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>10</id>
+            <id>10</id> <!-- Crawler -->
             <techs>
-              <tech data="10510" />
-              <tech data="180110" />
-              <tech data="3510" />
-              <tech data="10710" />
+              <tech data="10510" /> <!-- Mechanical Rage -->
+              <tech data="180110" /> <!-- Replicate -->
+              <tech data="3510" /> <!-- Loose Formation -->
+              <tech data="10710" /> <!-- Impact Drill -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -157,12 +157,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>15</id>
+            <id>15</id> <!-- Arclight? -->
             <techs>
-              <tech data="1815" />
-              <tech data="10215" />
-              <tech data="10815" />
-              <tech data="10915" />
+              <tech data="1815" /> <!-- Electromagetic Shot -->
+              <tech data="10215" /> <!-- Range Enhancement -->
+              <tech data="10815" /> <!-- Elite Marksman -->
+              <tech data="10915" /> <!-- Charged Shot -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -249,12 +249,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>24</id>
+            <id>24</id> <!-- Tarantula -->
             <techs>
-              <tech data="11024" />
-              <tech data="10224" />
-              <tech data="424" />
-              <tech data="10524" />
+              <tech data="11024" /> <!-- Spider Mine -->
+              <tech data="10224" /> <!-- Range Enhancement -->
+              <tech data="424" /> <!-- High-Explosive Ammo -->
+              <tech data="10524" /> <!-- Mechanical Rage -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -269,12 +269,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>26</id>
+            <id>26</id> <!-- Farseer -->
             <techs>
-              <tech data="180326" />
-              <tech data="10226" />
-              <tech data="3326" />
-              <tech data="1826" />
+              <tech data="180326" /> <!-- Photon Emission -->
+              <tech data="10226" /> <!-- Range Enhancement -->
+              <tech data="3326" /> <!-- Missile Interceptor -->
+              <tech data="1826" /> <!-- Electromagnetic Explosion -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -380,34 +380,34 @@
               <Time>0</Time>
               <LocalTime>22.1999474</LocalTime>
               <Index>0</Index>
-              <ID>9874</ID>
+              <ID>9874</ID> <!-- farseer specialist? -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
         <PlayerRoundRecord>
           <round>1</round>
           <playerData>
-            <reactorCore>5000</reactorCore>
+            <reactorCore>5000</reactorCore> <!-- I do start with 5000 health -->
             <supply>0</supply>
-            <preRoundFightResult>Win</preRoundFightResult>
+            <preRoundFightResult>Win</preRoundFightResult> <!-- I lose 100 health this round -->
             <units>
               <NewUnitData>
-                <id>8</id>
+                <id>8</id> <!-- Steel Ball -->
                 <Index>0</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
                 <Exp>0</Exp>
                 <Level>0</Level>
-                <Position>
-                  <x>5</x>
-                  <y>-160</y>
+                <Position> <!-- middle of the whole board looks like 0, 0 so middle of each side is -->
+                  <x>5</x>  <!-- Middle middle, between the towers.. drop position, 0 looks like middle -->
+                  <y>-160</y> <!-- From the front line psure this is yards, don't forget the extra 10? that opens up on round 2 -->
                 </Position>
                 <EquipmentID>0</EquipmentID>
                 <IsRotate>false</IsRotate>
                 <SellSupply>200</SellSupply>
               </NewUnitData>
               <NewUnitData>
-                <id>8</id>
+                <id>8</id>  <!-- Steel Ball -->
                 <Index>1</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -422,7 +422,7 @@
                 <SellSupply>200</SellSupply>
               </NewUnitData>
               <NewUnitData>
-                <id>9</id>
+                <id>9</id> <!-- Fang -->
                 <Index>2</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -437,7 +437,7 @@
                 <SellSupply>100</SellSupply>
               </NewUnitData>
               <NewUnitData>
-                <id>9</id>
+                <id>9</id> <!-- Fang -->
                 <Index>3</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -452,7 +452,7 @@
                 <SellSupply>100</SellSupply>
               </NewUnitData>
               <NewUnitData>
-                <id>9</id>
+                <id>9</id> <!-- Fang -->
                 <Index>4</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -469,7 +469,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>20037</int>
+              <int>20037</int> <!-- Farseer Specialist? -->
             </officers>
             <commanderSkills />
             <activeTechnologies />
@@ -556,8 +556,8 @@
                   <unitID>9</unitID>
                   <unitIndex>4</unitIndex>
                   <position>
-                    <x>10</x>
-                    <y>-55</y>
+                    <x>10</x> <!-- right of box-->
+                    <y>-55</y> <!-- bottom of box -->
                   </position>
                   <isRotate>true</isRotate>
                 </MoveUnitData>
@@ -630,7 +630,7 @@
               <LocalTime>44.049614</LocalTime>
               <moveUnitDatas>
                 <MoveUnitData>
-                  <unitID>15</unitID>
+                  <unitID>15</unitID> <!-- Arclight -->
                   <unitIndex>5</unitIndex>
                   <position>
                     <x>80</x>
@@ -664,9 +664,9 @@
         <PlayerRoundRecord>
           <round>2</round>
           <playerData>
-            <reactorCore>4900</reactorCore>
+            <reactorCore>4900</reactorCore> <!-- I do have 4900 hp -->
             <supply>0</supply>
-            <preRoundFightResult>Lose</preRoundFightResult>
+            <preRoundFightResult>Lose</preRoundFightResult> <!-- I lost the previous round -->
             <units>
               <NewUnitData>
                 <id>8</id>
@@ -828,7 +828,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>0</Time>
               <LocalTime>22.3499451</LocalTime>
-              <ID>1200001</ID>
+              <ID>1200001</ID> <!-- Underground Threat -->
               <Index>1</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_ReleaseCommanderSkill">
@@ -838,8 +838,8 @@
               <SkillIndex>0</SkillIndex>
               <Positions>
                 <MapVector>
-                  <x>1</x>
-                  <y>275</y>
+                  <x>1</x> <!-- middle of reticle looks 1 square off of middle to the right-->
+                  <y>275</y> <!-- top of reticle is nearly touching the back line of enemy board -->
                 </MapVector>
               </Positions>
               <UnitIndex>-1</UnitIndex>
@@ -926,9 +926,9 @@
         <PlayerRoundRecord>
           <round>3</round>
           <playerData>
-            <reactorCore>4680</reactorCore>
+            <reactorCore>4680</reactorCore> <!-- Confirmed -->
             <supply>0</supply>
-            <preRoundFightResult>Lose</preRoundFightResult>
+            <preRoundFightResult>Lose</preRoundFightResult> <!-- Yep I lost -->
             <units>
               <NewUnitData>
                 <id>8</id>
@@ -965,7 +965,7 @@
                 <Index>2</Index>
                 <RoundCount>1</RoundCount>
                 <Durability>0</Durability>
-                <Exp>10298</Exp>
+                <Exp>10298</Exp> <!-- 102 showing -->
                 <Level>0</Level>
                 <Position>
                   <x>-120</x>
@@ -980,7 +980,7 @@
                 <Index>3</Index>
                 <RoundCount>1</RoundCount>
                 <Durability>0</Durability>
-                <Exp>60000</Exp>
+                <Exp>60000</Exp> <!-- 600 xp showing, level up available -->
                 <Level>0</Level>
                 <Position>
                   <x>130</x>
@@ -995,7 +995,7 @@
                 <Index>4</Index>
                 <RoundCount>1</RoundCount>
                 <Durability>0</Durability>
-                <Exp>19904</Exp>
+                <Exp>19904</Exp> <!-- 199 showing -->
                 <Level>0</Level>
                 <Position>
                   <x>0</x>
@@ -1010,7 +1010,7 @@
                 <Index>5</Index>
                 <RoundCount>1</RoundCount>
                 <Durability>0</Durability>
-                <Exp>75000</Exp>
+                <Exp>75000</Exp> <!-- 750 XP Showing, level up available -->
                 <Level>0</Level>
                 <Position>
                   <x>80</x>
@@ -1040,11 +1040,11 @@
                 <Index>7</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
-                <Exp>4206</Exp>
+                <Exp>4206</Exp> <!-- 42 xp showing -->
                 <Level>0</Level>
                 <Position>
-                  <x>140</x>
-                  <y>-225</y>
+                  <x>140</x> <!-- Tower right -->
+                  <y>-225</y> <!-- top is 20 m behind tower -->
                 </Position>
                 <EquipmentID>0</EquipmentID>
                 <IsRotate>true</IsRotate>
@@ -1055,11 +1055,11 @@
                 <Index>8</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
-                <Exp>2699</Exp>
+                <Exp>2699</Exp> <!-- 26 xp showing -->
                 <Level>0</Level>
                 <Position>
-                  <x>-140</x>
-                  <y>-225</y>
+                  <x>-140</x> <!-- Tower Left -->
+                  <y>-225</y> <!-- top is 20 m behind tower -->
                 </Position>
                 <EquipmentID>0</EquipmentID>
                 <IsRotate>true</IsRotate>
@@ -1089,7 +1089,7 @@
               <CommanderSkillData>
                 <index>0</index>
                 <id>1200001</id>
-                <isActive>true</isActive>
+                <isActive>true</isActive> <!-- pretty sure this is showing last round's data as this should be used on round 2 and on cooldown start of round 3 -->
                 <coolingRound>0</coolingRound>
                 <rangeItems />
               </CommanderSkillData>
@@ -1143,7 +1143,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>0</Time>
               <LocalTime>4.75</LocalTime>
-              <ID>1000001</ID>
+              <ID>1000001</ID> <!-- Redeployment -->
               <Index>3</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_ReleaseCommanderSkill">
@@ -1580,7 +1580,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>0</Time>
               <LocalTime>22.7999382</LocalTime>
-              <ID>1043124</ID>
+              <ID>1043124</ID> <!-- 3 level 1 taratulas -->
               <Index>1</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_MoveUnit">
@@ -1588,11 +1588,11 @@
               <LocalTime>28.4998512</LocalTime>
               <moveUnitDatas>
                 <MoveUnitData>
-                  <unitID>24</unitID>
+                  <unitID>24</unitID> <!-- Taratula -->
                   <unitIndex>16</unitIndex>
                   <position>
-                    <x>-345</x>
-                    <y>295</y>
+                    <x>-345</x> <!-- Top left flank -->
+                    <y>295</y> <!-- Top left flank -->
                   </position>
                   <isRotate>false</isRotate>
                 </MoveUnitData>
@@ -1719,7 +1719,7 @@
               <Time>0</Time>
               <LocalTime>66.2994461</LocalTime>
               <UID>8</UID>
-              <TechID>10208</TechID>
+              <TechID>10208</TechID> <!-- Range Enhancement -->
             </MatchActionData>
             <MatchActionData xsi:type="PAD_UpgradeUnit">
               <Time>0</Time>
@@ -2670,7 +2670,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>0</Time>
               <LocalTime>8.600015</LocalTime>
-              <ID>300007</ID>
+              <ID>300007</ID> <!-- Orbital Javelin -->
               <Index>3</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_ReleaseCommanderSkill">
@@ -2925,12 +2925,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>10</id>
+            <id>10</id> <!-- Crawler -->
             <techs>
-              <tech data="10510" />
-              <tech data="2610" />
-              <tech data="180110" />
-              <tech data="3510" />
+              <tech data="10510" /> <!-- Mechanical Rage -->
+              <tech data="2610" /> <!-- Subterranean Blitz -->
+              <tech data="180110" /> <!-- Replicate -->
+              <tech data="3510" /> <!-- Loose Formation -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -2955,12 +2955,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>13</id>
+            <id>13</id> <!-- sledge hammer -->
             <techs>
-              <tech data="913" />
-              <tech data="10613" />
-              <tech data="10513" />
-              <tech data="10213" />
+              <tech data="913" /> <!-- Field Maintenance -->
+              <tech data="10613" /> <!-- Armor-Piercing Bullets -->
+              <tech data="10513" /> <!-- Mechanical Rage -->
+              <tech data="10213" /> <!-- Range Enhancement -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -2977,10 +2977,10 @@
           <unitData>
             <id>15</id>
             <techs>
-              <tech data="10215" />
-              <tech data="3115" />
-              <tech data="10915" />
-              <tech data="1815" />
+              <tech data="10215" /> <!-- Range Enhancement -->
+              <tech data="3115" /> <!-- Anti-Aircraft Ammunition -->
+              <tech data="10915" /> <!-- Charged Shot -->
+              <tech data="1815" /> <!-- Electromagnetic Shot -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -3007,12 +3007,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>18</id>
+            <id>18</id> <!-- Wraith -->
             <techs>
-              <tech data="10218" />
-              <tech data="110181" />
-              <tech data="180418" />
-              <tech data="918" />
+              <tech data="10218" /> <!-- Range Enhancement -->
+              <tech data="110181" /> <!-- Floating Artillery Array -->
+              <tech data="180418" /> <!-- Degeneration Beam -->
+              <tech data="918" /> <!-- Field Maintenance -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -3027,12 +3027,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>20</id>
+            <id>20</id> <!-- Firebadger -->
             <techs>
-              <tech data="10220" />
-              <tech data="820" />
-              <tech data="10620" />
-              <tech data="920" />
+              <tech data="10220" /> <!-- Range Enhancement -->
+              <tech data="820" />   <!-- Napalm -->
+              <tech data="10620" /> <!-- Scorching Fire -->
+              <tech data="920" />   <!-- Field Maintenance -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -3047,12 +3047,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>22</id>
+            <id>22</id> <!-- Typhoon -->
             <techs>
-              <tech data="3022" />
-              <tech data="3222" />
-              <tech data="1022" />
-              <tech data="11022" />
+              <tech data="3022" /> <!-- Mechanical Rage -->
+              <tech data="3222" /> <!-- Aerial Specialization-->
+              <tech data="1022" /> <!-- Barrier -->
+              <tech data="11022" /> <!-- Homing Missile -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -3205,19 +3205,19 @@
               <Time>34</Time>
               <LocalTime>28.8998451</LocalTime>
               <Index>2</Index>
-              <ID>9885</ID>
+              <ID>9885</ID> <!-- Typhoon Specialist -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
         <PlayerRoundRecord>
           <round>1</round>
           <playerData>
-            <reactorCore>4700</reactorCore>
+            <reactorCore>4700</reactorCore> <!-- This is his hp -->
             <supply>0</supply>
             <preRoundFightResult>Win</preRoundFightResult>
             <units>
               <NewUnitData>
-                <id>15</id>
+                <id>15</id> <!-- arclight -->
                 <Index>0</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -3262,7 +3262,7 @@
                 <SellSupply>100</SellSupply>
               </NewUnitData>
               <NewUnitData>
-                <id>13</id>
+                <id>13</id> <!-- Sledgehammer -->
                 <Index>3</Index>
                 <RoundCount>0</RoundCount>
                 <Durability>0</Durability>
@@ -3294,7 +3294,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>20039</int>
+              <int>20039</int> <!-- Typhoon specialist? -->
             </officers>
             <commanderSkills />
             <activeTechnologies />
@@ -3957,7 +3957,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>11</Time>
               <LocalTime>91.55099</LocalTime>
-              <ID>13030007</ID>
+              <ID>13030007</ID> <!-- Amplifying Core -->
               <Index>0</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_BuyUnit">
@@ -3971,7 +3971,7 @@
               <LocalTime>91.55099</LocalTime>
               <moveUnitDatas>
                 <MoveUnitData>
-                  <unitID>18</unitID>
+                  <unitID>18</unitID> <!-- Wraith -->
                   <unitIndex>9</unitIndex>
                   <position>
                     <x>-65</x>
@@ -3984,7 +3984,7 @@
             <MatchActionData xsi:type="PAD_UseEquipment">
               <Time>17</Time>
               <LocalTime>91.55099</LocalTime>
-              <EquipmentID>13030007</EquipmentID>
+              <EquipmentID>13030007</EquipmentID> <!-- Amplifying Core -->
               <UnitIndex>9</UnitIndex>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_MoveUnit">
@@ -4293,7 +4293,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>13</Time>
               <LocalTime>94.50117</LocalTime>
-              <ID>1042220</ID>
+              <ID>1042220</ID> <!-- Firebadgers level 2 count 2 -->
               <Index>2</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_MoveUnit">
@@ -4301,7 +4301,7 @@
               <LocalTime>94.50117</LocalTime>
               <moveUnitDatas>
                 <MoveUnitData>
-                  <unitID>22</unitID>
+                  <unitID>22</unitID> <!-- Typhoon -->
                   <unitIndex>11</unitIndex>
                   <position>
                     <x>-60</x>
@@ -4316,7 +4316,7 @@
               <LocalTime>94.50117</LocalTime>
               <moveUnitDatas>
                 <MoveUnitData>
-                  <unitID>20</unitID>
+                  <unitID>20</unitID> <!-- Firebadger -->
                   <unitIndex>13</unitIndex>
                   <position>
                     <x>-105</x>
@@ -4786,7 +4786,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>11</Time>
               <LocalTime>72.79984</LocalTime>
-              <ID>1309001</ID>
+              <ID>1309001</ID> <!-- Absorption Module -->
               <Index>0</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_UseEquipment">
@@ -5259,8 +5259,8 @@
             <contraptions />
             <contraptionIndex>0</contraptionIndex>
             <bluepints>
-              <int>4</int>
-              <int>5</int>
+              <int>4</int> <!-- Maybe +1 of either? -->
+              <int>5</int> <!-- Maybe +1 of either? -->
             </bluepints>
             <energyTowerSkills />
             <towerStrengthenLevels>
@@ -5273,7 +5273,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>10</Time>
               <LocalTime>94.00114</LocalTime>
-              <ID>100002</ID>
+              <ID>100002</ID> <!-- Incendiary Bomb Power -->
               <Index>1</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_ReleaseCommanderSkill">
@@ -5308,7 +5308,7 @@
             <MatchActionData xsi:type="PAD_ReleaseContraption">
               <Time>18</Time>
               <LocalTime>94.00114</LocalTime>
-              <ContraptionID>10001</ContraptionID>
+              <ContraptionID>10001</ContraptionID> <!-- Shield Generator -->
               <Position>
                 <x>-128</x>
                 <y>174</y>
@@ -5321,7 +5321,7 @@
             <MatchActionData xsi:type="PAD_ReleaseContraption">
               <Time>20</Time>
               <LocalTime>94.00114</LocalTime>
-              <ContraptionID>10001</ContraptionID>
+              <ContraptionID>10001</ContraptionID> <!-- Shield Generator -->
               <Position>
                 <x>107</x>
                 <y>165</y>
@@ -5389,18 +5389,18 @@
             <MatchActionData xsi:type="PAD_ActiveEnergyTowerSkill">
               <Time>40</Time>
               <LocalTime>94.00114</LocalTime>
-              <SkillID>1</SkillID>
+              <SkillID>1</SkillID> <!-- Rapid Resupply -->
             </MatchActionData>
             <MatchActionData xsi:type="PAD_UpgradeTechnology">
               <Time>41</Time>
               <LocalTime>94.00114</LocalTime>
               <UID>18</UID>
-              <TechID>10218</TechID>
+              <TechID>10218</TechID> <!-- Range Enhancement -->
             </MatchActionData>
             <MatchActionData xsi:type="PAD_ReleaseContraption">
               <Time>49</Time>
               <LocalTime>94.00114</LocalTime>
-              <ContraptionID>20001</ContraptionID>
+              <ContraptionID>20001</ContraptionID> <!-- Sentry Missile -->
               <Position>
                 <x>-228</x>
                 <y>12</y>
@@ -5413,7 +5413,7 @@
             <MatchActionData xsi:type="PAD_ReleaseContraption">
               <Time>51</Time>
               <LocalTime>94.00114</LocalTime>
-              <ContraptionID>20001</ContraptionID>
+              <ContraptionID>20001</ContraptionID> <!-- Sentry Missile -->
               <Position>
                 <x>283</x>
                 <y>13</y>
