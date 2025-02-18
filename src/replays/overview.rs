@@ -1,3 +1,4 @@
+mod mode;
 mod types;
 
 pub use types::*;
@@ -10,26 +11,15 @@ use anyhow::Result;
 pub struct BattleOverview {
     pub occurred_on: String,
     pub mode: GameMode,
+    pub rounds: usize,
     pub winners: Vec<PlayerResult>,
     pub losers: Vec<PlayerResult>,
 }
 
 impl BattleRecord {
     pub fn get_battle_overview(&self) -> Result<BattleOverview> {
-        let mut winners = Vec::new();
-        let mut losers = Vec::new();
-
-        for player in self.player_records.player_record.iter() {
-            let name: PlayerName = player.name.clone().into();
-            //let end_hp =
-        }
-
-        Ok(BattleOverview {
-            occurred_on: self.create_time.to_owned(),
-            mode: GameMode::try_from(self)?,
-            winners,
-            losers,
-        })
+        let mode =  GameMode::try_from(self)?;
+        mode.get_battle_overview(self)
     }
 }
 
