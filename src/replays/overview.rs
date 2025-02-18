@@ -18,7 +18,7 @@ pub struct BattleOverview {
 
 impl BattleRecord {
     pub fn get_battle_overview(&self) -> Result<BattleOverview> {
-        let mode =  GameMode::try_from(self)?;
+        let mode = GameMode::try_from(self)?;
         mode.get_battle_overview(self)
     }
 }
