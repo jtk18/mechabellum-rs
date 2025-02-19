@@ -63,6 +63,13 @@ pub enum Unit {
     Fortress,
     #[strum(serialize = "2", serialize = "Marksman")]
     Marksman,
+    #[strum(
+        serialize = "4",
+        serialize = "MeltingPoint",
+        serialize = "Melting Point",
+        to_string = "Melting Point"
+    )]
+    MeltingPoint,
     #[strum(serialize = "6", serialize = "Wasp")]
     Wasp,
     #[strum(serialize = "7", serialize = "Mustang")]
@@ -112,6 +119,9 @@ mod tests {
             ("2", Unit::Marksman),
             ("Marksman", Unit::Marksman),
             ("marksman", Unit::Marksman),
+            ("4", Unit::MeltingPoint),
+            ("Melting Point", Unit::MeltingPoint),
+            ("meltingpoint", Unit::MeltingPoint),
             ("6", Unit::Wasp),
             ("Wasp", Unit::Wasp),
             ("wasp", Unit::Wasp),
@@ -167,6 +177,7 @@ mod tests {
         let tests = &[
             (Unit::Fortress, "Fortress"),
             (Unit::Marksman, "Marksman"),
+            (Unit::MeltingPoint, "Melting Point"),
             (Unit::Wasp, "Wasp"),
             (Unit::Mustang, "Mustang"),
             (Unit::SteelBall, "Steel Ball"),

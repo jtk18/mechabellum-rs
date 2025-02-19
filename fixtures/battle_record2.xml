@@ -47,12 +47,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>4</id>
+            <id>4</id> <!-- Melting Point -->
             <techs>
-              <tech data="1204" />
-              <tech data="10204" />
-              <tech data="1107" />
-              <tech data="1106" />
+              <tech data="1204" /> <!-- Crawler Production -->
+              <tech data="10204" /> <!-- Range Enhancement -->
+              <tech data="1107" /> <!-- Energy Diffraction -->
+              <tech data="1106" /> <!-- Electromagnetic Barrage -->
             </techs>
             <unlockedTechs />
           </unitData>
