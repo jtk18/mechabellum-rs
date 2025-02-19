@@ -3,9 +3,11 @@ use anyhow::Result;
 use crate::BattleOverview;
 use crate::BattleRecord;
 
-use super::{GameMode, PlayerName, PlayerResult};
+use super::{GameMode, PlayerName, PlayerResult, Unit, UnitInstance};
 
 use thiserror::Error;
+
+use std::str::FromStr;
 
 #[derive(Debug, Error)]
 pub enum GameModeParseError {
@@ -41,6 +43,15 @@ impl GameMode {
                 .pre_round_fight_result
                 .as_str();
 
+            let unlocked_units: Vec<Unit> = rounds[rounds.len() - 1]
+                .player_data
+                .shop
+                .unlocked_units
+                .int
+                .iter()
+                .filter_map(|unit_index| Unit::from_str(unit_index).ok())
+                .collect();
+
             if need_last_round_set {
                 last_round = last_round_snapshot.round.parse().unwrap_or(0);
                 need_last_round_set = false;
@@ -54,10 +65,29 @@ impl GameMode {
                             .score
                             .parse()
                             .unwrap_or(0);
+
+                        let last_round_units: Vec<UnitInstance> =
+                            last_fight_result.reports.fight_report[i]
+                                .unit_datas
+                                .new_unit_data
+                                .iter()
+                                .filter_map(|data| {
+                                    Unit::from_str(data.id.as_str())
+                                        .and_then(|unit_type| {
+                                            Ok(UnitInstance {
+                                                unit_type,
+                                                xp: data.exp.parse().unwrap_or(0),
+                                            })
+                                        })
+                                        .ok()
+                                })
+                                .collect();
                         let result = PlayerResult {
                             name,
                             last_round_hp,
                             score,
+                            last_round_units,
+                            unlocked_units,
                         };
                         if last_round_result == "Win" {
                             winners.push(result);

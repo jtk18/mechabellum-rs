@@ -87,7 +87,7 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>8</id> <!-- Steel Ball? -->
+            <id>8</id> <!-- Steel Ball -->
             <techs>
               <tech data="308" /> <!-- Energy Absorption -->
               <tech data="3008" /> <!-- Armor -->
@@ -97,7 +97,7 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>9</id> <!-- Fang? -->
+            <id>9</id> <!-- Fang -->
             <techs>
               <tech data="180209" /> <!-- Ignite -->
               <tech data="10209" /> <!-- Range Enhancement -->
