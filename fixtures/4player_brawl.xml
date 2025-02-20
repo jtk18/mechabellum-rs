@@ -37,12 +37,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>3</id>
+            <id>3</id> <!-- Vulcan -->
             <techs>
-              <tech data="3003" />
-              <tech data="10203" />
-              <tech data="1103" />
-              <tech data="10603" />
+              <tech data="3003" />  <!-- Armor Enhancement -->
+              <tech data="10203" /> <!-- Range Enhancement -->
+              <tech data="1103" />  <!-- Incendiary Bomb -->
+              <tech data="10603" /> <!-- Scorching Fire -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -57,12 +57,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>5</id>
+            <id>5</id> <!-- Rhino -->
             <techs>
-              <tech data="1109" />
-              <tech data="3005" />
-              <tech data="905" />
-              <tech data="10505" />
+              <tech data="1109" /> <!-- Whirlwind -->
+              <tech data="3005" /> <!-- Armor Enhancement -->
+              <tech data="905" />  <!-- Field Maintenance -->
+              <tech data="10505" /> <!-- Mechanical Rage -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -147,12 +147,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>14</id>
+            <id>14</id> <!-- Hacker -->
             <techs>
-              <tech data="1814" />
-              <tech data="1014" />
-              <tech data="10214" />
-              <tech data="1714" />
+              <tech data="1814" /> <!-- Electromagnetic Interference -->
+              <tech data="1014" /> <!-- Barrier -->
+              <tech data="10214" /> <!-- Range Enhancement -->
+              <tech data="1714" />  <!-- Enhanced Control -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -167,24 +167,24 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>16</id>
+            <id>16</id> <!-- Phoenix -->
             <techs>
-              <tech data="1816" />
-              <tech data="2916" />
-              <tech data="10216" />
-              <tech data="10816" />
+              <tech data="1816" /> <!-- Electromagnetic Shot -->
+              <tech data="2916" /> <!-- Quantum Reassembly -->
+              <tech data="10216" /> <!-- Range Enhancement -->
+              <tech data="10816" /> <!-- Elite Marksman -->
             </techs>
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>17</id>
+            <id>17</id> <!-- War Factory -->
             <techs>
-              <tech data="12017" />
-              <tech data="3417" />
-              <tech data="10217" />
-              <tech data="12117" />
-              <tech data="3317" />
-              <tech data="10317" />
+              <tech data="12017" /> <!-- Phoenix Production -->
+              <tech data="3417" />  <!-- Efficient Maintenance -->
+              <tech data="10217" /> <!-- Range Enhancement -->
+              <tech data="12117" /> <!-- Steel Ball Production -->
+              <tech data="3317" />  <!-- Missile Interceptor -->
+              <tech data="10317" /> <!-- Launcher Overload -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -219,12 +219,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>21</id>
+            <id>21</id> <!-- Sabertooth -->
             <techs>
-              <tech data="10221" />
-              <tech data="10321" />
-              <tech data="3321" />
-              <tech data="721" />
+              <tech data="10221" /> <!-- Range Enhancement -->
+              <tech data="10321" /> <!-- Field Maintenance -->
+              <tech data="3321" />  <!-- Missile Interceptor -->
+              <tech data="721" />   <!-- Doubleshot -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -239,12 +239,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>23</id>
+            <id>23</id> <!-- Sandworm -->
             <techs>
-              <tech data="3823" />
-              <tech data="3123" />
-              <tech data="923" />
-              <tech data="3623" />
+              <tech data="3823" /> <!-- Strike -->
+              <tech data="3123" /> <!-- Anti-Aerial -->
+              <tech data="923" />  <!-- Burrow Maintenance -->
+              <tech data="3623" /> <!-- Replicate -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -259,12 +259,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>25</id>
+            <id>25</id> <!-- Phantom Ray -->
             <techs>
-              <tech data="225" />
-              <tech data="3025" />
-              <tech data="3925" />
-              <tech data="10225" />
+              <tech data="225" /> <!-- Energy Shield -->
+              <tech data="3025" /> <!-- Armor Enhancement -->
+              <tech data="3925" /> <!-- Stealth Cloak -->
+              <tech data="10225" /> <!-- Range Enhancement -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -279,12 +279,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>27</id>
+            <id>27</id> <!-- Raiden -->
             <techs>
-              <tech data="110271" />
-              <tech data="4027" />
-              <tech data="1827" />
-              <tech data="10227" />
+              <tech data="110271" /> <!-- Fork -->
+              <tech data="4027" />   <!-- Chain -->
+              <tech data="1827" />   <!-- Electromagenetic Shot -->
+              <tech data="10227" />  <!-- Range Enhancement -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -380,7 +380,7 @@
               <Time>0</Time>
               <LocalTime>17.6000175</LocalTime>
               <Index>2</Index>
-              <ID>9893</ID>
+              <ID>9893</ID> <!-- Quick Supply Specialist with sabertooth and fangs -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
@@ -469,7 +469,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>10010</int>
+              <int>10010</int> <!-- Quicks Supply Specialist -->
             </officers>
             <commanderSkills>
               <CommanderSkillData>
@@ -834,7 +834,7 @@
             <MatchActionData xsi:type="PAD_ChooseReinforceItem">
               <Time>0</Time>
               <LocalTime>12.3000288</LocalTime>
-              <ID>3022125</ID>
+              <ID>3022125</ID> <!-- 2 level 1 Rays -->
               <Index>3</Index>
             </MatchActionData>
             <MatchActionData xsi:type="PAD_MoveUnit">
@@ -5028,12 +5028,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>11</id>
+            <id>11</id> <!-- Overlord -->
             <techs>
-              <tech data="1108" />
-              <tech data="10311" />
-              <tech data="1211" />
-              <tech data="10211" />
+              <tech data="1108" /> <!-- Overlord Artillery -->
+              <tech data="10311" /> <!-- Launcher Overload -->
+              <tech data="1211" />  <!-- Mothership -->
+              <tech data="10211" /> <!-- Range Enhancement -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -5284,7 +5284,7 @@
               <Time>8</Time>
               <LocalTime>18.10001</LocalTime>
               <Index>2</Index>
-              <ID>9885</ID>
+              <ID>9885</ID> <!-- Giant Specialist Arclight Sledge -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
@@ -5373,7 +5373,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>20005</int>
+              <int>20005</int> <!-- Giant Specialist -->
             </officers>
             <commanderSkills>
               <CommanderSkillData>
@@ -10147,12 +10147,12 @@
             <unlockedTechs />
           </unitData>
           <unitData>
-            <id>12</id>
+            <id>12</id> <!-- Stormcaller -->
             <techs>
-              <tech data="812" />
-              <tech data="10212" />
-              <tech data="1812" />
-              <tech data="412" />
+              <tech data="812" /> <!-- Incendiary Bomb -->
+              <tech data="10212" /> <!-- Range Enhancement -->
+              <tech data="1812" />  <!-- Electromagnetic Explosion -->
+              <tech data="412" /> <!-- High-Explosive Ammo -->
             </techs>
             <unlockedTechs />
           </unitData>
@@ -10385,7 +10385,7 @@
               <Time>12</Time>
               <LocalTime>18.10001</LocalTime>
               <Index>0</Index>
-              <ID>9876</ID>
+              <ID>9876</ID> <!-- Training Specialist Fang Storms -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
@@ -10474,7 +10474,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>10014</int>
+              <int>10014</int> <!-- Training Specialist -->
             </officers>
             <commanderSkills>
               <CommanderSkillData>
@@ -14491,7 +14491,7 @@
           <unitData>
             <id>12</id>
             <techs>
-              <tech data="10912" />
+              <tech data="10912" /> <!-- High-Explosive Anti-tank Shells -->
               <tech data="10212" />
               <tech data="1812" />
               <tech data="412" />
@@ -14735,7 +14735,7 @@
               <Time>5</Time>
               <LocalTime>18.10001</LocalTime>
               <Index>2</Index>
-              <ID>9878</ID>
+              <ID>9878</ID> <!-- Aerial Specialist Crawler Storms -->
             </MatchActionData>
           </actionRecords>
         </PlayerRoundRecord>
@@ -14824,7 +14824,7 @@
             </units>
             <unitIndex>5</unitIndex>
             <officers>
-              <int>20021</int>
+              <int>20021</int> <!-- Aerial Specialist -->
             </officers>
             <commanderSkills>
               <CommanderSkillData>
