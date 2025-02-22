@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
 mod cli_args;
+mod gui;
 mod replays;
 
-use cli_args::Args;
+use cli_args::{Args, CommandDispatch};
 use replays::*;
 
 use clap::Parser;
@@ -15,11 +16,16 @@ use std::path::PathBuf;
 fn main() {
     env_logger::init();
     let args = Args::parse();
+    if let Some(command) = args.subcommand.as_ref() {
+        return command.run_command().expect("Error running subcommand!");
+    }
+    let file_or_dir = args
+        .file_or_dir
+        .expect("You need to pass a '-- <FILE>' in this mode");
 
-    let files: Vec<PathBuf> = if args.file_or_dir.is_dir() {
+    let files: Vec<PathBuf> = if file_or_dir.is_dir() {
         let mut v = Vec::new();
-        for maybe_entry in
-            fs::read_dir(args.file_or_dir).expect("Unable to open directory for reading")
+        for maybe_entry in fs::read_dir(file_or_dir).expect("Unable to open directory for reading")
         {
             let entry = maybe_entry.expect("Could not unwrap directory entry");
             let path = entry.path();
@@ -34,7 +40,7 @@ fn main() {
         }
         v
     } else {
-        vec![args.file_or_dir]
+        vec![file_or_dir]
     };
 
     let (records, errors) = BattleRecord::new_from_files(&files, args.delete_original);
