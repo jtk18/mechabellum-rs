@@ -59,46 +59,39 @@ impl GameMode {
                 need_last_round_set = false;
             }
 
-            match &self {
-                GameMode::VS_1_1(_, _) | GameMode::VS_4_FFA(_, _, _, _) => {
-                    if let Some(last_fight_result) = last_round_snapshot.last_fight_result.as_ref()
-                    {
-                        let score: usize = last_fight_result.reports.fight_report[i]
-                            .score
-                            .parse()
-                            .unwrap_or(0);
+            if let Some(last_fight_result) = last_round_snapshot.last_fight_result.as_ref() {
+                let score: usize = last_fight_result.reports.fight_report[i]
+                    .score
+                    .parse()
+                    .unwrap_or(0);
 
-                        let last_round_units: Vec<UnitInstance> =
-                            last_fight_result.reports.fight_report[i]
-                                .unit_datas
-                                .new_unit_data
-                                .iter()
-                                .filter_map(|data| {
-                                    Unit::from_str(data.id.as_str())
-                                        .and_then(|unit_type| {
-                                            Ok(UnitInstance {
-                                                unit_type,
-                                                xp: data.exp.parse().unwrap_or(0),
-                                            })
-                                        })
-                                        .ok()
+                let last_round_units: Vec<UnitInstance> = last_fight_result.reports.fight_report[i]
+                    .unit_datas
+                    .new_unit_data
+                    .iter()
+                    .filter_map(|data| {
+                        Unit::from_str(data.id.as_str())
+                            .and_then(|unit_type| {
+                                Ok(UnitInstance {
+                                    unit_type,
+                                    xp: data.exp.parse().unwrap_or(0),
                                 })
-                                .collect();
-                        let result = PlayerResult {
-                            name,
-                            last_round_hp,
-                            score,
-                            last_round_units,
-                            unlocked_units,
-                        };
-                        if last_round_result == "Win" {
-                            winners.push(result);
-                        } else {
-                            losers.push(result);
-                        }
-                    }
+                            })
+                            .ok()
+                    })
+                    .collect();
+                let result = PlayerResult {
+                    name,
+                    last_round_hp,
+                    score,
+                    last_round_units,
+                    unlocked_units,
+                };
+                if last_round_result == "Win" {
+                    winners.push(result);
+                } else {
+                    losers.push(result);
                 }
-                _ => panic!("Haven't calculated this game mode yet! {self:?}"),
             }
         }
 
