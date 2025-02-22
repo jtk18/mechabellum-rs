@@ -15,8 +15,6 @@ pub enum GameModeParseError {
     UnknownGameMode(String),
     #[error("Unknown match mode {0}")]
     UnknownMatchMode(String),
-    #[error("Expected {0} players in match, but found {1}: {2:?}")]
-    PlayerMismatch(u8, u8, Vec<String>),
 }
 
 impl GameMode {
@@ -30,6 +28,10 @@ impl GameMode {
         for (i, player) in battle.player_records.player_record.iter().enumerate() {
             let name: PlayerName = player.name.clone().into();
             let rounds = &player.player_round_records.player_round_record;
+            if rounds.len() == 0 {
+                // bot likely, skip for now
+                continue;
+            }
             let start_hp: i32 = rounds[1].player_data.reactor_core.parse().unwrap_or(0);
             let last_round_hp: i32 = rounds[rounds.len() - 1]
                 .player_data
@@ -58,7 +60,7 @@ impl GameMode {
             }
 
             match &self {
-                GameMode::VS_1_1(_, _) => {
+                GameMode::VS_1_1(_, _) | GameMode::VS_4_FFA(_, _, _, _) => {
                     if let Some(last_fight_result) = last_round_snapshot.last_fight_result.as_ref()
                     {
                         let score: usize = last_fight_result.reports.fight_report[i]
@@ -120,60 +122,30 @@ impl TryFrom<&BattleRecord> for GameMode {
             .map(|v| v.name.to_owned())
             .collect();
         match record.battle_info.match_mode.as_str() {
-            "VS_4_Scuffle" => {
-                if names.len() != 4 {
-                    return Err(GameModeParseError::PlayerMismatch(
-                        4,
-                        names.len() as u8,
-                        names,
-                    ));
-                }
-
-                Ok(GameMode::VS_4_FFA(
+            "VS_4_Scuffle" => Ok(GameMode::VS_4_FFA(
+                names[0].clone().into(),
+                names[1].clone().into(),
+                names[2].clone().into(),
+                names[3].clone().into(),
+            )),
+            "VS_1_1" => match record.battle_info.game_mode.as_str() {
+                "Normal" => Ok(GameMode::VS_1_1(
                     names[0].clone().into(),
                     names[1].clone().into(),
-                    names[2].clone().into(),
-                    names[3].clone().into(),
-                ))
-            }
-            "VS_1_1" => {
-                if names.len() != 2 {
-                    return Err(GameModeParseError::PlayerMismatch(
-                        2,
-                        names.len() as u8,
-                        names,
-                    ));
-                }
-
-                match record.battle_info.game_mode.as_str() {
-                    "Normal" => Ok(GameMode::VS_1_1(
-                        names[0].clone().into(),
-                        names[1].clone().into(),
-                    )),
-                    "Competition" => Ok(GameMode::VS_1_1_Competition(
-                        names[0].clone().into(),
-                        names[1].clone().into(),
-                    )),
-                    "Survive" => Ok(GameMode::Solo(names[0].clone().into())),
-                    _ => Err(GameModeParseError::UnknownGameMode(
-                        record.battle_info.game_mode.to_owned(),
-                    )),
-                }
-            }
-            "VS_2_2" => {
-                if names.len() != 4 {
-                    return Err(GameModeParseError::PlayerMismatch(
-                        4,
-                        names.len() as u8,
-                        names,
-                    ));
-                }
-
-                Ok(GameMode::VS_2_2(
-                    (names[0].clone().into(), names[1].clone().into()),
-                    (names[2].clone().into(), names[3].clone().into()),
-                ))
-            }
+                )),
+                "Competition" => Ok(GameMode::VS_1_1_Competition(
+                    names[0].clone().into(),
+                    names[1].clone().into(),
+                )),
+                "Survive" => Ok(GameMode::Solo(names[0].clone().into())),
+                _ => Err(GameModeParseError::UnknownGameMode(
+                    record.battle_info.game_mode.to_owned(),
+                )),
+            },
+            "VS_2_2" => Ok(GameMode::VS_2_2(
+                (names[0].clone().into(), names[1].clone().into()),
+                (names[2].clone().into(), names[3].clone().into()),
+            )),
             _ => Err(GameModeParseError::UnknownMatchMode(
                 record.battle_info.match_mode.to_owned(),
             )),
