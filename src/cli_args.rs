@@ -16,7 +16,7 @@ pub struct Args {
     #[arg(short, long = "error-output", default_value = "parse_errors.mbpe")]
     pub error_output_file: PathBuf,
     /// Save xml file to save some space
-    #[arg(short)]
+    #[arg(short, long = "delete-original")]
     pub delete_original: bool,
     #[clap(subcommand)]
     pub subcommand: Option<AppSubcommands>,
