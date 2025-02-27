@@ -1,16 +1,16 @@
 #![allow(dead_code)]
 
 mod cli_args;
-mod replays;
 
 use cli_args::Args;
-use replays::*;
 
 use clap::Parser;
 
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+
+use mechabellum_replay_parser::*;
 
 fn main() {
     env_logger::init();

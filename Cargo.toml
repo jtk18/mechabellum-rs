@@ -3,6 +3,14 @@ name = "mechabellum-replay-parser"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "mechabellum_replay_parser"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mechabellum-replay-parser"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0"
 chrono = "0.4"
