@@ -9,14 +9,6 @@ use thiserror::Error;
 
 use std::str::FromStr;
 
-#[derive(Debug, Error)]
-pub enum GameModeParseError {
-    #[error("Unknown game mode {0}")]
-    UnknownGameMode(String),
-    #[error("Unknown match mode {0}")]
-    UnknownMatchMode(String),
-}
-
 impl GameMode {
     pub fn get_battle_overview(self, battle: &BattleRecord) -> Result<BattleOverview> {
         let mut winners = Vec::new();
@@ -105,9 +97,8 @@ impl GameMode {
     }
 }
 
-impl TryFrom<&BattleRecord> for GameMode {
-    type Error = GameModeParseError;
-    fn try_from(record: &BattleRecord) -> Result<Self, Self::Error> {
+impl From<&BattleRecord> for GameMode {
+    fn from(record: &BattleRecord) -> Self {
         let names: Vec<String> = record
             .player_records
             .player_record
@@ -115,33 +106,32 @@ impl TryFrom<&BattleRecord> for GameMode {
             .map(|v| v.name.to_owned())
             .collect();
         match record.battle_info.match_mode.as_str() {
-            "VS_4_Scuffle" => Ok(GameMode::VS_4_FFA(
+            "VS_4_Scuffle" => GameMode::VS_4_FFA(
                 names[0].clone().into(),
                 names[1].clone().into(),
                 names[2].clone().into(),
                 names[3].clone().into(),
-            )),
+            ),
             "VS_1_1" => match record.battle_info.game_mode.as_str() {
-                "Normal" => Ok(GameMode::VS_1_1(
+                "Normal" => GameMode::VS_1_1(
                     names[0].clone().into(),
                     names[1].clone().into(),
-                )),
-                "Competition" => Ok(GameMode::VS_1_1_Competition(
+                ),
+                "Competition" => GameMode::VS_1_1_Competition(
                     names[0].clone().into(),
                     names[1].clone().into(),
-                )),
-                "Survive" => Ok(GameMode::Solo(names[0].clone().into())),
-                _ => Err(GameModeParseError::UnknownGameMode(
-                    record.battle_info.game_mode.to_owned(),
-                )),
+                ),
+                "Survive" => GameMode::Solo(names[0].clone().into()),
+                _ => GameMode::VS_1_1_Unknown(record.battle_info.game_mode.as_str().to_string(), names[0].clone().into(), names[1].clone().into()),
             },
-            "VS_2_2" => Ok(GameMode::VS_2_2(
+            "VS_2_2" => GameMode::VS_2_2(
                 (names[0].clone().into(), names[1].clone().into()),
                 (names[2].clone().into(), names[3].clone().into()),
-            )),
-            _ => Err(GameModeParseError::UnknownMatchMode(
+            ),
+            _ => GameMode::UnknownGameMode(
                 record.battle_info.match_mode.to_owned(),
-            )),
+                names.into_iter().map(Into::into).collect()
+            ),
         }
     }
 }
