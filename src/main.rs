@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
 mod cli_args;
-mod gui;
 mod replays;
 
-use cli_args::{Args, CommandDispatch};
+use cli_args::Args;
 use replays::*;
 
 use clap::Parser;
@@ -16,9 +15,6 @@ use std::path::PathBuf;
 fn main() {
     env_logger::init();
     let args = Args::parse();
-    if let Some(command) = args.subcommand.as_ref() {
-        return command.run_command().expect("Error running subcommand!");
-    }
     let file_or_dir = args
         .file_or_dir
         .expect("You need to pass a '-- <FILE>' in this mode");
