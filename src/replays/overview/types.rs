@@ -11,7 +11,9 @@ pub enum GameMode {
     VS_4_FFA(PlayerName, PlayerName, PlayerName, PlayerName),
     VS_1_1(PlayerName, PlayerName),
     VS_1_1_Competition(PlayerName, PlayerName),
+    VS_1_1_Unknown(String, PlayerName, PlayerName),
     Solo(PlayerName),
+    UnknownGameMode(String, Vec<PlayerName>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -121,6 +123,8 @@ pub enum Unit {
     Farseer,
     #[strum(serialize = "27", serialize = "Raiden")]
     Raiden,
+    #[strum(serialize = "2001", serialize = "DeathKnell", to_string = "Death Knell")]
+    DeathKnell,
     #[strum(default)]
     Unknown(String),
 }
@@ -213,6 +217,9 @@ mod tests {
             ("27", Unit::Raiden),
             ("Raiden", Unit::Raiden),
             ("raiden", Unit::Raiden),
+            ("2001", Unit::DeathKnell),
+            ("DeathKnell", Unit::DeathKnell),
+            ("death knell", Unit::DeathKnell),
             (
                 "sir_not_appearing_in_film",
                 Unit::Unknown(String::from("sir_not_appearing_in_film")),
@@ -253,6 +260,7 @@ mod tests {
             (Unit::Raiden, "Raiden"),
             (Unit::Sabertooth, "Sabertooth"),
             (Unit::Sandworm, "Sandworm"),
+            (Unit::DeathKnell, "Death Knell"),
             (Unit::Unknown(String::from("A New Unit!")), "A New Unit!"),
         ];
 
