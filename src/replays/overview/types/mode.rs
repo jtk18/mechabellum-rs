@@ -113,16 +113,16 @@ impl From<&BattleRecord> for GameMode {
                 names[3].clone().into(),
             ),
             "VS_1_1" => match record.battle_info.game_mode.as_str() {
-                "Normal" => GameMode::VS_1_1(
-                    names[0].clone().into(),
-                    names[1].clone().into(),
-                ),
-                "Competition" => GameMode::VS_1_1_Competition(
-                    names[0].clone().into(),
-                    names[1].clone().into(),
-                ),
+                "Normal" => GameMode::VS_1_1(names[0].clone().into(), names[1].clone().into()),
+                "Competition" => {
+                    GameMode::VS_1_1_Competition(names[0].clone().into(), names[1].clone().into())
+                }
                 "Survive" => GameMode::Solo(names[0].clone().into()),
-                _ => GameMode::VS_1_1_Unknown(record.battle_info.game_mode.as_str().to_string(), names[0].clone().into(), names[1].clone().into()),
+                _ => GameMode::VS_1_1_Unknown(
+                    record.battle_info.game_mode.as_str().to_string(),
+                    names[0].clone().into(),
+                    names[1].clone().into(),
+                ),
             },
             "VS_2_2" => GameMode::VS_2_2(
                 (names[0].clone().into(), names[1].clone().into()),
@@ -130,7 +130,7 @@ impl From<&BattleRecord> for GameMode {
             ),
             _ => GameMode::UnknownGameMode(
                 record.battle_info.match_mode.to_owned(),
-                names.into_iter().map(Into::into).collect()
+                names.into_iter().map(Into::into).collect(),
             ),
         }
     }

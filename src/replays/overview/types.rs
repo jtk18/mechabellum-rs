@@ -123,7 +123,11 @@ pub enum Unit {
     Farseer,
     #[strum(serialize = "27", serialize = "Raiden")]
     Raiden,
-    #[strum(serialize = "2001", serialize = "DeathKnell", to_string = "Death Knell")]
+    #[strum(
+        serialize = "2001",
+        serialize = "DeathKnell",
+        to_string = "Death Knell"
+    )]
     DeathKnell,
     #[strum(default)]
     Unknown(String),
