@@ -101,6 +101,8 @@ pub enum Item {
         to_string = "Steel Ball Production Line"
     )]
     SteelBallProductionLine,
+    #[strum(default)]
+    Unknown(String),
 }
 
 #[cfg(test)]

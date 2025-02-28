@@ -4,16 +4,19 @@ mod mode;
 mod overview;
 mod parse_error;
 mod player;
+mod specialist;
 mod units;
 
 use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
-pub use mode::*;
+pub use items::Item;
+pub use mode::GameMode;
 pub use overview::BattleOverview;
 pub use parse_error::ParseError;
 pub use player::*;
+pub use specialist::Specialist;
 pub use units::*;
 
 use std::ffi::OsStr;
