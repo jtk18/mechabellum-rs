@@ -1,4 +1,5 @@
 mod battle_record;
+mod items;
 mod mode;
 mod overview;
 mod parse_error;

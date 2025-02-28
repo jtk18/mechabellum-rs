@@ -1,6 +1,5 @@
 use strum::{Display, EnumString};
 
-
 #[derive(Debug, Eq, PartialEq)]
 pub struct UnitInstance {
     pub unit_type: Unit,
