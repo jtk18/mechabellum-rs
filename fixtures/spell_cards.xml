@@ -1,0 +1,2158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<BattleRecord xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <playerRecords>
+    <PlayerRecord>
+      <id>281474976711196086</id>
+      <name>kaltorak18</name>
+      <seed>0</seed>
+      <ad>0</ad>
+      <data>
+        <reactorCore>50000</reactorCore>
+        <MaxReactorCore>50000</MaxReactorCore>
+        <maxRoundSupply>4000</maxRoundSupply>
+        <firstRoundSupply>200</firstRoundSupply>
+        <roundSupplyIncreaseValue>200</roundSupplyIncreaseValue>
+        <team>0</team>
+        <isLeader>false</isLeader>
+        <type>Player</type>
+        <unitDatas>
+          <unitData>
+            <id>1</id>
+            <techs>
+              <tech data="1001" />
+              <tech data="1201" />
+              <tech data="1105" />
+              <tech data="10301" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>2</id>
+            <techs>
+              <tech data="3202" />
+              <tech data="10202" />
+              <tech data="1802" />
+              <tech data="10802" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>3</id>
+            <techs>
+              <tech data="1203" />
+              <tech data="10203" />
+              <tech data="1103" />
+              <tech data="10603" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>4</id>
+            <techs>
+              <tech data="1204" />
+              <tech data="10204" />
+              <tech data="1107" />
+              <tech data="1106" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>5</id>
+            <techs>
+              <tech data="1109" />
+              <tech data="3005" />
+              <tech data="180305" />
+              <tech data="2805" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>6</id>
+            <techs>
+              <tech data="3206" />
+              <tech data="10206" />
+              <tech data="1606" />
+              <tech data="206" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>7</id>
+            <techs>
+              <tech data="3307" />
+              <tech data="10207" />
+              <tech data="10607" />
+              <tech data="3207" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>8</id>
+            <techs>
+              <tech data="308" />
+              <tech data="3008" />
+              <tech data="10208" />
+              <tech data="1308" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>9</id>
+            <techs>
+              <tech data="180209" />
+              <tech data="10209" />
+              <tech data="10509" />
+              <tech data="209" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>10</id>
+            <techs>
+              <tech data="10510" />
+              <tech data="180110" />
+              <tech data="3510" />
+              <tech data="10710" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>11</id>
+            <techs>
+              <tech data="1611" />
+              <tech data="911" />
+              <tech data="1108" />
+              <tech data="1211" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>12</id>
+            <techs>
+              <tech data="812" />
+              <tech data="10212" />
+              <tech data="10312" />
+              <tech data="1812" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>13</id>
+            <techs>
+              <tech data="10213" />
+              <tech data="3013" />
+              <tech data="10513" />
+              <tech data="1813" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>14</id>
+            <techs>
+              <tech data="1814" />
+              <tech data="1014" />
+              <tech data="10214" />
+              <tech data="1714" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>15</id>
+            <techs>
+              <tech data="1815" />
+              <tech data="10215" />
+              <tech data="10815" />
+              <tech data="10915" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>16</id>
+            <techs>
+              <tech data="10216" />
+              <tech data="10916" />
+              <tech data="1816" />
+              <tech data="10816" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>17</id>
+            <techs>
+              <tech data="10217" />
+              <tech data="3417" />
+              <tech data="12017" />
+              <tech data="12217" />
+              <tech data="180317" />
+              <tech data="3017" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>18</id>
+            <techs>
+              <tech data="110181" />
+              <tech data="10218" />
+              <tech data="3018" />
+              <tech data="180418" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>19</id>
+            <techs>
+              <tech data="180519" />
+              <tech data="10219" />
+              <tech data="719" />
+              <tech data="919" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>101</id>
+            <techs>
+              <tech data="1051" />
+              <tech data="3051" />
+              <tech data="12051" />
+              <tech data="11051" />
+              <tech data="180351" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>51</id>
+            <techs>
+              <tech data="180651" />
+              <tech data="1051" />
+              <tech data="3051" />
+              <tech data="12051" />
+              <tech data="11051" />
+              <tech data="180351" />
+              <tech data="751" />
+              <tech data="10351" />
+              <tech data="120511" />
+              <tech data="120512" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>52</id>
+            <techs>
+              <tech data="180652" />
+              <tech data="10452" />
+              <tech data="12052" />
+              <tech data="104521" />
+              <tech data="2452" />
+              <tech data="120521" />
+              <tech data="120522" />
+              <tech data="1852" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>53</id>
+            <techs>
+              <tech data="10153" />
+              <tech data="2353" />
+              <tech data="180353" />
+              <tech data="180253" />
+              <tech data="10653" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>54</id>
+            <techs>
+              <tech data="180654" />
+              <tech data="11054" />
+              <tech data="110542" />
+              <tech data="1054" />
+              <tech data="12054" />
+              <tech data="10254" />
+              <tech data="1803541" />
+              <tech data="120541" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>61</id>
+            <techs>
+              <tech data="11061" />
+              <tech data="1061" />
+              <tech data="12061" />
+              <tech data="12161" />
+              <tech data="180361" />
+              <tech data="110611" />
+              <tech data="10161" />
+              <tech data="10261" />
+              <tech data="10361" />
+              <tech data="180661" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>64</id>
+            <techs>
+              <tech data="110641" />
+              <tech data="3164" />
+              <tech data="110642" />
+              <tech data="1064" />
+              <tech data="1764" />
+              <tech data="1864" />
+              <tech data="120641" />
+              <tech data="120642" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>68</id>
+            <techs>
+              <tech data="180368" />
+              <tech data="180468" />
+              <tech data="2368" />
+              <tech data="11068" />
+              <tech data="110681" />
+              <tech data="10268" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>55</id>
+            <techs>
+              <tech data="28055" />
+              <tech data="13055" />
+              <tech data="11055" />
+              <tech data="110551" />
+              <tech data="180355" />
+              <tech data="15055" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>60</id>
+            <techs>
+              <tech data="660" />
+              <tech data="2660" />
+              <tech data="2560" />
+              <tech data="10560" />
+              <tech data="460" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>66</id>
+            <techs>
+              <tech data="10466" />
+              <tech data="2966" />
+              <tech data="266" />
+              <tech data="180166" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>58</id>
+            <techs>
+              <tech data="12058" />
+              <tech data="2458" />
+              <tech data="13058" />
+              <tech data="180358" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>59</id>
+            <techs>
+              <tech data="180259" />
+              <tech data="10259" />
+              <tech data="459" />
+              <tech data="259" />
+              <tech data="180359" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>67</id>
+            <techs>
+              <tech data="12067" />
+              <tech data="12167" />
+              <tech data="12267" />
+              <tech data="1803671" />
+              <tech data="1803672" />
+              <tech data="10267" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>69</id>
+            <techs>
+              <tech data="180669" />
+              <tech data="1069" />
+              <tech data="12069" />
+              <tech data="180569" />
+              <tech data="11069" />
+              <tech data="10069" />
+              <tech data="120691" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>57</id>
+            <techs>
+              <tech data="10257" />
+              <tech data="357" />
+              <tech data="457" />
+              <tech data="657" />
+              <tech data="1857" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>56</id>
+            <techs>
+              <tech data="10256" />
+              <tech data="10956" />
+              <tech data="256" />
+              <tech data="456" />
+              <tech data="1856" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>63</id>
+            <techs>
+              <tech data="463" />
+              <tech data="863" />
+              <tech data="963" />
+              <tech data="10263" />
+              <tech data="1863" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>62</id>
+            <techs>
+              <tech data="180562" />
+              <tech data="120621" />
+              <tech data="120622" />
+              <tech data="462" />
+              <tech data="10362" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>65</id>
+            <techs>
+              <tech data="10365" />
+              <tech data="1865" />
+              <tech data="180565" />
+              <tech data="3165" />
+              <tech data="104651" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>20</id>
+            <techs>
+              <tech data="10220" />
+              <tech data="10620" />
+              <tech data="180220" />
+              <tech data="920" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>21</id>
+            <techs>
+              <tech data="10221" />
+              <tech data="10321" />
+              <tech data="3321" />
+              <tech data="721" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>22</id>
+            <techs>
+              <tech data="3022" />
+              <tech data="3222" />
+              <tech data="1022" />
+              <tech data="11022" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>153</id>
+            <techs>
+              <tech data="1806153" />
+              <tech data="1802153" />
+              <tech data="102153" />
+              <tech data="101531" />
+              <tech data="110531" />
+              <tech data="110532" />
+              <tech data="31153" />
+              <tech data="1201531" />
+              <tech data="1201532" />
+              <tech data="1803153" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>70</id>
+            <techs>
+              <tech data="10270" />
+              <tech data="870" />
+              <tech data="180270" />
+              <tech data="180370" />
+              <tech data="11070" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>71</id>
+            <techs>
+              <tech data="10371" />
+              <tech data="10271" />
+              <tech data="771" />
+              <tech data="10571" />
+              <tech data="3371" />
+              <tech data="3171" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>72</id>
+            <techs>
+              <tech data="180672" />
+              <tech data="10272" />
+              <tech data="3272" />
+              <tech data="10572" />
+              <tech data="10072" />
+              <tech data="11072" />
+              <tech data="120721" />
+              <tech data="120722" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>168</id>
+            <techs>
+              <tech data="1806168" />
+              <tech data="102168" />
+              <tech data="110681" />
+              <tech data="1201681" />
+              <tech data="1201682" />
+              <tech data="1804168" />
+              <tech data="32168" />
+              <tech data="11068" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>167</id>
+            <techs>
+              <tech data="12067" />
+              <tech data="12167" />
+              <tech data="12267" />
+              <tech data="1803671" />
+              <tech data="1803672" />
+              <tech data="10267" />
+              <tech data="1806167" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>23</id>
+            <techs>
+              <tech data="13023" />
+              <tech data="3023" />
+              <tech data="3723" />
+              <tech data="3623" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>1001</id>
+            <techs />
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>73</id>
+            <techs>
+              <tech data="180673" />
+              <tech data="120173" />
+              <tech data="3173" />
+              <tech data="3673" />
+              <tech data="3773" />
+              <tech data="2373" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>24</id>
+            <techs>
+              <tech data="11024" />
+              <tech data="10224" />
+              <tech data="424" />
+              <tech data="10524" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>1002</id>
+            <techs />
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>26</id>
+            <techs>
+              <tech data="180326" />
+              <tech data="10226" />
+              <tech data="3326" />
+              <tech data="1826" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>25</id>
+            <techs>
+              <tech data="225" />
+              <tech data="3025" />
+              <tech data="3925" />
+              <tech data="11025" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>27</id>
+            <techs>
+              <tech data="110271" />
+              <tech data="4027" />
+              <tech data="1827" />
+              <tech data="10227" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>2001</id>
+            <techs>
+              <tech data="1102001" />
+              <tech data="1022001" />
+              <tech data="1202001" />
+              <tech data="102001" />
+              <tech data="32001" />
+              <tech data="11020012" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>28</id>
+            <techs>
+              <tech data="3028" />
+              <tech data="10228" />
+              <tech data="4228" />
+              <tech data="10528" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+        </unitDatas>
+        <style>
+          <unitStyles>
+            <unitStyle>
+              <unitID>2</unitID>
+              <allLevelSkinID>-1</allLevelSkinID>
+              <skinStyles>
+                <skinStyle data="105124" />
+              </skinStyles>
+            </unitStyle>
+            <unitStyle>
+              <unitID>14</unitID>
+              <allLevelSkinID>-1</allLevelSkinID>
+              <skinStyles>
+                <skinStyle data="105010" />
+              </skinStyles>
+            </unitStyle>
+          </unitStyles>
+        </style>
+      </data>
+      <playerRoundRecords>
+        <PlayerRoundRecord>
+          <round>0</round>
+          <playerData>
+            <reactorCore>50000</reactorCore>
+            <supply>0</supply>
+            <preRoundFightResult>Win</preRoundFightResult>
+            <units />
+            <unitIndex>0</unitIndex>
+            <officers />
+            <commanderSkills />
+            <activeTechnologies />
+            <equipments />
+            <shop>
+              <unlockedUnits />
+              <lockedUnits>
+                <int>1</int>
+                <int>2</int>
+                <int>3</int>
+                <int>4</int>
+                <int>5</int>
+                <int>6</int>
+                <int>7</int>
+                <int>8</int>
+                <int>9</int>
+                <int>10</int>
+                <int>11</int>
+                <int>12</int>
+                <int>13</int>
+                <int>14</int>
+                <int>15</int>
+                <int>16</int>
+                <int>17</int>
+                <int>18</int>
+                <int>19</int>
+                <int>21</int>
+                <int>23</int>
+                <int>24</int>
+                <int>25</int>
+                <int>27</int>
+                <int>28</int>
+              </lockedUnits>
+              <BuyCount>2</BuyCount>
+              <MaxUnlockCount>1</MaxUnlockCount>
+              <UnlockCount>1</UnlockCount>
+            </shop>
+            <contraptions />
+            <contraptionIndex>0</contraptionIndex>
+            <bluepints />
+            <energyTowerSkills />
+            <towerStrengthenLevels>
+              <int>0</int>
+              <int>0</int>
+            </towerStrengthenLevels>
+            <IsSpecialSupply>false</IsSpecialSupply>
+          </playerData>
+          <actionRecords />
+        </PlayerRoundRecord>
+        <PlayerRoundRecord>
+          <round>1</round>
+          <playerData>
+            <reactorCore>50000</reactorCore>
+            <supply>0</supply>
+            <preRoundFightResult>Win</preRoundFightResult>
+            <units />
+            <unitIndex>0</unitIndex>
+            <officers />
+            <commanderSkills />
+            <activeTechnologies />
+            <equipments />
+            <shop>
+              <unlockedUnits />
+              <lockedUnits>
+                <int>1</int>
+                <int>2</int>
+                <int>3</int>
+                <int>4</int>
+                <int>5</int>
+                <int>6</int>
+                <int>7</int>
+                <int>8</int>
+                <int>9</int>
+                <int>10</int>
+                <int>11</int>
+                <int>12</int>
+                <int>13</int>
+                <int>14</int>
+                <int>15</int>
+                <int>16</int>
+                <int>17</int>
+                <int>18</int>
+                <int>19</int>
+                <int>21</int>
+                <int>23</int>
+                <int>24</int>
+                <int>25</int>
+                <int>27</int>
+                <int>28</int>
+              </lockedUnits>
+              <BuyCount>2</BuyCount>
+              <MaxUnlockCount>1</MaxUnlockCount>
+              <UnlockCount>1</UnlockCount>
+            </shop>
+            <contraptions />
+            <contraptionIndex>0</contraptionIndex>
+            <bluepints />
+            <energyTowerSkills />
+            <towerStrengthenLevels>
+              <int>0</int>
+              <int>0</int>
+            </towerStrengthenLevels>
+            <IsSpecialSupply>false</IsSpecialSupply>
+          </playerData>
+          <actionRecords>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>50.3995171</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>142.7541</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>200001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>143.354141</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>800001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>143.954178</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1100001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>145.254257</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1000001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>146.254318</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1000002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>147.6544</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>148.154434</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>148.554459</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200003</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>149.004486</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200006</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>149.604523</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200007</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>150.004547</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200011</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>150.604584</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1500001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>151.20462</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1500002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>247.010468</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>200003</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>247.5105</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>100002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>248.210541</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300003</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>248.86058</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>400002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>249.310608</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>400003</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>249.860641</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>600002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>250.410675</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>900001</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>250.960709</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>900002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>251.510742</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>900003</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>252.010773</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200008</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>252.610809</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200009</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>253.11084</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200010</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>311.447479</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>200002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>312.1973</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300004</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>312.697174</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300005</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>313.397</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300006</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>314.046844</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>300007</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>314.6467</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>500002</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>315.296539</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200004</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>315.796417</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200005</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>316.446259</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200012</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_TestCommand">
+              <Time>0</Time>
+              <LocalTime>316.996124</LocalTime>
+              <Command xsi:type="MAD_AddCommanderSkill">
+                <Time>0</Time>
+                <LocalTime>0</LocalTime>
+                <PIDX>0</PIDX>
+                <ID>1200013</ID>
+              </Command>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_FinishDeploy">
+              <Time>0</Time>
+              <LocalTime>9999.042</LocalTime>
+            </MatchActionData>
+            <MatchActionData xsi:type="PAD_GiveUp">
+              <Time>0</Time>
+              <LocalTime>1.94999921</LocalTime>
+            </MatchActionData>
+          </actionRecords>
+        </PlayerRoundRecord>
+      </playerRoundRecords>
+    </PlayerRecord>
+    <PlayerRecord>
+      <id>1234567891</id>
+      <name>Bot</name>
+      <seed>1</seed>
+      <ad>0</ad>
+      <data>
+        <reactorCore>50000</reactorCore>
+        <MaxReactorCore>50000</MaxReactorCore>
+        <maxRoundSupply>4000</maxRoundSupply>
+        <firstRoundSupply>200</firstRoundSupply>
+        <roundSupplyIncreaseValue>200</roundSupplyIncreaseValue>
+        <team>0</team>
+        <isLeader>false</isLeader>
+        <type>Player</type>
+        <unitDatas>
+          <unitData>
+            <id>1</id>
+            <techs>
+              <tech data="1001" />
+              <tech data="10201" />
+              <tech data="1105" />
+              <tech data="1201" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>2</id>
+            <techs>
+              <tech data="702" />
+              <tech data="10202" />
+              <tech data="10402" />
+              <tech data="1802" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>3</id>
+            <techs>
+              <tech data="180203" />
+              <tech data="10203" />
+              <tech data="1103" />
+              <tech data="10603" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>4</id>
+            <techs>
+              <tech data="304" />
+              <tech data="10204" />
+              <tech data="1107" />
+              <tech data="1106" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>5</id>
+            <techs>
+              <tech data="1109" />
+              <tech data="180305" />
+              <tech data="905" />
+              <tech data="2805" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>6</id>
+            <techs>
+              <tech data="206" />
+              <tech data="10206" />
+              <tech data="1606" />
+              <tech data="506" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>7</id>
+            <techs>
+              <tech data="3307" />
+              <tech data="10207" />
+              <tech data="407" />
+              <tech data="3207" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>8</id>
+            <techs>
+              <tech data="308" />
+              <tech data="608" />
+              <tech data="10208" />
+              <tech data="1308" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>9</id>
+            <techs>
+              <tech data="180209" />
+              <tech data="10209" />
+              <tech data="10509" />
+              <tech data="209" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>10</id>
+            <techs>
+              <tech data="10510" />
+              <tech data="180110" />
+              <tech data="2610" />
+              <tech data="2710" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>11</id>
+            <techs>
+              <tech data="1108" />
+              <tech data="10311" />
+              <tech data="1211" />
+              <tech data="1611" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>12</id>
+            <techs>
+              <tech data="812" />
+              <tech data="10212" />
+              <tech data="10312" />
+              <tech data="412" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>13</id>
+            <techs>
+              <tech data="913" />
+              <tech data="613" />
+              <tech data="10513" />
+              <tech data="10213" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>14</id>
+            <techs>
+              <tech data="11014" />
+              <tech data="1014" />
+              <tech data="10214" />
+              <tech data="1714" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>15</id>
+            <techs>
+              <tech data="10215" />
+              <tech data="1815" />
+              <tech data="10915" />
+              <tech data="3015" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>16</id>
+            <techs>
+              <tech data="2916" />
+              <tech data="10216" />
+              <tech data="10316" />
+              <tech data="216" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>17</id>
+            <techs>
+              <tech data="10217" />
+              <tech data="3417" />
+              <tech data="12017" />
+              <tech data="12117" />
+              <tech data="3317" />
+              <tech data="180317" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>18</id>
+            <techs>
+              <tech data="110181" />
+              <tech data="10218" />
+              <tech data="3018" />
+              <tech data="180418" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>19</id>
+            <techs>
+              <tech data="180519" />
+              <tech data="10019" />
+              <tech data="10219" />
+              <tech data="719" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>101</id>
+            <techs>
+              <tech data="1051" />
+              <tech data="3051" />
+              <tech data="12051" />
+              <tech data="11051" />
+              <tech data="180351" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>51</id>
+            <techs>
+              <tech data="180651" />
+              <tech data="1051" />
+              <tech data="3051" />
+              <tech data="12051" />
+              <tech data="11051" />
+              <tech data="180351" />
+              <tech data="751" />
+              <tech data="10351" />
+              <tech data="120511" />
+              <tech data="120512" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>52</id>
+            <techs>
+              <tech data="180652" />
+              <tech data="10452" />
+              <tech data="12052" />
+              <tech data="104521" />
+              <tech data="2452" />
+              <tech data="120521" />
+              <tech data="120522" />
+              <tech data="1852" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>53</id>
+            <techs>
+              <tech data="10153" />
+              <tech data="2353" />
+              <tech data="180353" />
+              <tech data="180253" />
+              <tech data="10653" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>54</id>
+            <techs>
+              <tech data="180654" />
+              <tech data="11054" />
+              <tech data="110542" />
+              <tech data="1054" />
+              <tech data="12054" />
+              <tech data="10254" />
+              <tech data="1803541" />
+              <tech data="120541" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>61</id>
+            <techs>
+              <tech data="11061" />
+              <tech data="1061" />
+              <tech data="12061" />
+              <tech data="12161" />
+              <tech data="180361" />
+              <tech data="110611" />
+              <tech data="10161" />
+              <tech data="10261" />
+              <tech data="10361" />
+              <tech data="180661" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>64</id>
+            <techs>
+              <tech data="110641" />
+              <tech data="3164" />
+              <tech data="110642" />
+              <tech data="1064" />
+              <tech data="1764" />
+              <tech data="1864" />
+              <tech data="120641" />
+              <tech data="120642" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>68</id>
+            <techs>
+              <tech data="180368" />
+              <tech data="180468" />
+              <tech data="2368" />
+              <tech data="11068" />
+              <tech data="110681" />
+              <tech data="10268" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>55</id>
+            <techs>
+              <tech data="28055" />
+              <tech data="13055" />
+              <tech data="11055" />
+              <tech data="110551" />
+              <tech data="180355" />
+              <tech data="15055" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>60</id>
+            <techs>
+              <tech data="660" />
+              <tech data="2660" />
+              <tech data="2560" />
+              <tech data="10560" />
+              <tech data="460" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>66</id>
+            <techs>
+              <tech data="10466" />
+              <tech data="2966" />
+              <tech data="266" />
+              <tech data="180166" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>58</id>
+            <techs>
+              <tech data="12058" />
+              <tech data="2458" />
+              <tech data="13058" />
+              <tech data="180358" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>59</id>
+            <techs>
+              <tech data="180259" />
+              <tech data="10259" />
+              <tech data="459" />
+              <tech data="259" />
+              <tech data="180359" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>67</id>
+            <techs>
+              <tech data="12067" />
+              <tech data="12167" />
+              <tech data="12267" />
+              <tech data="1803671" />
+              <tech data="1803672" />
+              <tech data="10267" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>69</id>
+            <techs>
+              <tech data="180669" />
+              <tech data="1069" />
+              <tech data="12069" />
+              <tech data="180569" />
+              <tech data="11069" />
+              <tech data="10069" />
+              <tech data="120691" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>57</id>
+            <techs>
+              <tech data="10257" />
+              <tech data="357" />
+              <tech data="457" />
+              <tech data="657" />
+              <tech data="1857" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>56</id>
+            <techs>
+              <tech data="10256" />
+              <tech data="10956" />
+              <tech data="256" />
+              <tech data="456" />
+              <tech data="1856" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>63</id>
+            <techs>
+              <tech data="463" />
+              <tech data="863" />
+              <tech data="963" />
+              <tech data="10263" />
+              <tech data="1863" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>62</id>
+            <techs>
+              <tech data="180562" />
+              <tech data="120621" />
+              <tech data="120622" />
+              <tech data="462" />
+              <tech data="10362" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>65</id>
+            <techs>
+              <tech data="10365" />
+              <tech data="1865" />
+              <tech data="180565" />
+              <tech data="3165" />
+              <tech data="104651" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>20</id>
+            <techs>
+              <tech data="10220" />
+              <tech data="820" />
+              <tech data="180220" />
+              <tech data="920" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>21</id>
+            <techs>
+              <tech data="10221" />
+              <tech data="10321" />
+              <tech data="3321" />
+              <tech data="721" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>22</id>
+            <techs>
+              <tech data="3022" />
+              <tech data="3222" />
+              <tech data="1022" />
+              <tech data="11022" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>153</id>
+            <techs>
+              <tech data="1806153" />
+              <tech data="1802153" />
+              <tech data="102153" />
+              <tech data="101531" />
+              <tech data="110531" />
+              <tech data="110532" />
+              <tech data="31153" />
+              <tech data="1201531" />
+              <tech data="1201532" />
+              <tech data="1803153" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>70</id>
+            <techs>
+              <tech data="10270" />
+              <tech data="870" />
+              <tech data="180270" />
+              <tech data="180370" />
+              <tech data="11070" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>71</id>
+            <techs>
+              <tech data="10371" />
+              <tech data="10271" />
+              <tech data="771" />
+              <tech data="10571" />
+              <tech data="3371" />
+              <tech data="3171" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>72</id>
+            <techs>
+              <tech data="180672" />
+              <tech data="10272" />
+              <tech data="3272" />
+              <tech data="10572" />
+              <tech data="10072" />
+              <tech data="11072" />
+              <tech data="120721" />
+              <tech data="120722" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>168</id>
+            <techs>
+              <tech data="1806168" />
+              <tech data="102168" />
+              <tech data="110681" />
+              <tech data="1201681" />
+              <tech data="1201682" />
+              <tech data="1804168" />
+              <tech data="32168" />
+              <tech data="11068" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>167</id>
+            <techs>
+              <tech data="12067" />
+              <tech data="12167" />
+              <tech data="12267" />
+              <tech data="1803671" />
+              <tech data="1803672" />
+              <tech data="10267" />
+              <tech data="1806167" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>23</id>
+            <techs>
+              <tech data="10523" />
+              <tech data="13023" />
+              <tech data="923" />
+              <tech data="3623" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>1001</id>
+            <techs />
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>73</id>
+            <techs>
+              <tech data="180673" />
+              <tech data="120173" />
+              <tech data="3173" />
+              <tech data="3673" />
+              <tech data="3773" />
+              <tech data="2373" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>24</id>
+            <techs>
+              <tech data="11024" />
+              <tech data="10224" />
+              <tech data="10524" />
+              <tech data="10624" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>1002</id>
+            <techs />
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>26</id>
+            <techs>
+              <tech data="180326" />
+              <tech data="180526" />
+              <tech data="3326" />
+              <tech data="1826" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>25</id>
+            <techs>
+              <tech data="725" />
+              <tech data="10225" />
+              <tech data="3925" />
+              <tech data="11025" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>27</id>
+            <techs>
+              <tech data="110271" />
+              <tech data="4027" />
+              <tech data="4127" />
+              <tech data="10227" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>2001</id>
+            <techs>
+              <tech data="1102001" />
+              <tech data="1022001" />
+              <tech data="1202001" />
+              <tech data="102001" />
+              <tech data="32001" />
+              <tech data="11020012" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+          <unitData>
+            <id>28</id>
+            <techs>
+              <tech data="10528" />
+              <tech data="10228" />
+              <tech data="4228" />
+              <tech data="11028" />
+            </techs>
+            <unlockedTechs />
+          </unitData>
+        </unitDatas>
+        <style>
+          <unitStyles />
+        </style>
+      </data>
+      <playerRoundRecords>
+        <PlayerRoundRecord>
+          <round>0</round>
+          <playerData>
+            <reactorCore>50000</reactorCore>
+            <supply>0</supply>
+            <preRoundFightResult>Win</preRoundFightResult>
+            <units />
+            <unitIndex>0</unitIndex>
+            <officers />
+            <commanderSkills />
+            <activeTechnologies />
+            <equipments />
+            <shop>
+              <unlockedUnits />
+              <lockedUnits>
+                <int>1</int>
+                <int>2</int>
+                <int>3</int>
+                <int>4</int>
+                <int>5</int>
+                <int>6</int>
+                <int>7</int>
+                <int>8</int>
+                <int>9</int>
+                <int>10</int>
+                <int>11</int>
+                <int>12</int>
+                <int>13</int>
+                <int>14</int>
+                <int>15</int>
+                <int>16</int>
+                <int>17</int>
+                <int>18</int>
+                <int>19</int>
+                <int>21</int>
+                <int>23</int>
+                <int>24</int>
+                <int>25</int>
+                <int>27</int>
+                <int>28</int>
+              </lockedUnits>
+              <BuyCount>2</BuyCount>
+              <MaxUnlockCount>1</MaxUnlockCount>
+              <UnlockCount>1</UnlockCount>
+            </shop>
+            <contraptions />
+            <contraptionIndex>0</contraptionIndex>
+            <bluepints />
+            <energyTowerSkills />
+            <towerStrengthenLevels>
+              <int>0</int>
+              <int>0</int>
+            </towerStrengthenLevels>
+            <IsSpecialSupply>false</IsSpecialSupply>
+          </playerData>
+          <actionRecords />
+        </PlayerRoundRecord>
+        <PlayerRoundRecord>
+          <round>1</round>
+          <playerData>
+            <reactorCore>50000</reactorCore>
+            <supply>0</supply>
+            <preRoundFightResult>Win</preRoundFightResult>
+            <units />
+            <unitIndex>0</unitIndex>
+            <officers />
+            <commanderSkills />
+            <activeTechnologies />
+            <equipments />
+            <shop>
+              <unlockedUnits />
+              <lockedUnits>
+                <int>1</int>
+                <int>2</int>
+                <int>3</int>
+                <int>4</int>
+                <int>5</int>
+                <int>6</int>
+                <int>7</int>
+                <int>8</int>
+                <int>9</int>
+                <int>10</int>
+                <int>11</int>
+                <int>12</int>
+                <int>13</int>
+                <int>14</int>
+                <int>15</int>
+                <int>16</int>
+                <int>17</int>
+                <int>18</int>
+                <int>19</int>
+                <int>21</int>
+                <int>23</int>
+                <int>24</int>
+                <int>25</int>
+                <int>27</int>
+                <int>28</int>
+              </lockedUnits>
+              <BuyCount>2</BuyCount>
+              <MaxUnlockCount>1</MaxUnlockCount>
+              <UnlockCount>1</UnlockCount>
+            </shop>
+            <contraptions />
+            <contraptionIndex>0</contraptionIndex>
+            <bluepints />
+            <energyTowerSkills />
+            <towerStrengthenLevels>
+              <int>0</int>
+              <int>0</int>
+            </towerStrengthenLevels>
+            <IsSpecialSupply>false</IsSpecialSupply>
+          </playerData>
+          <actionRecords>
+            <MatchActionData xsi:type="PAD_FinishDeploy">
+              <Time>0</Time>
+              <LocalTime>9999.042</LocalTime>
+            </MatchActionData>
+          </actionRecords>
+        </PlayerRoundRecord>
+      </playerRoundRecords>
+    </PlayerRecord>
+  </playerRecords>
+  <matchDatas>
+    <MatchSnapshotData>
+      <round>0</round>
+      <randomStateData>
+        <randomStates>
+          <unsignedLong>2671793797664056386</unsignedLong>
+          <unsignedLong>1677837910404905146</unsignedLong>
+          <unsignedLong>18381753082959125165</unsignedLong>
+          <unsignedLong>3922862901052347249</unsignedLong>
+        </randomStates>
+      </randomStateData>
+      <reinforcePool>
+        <int>10003</int>
+        <int>20001</int>
+        <int>20002</int>
+        <int>20006</int>
+        <int>20023</int>
+        <int>200002</int>
+        <int>300004</int>
+        <int>300005</int>
+        <int>300006</int>
+        <int>300007</int>
+        <int>500002</int>
+        <int>1200004</int>
+        <int>1200005</int>
+        <int>1306001</int>
+        <int>1306002</int>
+        <int>1306003</int>
+        <int>13030004</int>
+        <int>13030006</int>
+        <int>10001</int>
+        <int>10004</int>
+        <int>20003</int>
+        <int>20004</int>
+        <int>20007</int>
+        <int>20022</int>
+        <int>31001</int>
+        <int>31503</int>
+        <int>100002</int>
+        <int>200003</int>
+        <int>300003</int>
+        <int>600002</int>
+        <int>1307001</int>
+        <int>1309001</int>
+        <int>13010001</int>
+        <int>13020001</int>
+        <int>13030007</int>
+        <int>10007</int>
+        <int>10008</int>
+        <int>10009</int>
+        <int>30202</int>
+        <int>30403</int>
+        <int>30501</int>
+        <int>30901</int>
+        <int>31302</int>
+        <int>31403</int>
+        <int>31603</int>
+        <int>31701</int>
+        <int>31802</int>
+        <int>32301</int>
+        <int>32401</int>
+        <int>32501</int>
+        <int>300001</int>
+        <int>1305003</int>
+        <int>1308001</int>
+        <int>13030005</int>
+        <int>13040001</int>
+        <int>30102</int>
+        <int>30301</int>
+        <int>30602</int>
+        <int>30701</int>
+        <int>30801</int>
+        <int>31104</int>
+        <int>31203</int>
+        <int>31901</int>
+        <int>200001</int>
+        <int>800001</int>
+        <int>1000001</int>
+        <int>1100001</int>
+        <int>1200001</int>
+        <int>1200002</int>
+        <int>1200003</int>
+        <int>1500002</int>
+        <int>13030001</int>
+        <int>13030002</int>
+        <int>13030003</int>
+      </reinforcePool>
+      <unitReinforceRounds>
+        <int>4</int>
+        <int>6</int>
+        <int>8</int>
+        <int>11</int>
+      </unitReinforceRounds>
+    </MatchSnapshotData>
+    <MatchSnapshotData>
+      <round>1</round>
+      <randomStateData>
+        <randomStates>
+          <unsignedLong>2671793797664056386</unsignedLong>
+          <unsignedLong>1677837910404905146</unsignedLong>
+          <unsignedLong>18381753082959125165</unsignedLong>
+          <unsignedLong>3922862901052347249</unsignedLong>
+        </randomStates>
+      </randomStateData>
+      <reinforcePool>
+        <int>10003</int>
+        <int>20001</int>
+        <int>20002</int>
+        <int>20006</int>
+        <int>20023</int>
+        <int>200002</int>
+        <int>300004</int>
+        <int>300005</int>
+        <int>300006</int>
+        <int>300007</int>
+        <int>500002</int>
+        <int>1200004</int>
+        <int>1200005</int>
+        <int>1306001</int>
+        <int>1306002</int>
+        <int>1306003</int>
+        <int>13030004</int>
+        <int>13030006</int>
+        <int>10001</int>
+        <int>10004</int>
+        <int>20003</int>
+        <int>20004</int>
+        <int>20007</int>
+        <int>20022</int>
+        <int>31001</int>
+        <int>31503</int>
+        <int>100002</int>
+        <int>200003</int>
+        <int>300003</int>
+        <int>600002</int>
+        <int>1307001</int>
+        <int>1309001</int>
+        <int>13010001</int>
+        <int>13020001</int>
+        <int>13030007</int>
+        <int>10007</int>
+        <int>10008</int>
+        <int>10009</int>
+        <int>30202</int>
+        <int>30403</int>
+        <int>30501</int>
+        <int>30901</int>
+        <int>31302</int>
+        <int>31403</int>
+        <int>31603</int>
+        <int>31701</int>
+        <int>31802</int>
+        <int>32301</int>
+        <int>32401</int>
+        <int>32501</int>
+        <int>300001</int>
+        <int>1305003</int>
+        <int>1308001</int>
+        <int>13030005</int>
+        <int>13040001</int>
+        <int>30102</int>
+        <int>30301</int>
+        <int>30602</int>
+        <int>30701</int>
+        <int>30801</int>
+        <int>31104</int>
+        <int>31203</int>
+        <int>31901</int>
+        <int>200001</int>
+        <int>800001</int>
+        <int>1000001</int>
+        <int>1100001</int>
+        <int>1200001</int>
+        <int>1200002</int>
+        <int>1200003</int>
+        <int>1500002</int>
+        <int>13030001</int>
+        <int>13030002</int>
+        <int>13030003</int>
+      </reinforcePool>
+      <unitReinforceRounds>
+        <int>4</int>
+        <int>6</int>
+        <int>8</int>
+        <int>11</int>
+      </unitReinforceRounds>
+    </MatchSnapshotData>
+  </matchDatas>
+  <reinforceItems />
+  <Version>1527</Version>
+  <Seat>0</Seat>
+  <BattleInfo xsi:type="BattleSetting">
+    <StartTime>0</StartTime>
+    <SystemSeed>1740717480</SystemSeed>
+    <BattleID>25-02-27__22-38-00-940</BattleID>
+    <MapID>1001</MapID>
+    <BlueprintIncreaseSupply>0</BlueprintIncreaseSupply>
+    <GameMode>Normal</GameMode>
+    <MatchMode>VS_1_1</MatchMode>
+    <HostID>0</HostID>
+    <CloseUnitReinforce>false</CloseUnitReinforce>
+    <SurviveModeDifficulty>VeryEasy</SurviveModeDifficulty>
+    <PrepareTime>9999</PrepareTime>
+    <DeployTime>9999</DeployTime>
+    <FightTime>120</FightTime>
+    <ScoreMode>ReduceScore</ScoreMode>
+    <PlayerCount>1</PlayerCount>
+    <TeamCount>2</TeamCount>
+    <MatchType>Test</MatchType>
+    <EnableAdvanceTeam>false</EnableAdvanceTeam>
+    <EnableReinforcement>false</EnableReinforcement>
+    <MaxRound>40</MaxRound>
+  </BattleInfo>
+  <CreateTime>0001-01-01T00:00:00</CreateTime>
+</BattleRecord>
