@@ -3,11 +3,25 @@ use anyhow::Result;
 use crate::BattleOverview;
 use crate::BattleRecord;
 
-use super::{GameMode, PlayerName, PlayerResult, Unit, UnitInstance};
+use super::{PlayerName, PlayerResult, Unit, UnitInstance};
 
 use thiserror::Error;
 
 use std::str::FromStr;
+
+use strum::{Display, EnumString};
+
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+pub enum GameMode {
+    VS_2_2((PlayerName, PlayerName), (PlayerName, PlayerName)),
+    VS_4_FFA(PlayerName, PlayerName, PlayerName, PlayerName),
+    VS_1_1(PlayerName, PlayerName),
+    VS_1_1_Competition(PlayerName, PlayerName),
+    VS_1_1_Unknown(String, PlayerName, PlayerName),
+    Solo(PlayerName),
+    UnknownGameMode(String, Vec<PlayerName>),
+}
 
 impl GameMode {
     pub fn get_battle_overview(self, battle: &BattleRecord) -> Result<BattleOverview> {

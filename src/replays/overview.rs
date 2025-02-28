@@ -1,8 +1,4 @@
-mod types;
-
-pub use types::*;
-
-use super::BattleRecord;
+use super::{BattleRecord, GameMode, PlayerResult};
 
 use anyhow::Result;
 
