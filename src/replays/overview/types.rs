@@ -93,6 +93,8 @@ pub enum Unit {
     Crawler,
     #[strum(serialize = "11", serialize = "Overlord")]
     Overlord,
+    #[strum(serialize = "12", serialize = "Stormcaller")]
+    Stormcaller,
     #[strum(serialize = "13", serialize = "Sledgehammer")]
     Sledgehammer,
     #[strum(serialize = "14", serialize = "Hacker")]
@@ -123,6 +125,8 @@ pub enum Unit {
     Farseer,
     #[strum(serialize = "27", serialize = "Raiden")]
     Raiden,
+    #[strum(serialize = "28", serialize = "Hound")]
+    Hound,
     #[strum(
         serialize = "2001",
         serialize = "DeathKnell",
@@ -174,6 +178,9 @@ mod tests {
             ("11", Unit::Overlord),
             ("Overlord", Unit::Overlord),
             ("overlord", Unit::Overlord),
+            ("12", Unit::Stormcaller),
+            ("StormCaller", Unit::Stormcaller),
+            ("stormcaller", Unit::Stormcaller),
             ("13", Unit::Sledgehammer),
             ("SledgeHammer", Unit::Sledgehammer),
             ("sledgehammer", Unit::Sledgehammer),
@@ -221,6 +228,9 @@ mod tests {
             ("27", Unit::Raiden),
             ("Raiden", Unit::Raiden),
             ("raiden", Unit::Raiden),
+            ("28", Unit::Hound),
+            ("Hound", Unit::Hound),
+            ("hound", Unit::Hound),
             ("2001", Unit::DeathKnell),
             ("DeathKnell", Unit::DeathKnell),
             ("death knell", Unit::DeathKnell),
@@ -246,6 +256,7 @@ mod tests {
             (Unit::SteelBall, "Steel Ball"),
             (Unit::Fang, "Fang"),
             (Unit::Crawler, "Crawler"),
+            (Unit::Stormcaller, "Stormcaller"),
             (Unit::Sledgehammer, "Sledgehammer"),
             (Unit::Arclight, "Arclight"),
             (Unit::Wraith, "Wraith"),
@@ -264,6 +275,7 @@ mod tests {
             (Unit::Raiden, "Raiden"),
             (Unit::Sabertooth, "Sabertooth"),
             (Unit::Sandworm, "Sandworm"),
+            (Unit::Hound, "Hound"),
             (Unit::DeathKnell, "Death Knell"),
             (Unit::Unknown(String::from("A New Unit!")), "A New Unit!"),
         ];
