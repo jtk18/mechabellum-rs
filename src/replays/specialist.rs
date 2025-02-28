@@ -560,7 +560,7 @@ pub enum Specialist {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{str::FromStr, thread::spawn};
+    use std::str::FromStr;
 
     #[test]
     fn test_parse_specialists() {
@@ -599,8 +599,8 @@ mod tests {
             ("assaultVULCAN", Specialist::AssaultVulcan),
             ("assault vulcan", Specialist::AssaultVulcan),
             ("30401", Specialist::AssaultMeltingPoint),
-            ("assultmeltINGpoint", Specialist::AssaultMeltingPoint),
-            ("Assult MELTING point", Specialist::AssaultMeltingPoint),
+            ("assaultmeltINGpoint", Specialist::AssaultMeltingPoint),
+            ("Assault MELTING point", Specialist::AssaultMeltingPoint),
             ("30402", Specialist::ImprovedMeltingPoint),
             ("improvedmeltingpoint", Specialist::ImprovedMeltingPoint),
             ("improved meltING point", Specialist::ImprovedMeltingPoint),
@@ -635,8 +635,8 @@ mod tests {
             ("elitefang", Specialist::EliteFang),
             ("ELITE fang", Specialist::EliteFang),
             ("30902", Specialist::AssaultFang),
-            ("assultFANG", Specialist::AssaultFang),
-            ("Assult Fang", Specialist::AssaultFang),
+            ("assaultFANG", Specialist::AssaultFang),
+            ("Assault Fang", Specialist::AssaultFang),
             ("31101", Specialist::FortifiedOverlord),
             ("Fortified overlord", Specialist::FortifiedOverlord),
             ("FORTIFIEDoverlord", Specialist::FortifiedOverlord),
@@ -855,7 +855,7 @@ mod tests {
             ("Supply enhancement", Specialist::SupplyEnhancement),
             ("20007", Specialist::SupplySpecialist),
             ("supplyspecialist", Specialist::SupplySpecialist),
-            ("suppply specialist", Specialist::SupplySpecialist),
+            ("supply specialist", Specialist::SupplySpecialist),
             ("10002", Specialist::QuickCooldown),
             ("quickcooldown", Specialist::QuickCooldown),
             ("quick cooldown", Specialist::QuickCooldown),
@@ -897,7 +897,7 @@ mod tests {
             ),
             ("20002", Specialist::AdvancedTargetingSystem),
             (
-                "Advangedtargetingsystem",
+                "Advancedtargetingsystem",
                 Specialist::AdvancedTargetingSystem,
             ),
             (
@@ -920,6 +920,10 @@ mod tests {
                 Specialist::SuperSupplyEnhancement,
             ),
         ];
+
+        for (test, expected) in tests {
+            assert_eq!(&Specialist::from_str(test).unwrap(), expected);
+        }
     }
 
     #[test]

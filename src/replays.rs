@@ -4,6 +4,7 @@ mod mode;
 mod overview;
 mod parse_error;
 mod player;
+mod skills;
 mod specialist;
 mod units;
 
@@ -16,6 +17,7 @@ pub use mode::GameMode;
 pub use overview::BattleOverview;
 pub use parse_error::ParseError;
 pub use player::*;
+pub use skills::Skills;
 pub use specialist::Specialist;
 pub use units::*;
 
