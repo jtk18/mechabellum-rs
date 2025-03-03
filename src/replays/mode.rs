@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::BattleOverview;
 use crate::BattleRecord;
 
-use super::{PlayerName, PlayerResult, Unit, UnitInstance};
+use super::{Item, MapPoint, PlayerName, PlayerResult, Unit, UnitInstance};
 
 use thiserror::Error;
 
@@ -81,6 +81,15 @@ impl GameMode {
                                 Ok(UnitInstance {
                                     unit_type,
                                     xp: data.exp.parse().unwrap_or(0),
+                                    position: MapPoint(
+                                        data.position.x.parse().unwrap_or(0),
+                                        data.position.y.parse().unwrap_or(0),
+                                    ),
+                                    equipment: if data.equipment_id.as_str().eq("0") {
+                                        None
+                                    } else {
+                                        Item::from_str(&data.equipment_id).ok()
+                                    },
                                 })
                             })
                             .ok()

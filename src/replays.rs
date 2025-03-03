@@ -1,5 +1,6 @@
 mod battle_record;
 mod items;
+mod map;
 mod mode;
 mod overview;
 mod parse_error;
@@ -13,6 +14,7 @@ use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
 pub use items::Item;
+pub use map::MapPoint;
 pub use mode::GameMode;
 pub use overview::BattleOverview;
 pub use parse_error::ParseError;

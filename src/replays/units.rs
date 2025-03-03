@@ -1,9 +1,14 @@
 use strum::{Display, EnumString};
 
+use super::Item;
+use super::MapPoint;
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct UnitInstance {
     pub unit_type: Unit,
     pub xp: usize,
+    pub position: MapPoint,
+    pub equipment: Option<Item>,
 }
 
 #[derive(Debug, Eq, PartialEq, Display, EnumString)]
