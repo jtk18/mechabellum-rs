@@ -45,6 +45,30 @@ pub enum Item {
         to_string = "Absorption Module"
     )]
     AbsorptionModule,
+    #[strum(
+        serialize = "13040001",
+        serialize = "DeploymentModule",
+        to_string = "Deployment Module"
+    )]
+    DeploymentModule,
+    #[strum(
+        serialize = "13030005",
+        serialize = "HasteModule",
+        to_string = "Haste Module"
+    )]
+    HasteModule,
+    #[strum(
+        serialize = "1305003",
+        serialize = "PhotonCoating",
+        to_string = "Photon Coating"
+    )]
+    PhotonCoating,
+    #[strum(
+        serialize = "1308001",
+        serialize = "AntiInterferenceModule",
+        to_string = "Anti-Interference Module"
+    )]
+    AntiInterferenceModule,
     #[strum(serialize = "1307001", serialize = "Barrier")]
     Barrier,
     #[strum(
@@ -137,6 +161,14 @@ mod tests {
             ("1305001", Item::ChargedAmmo),
             ("ChargedAmmo", Item::ChargedAmmo),
             ("Charged Ammo", Item::ChargedAmmo),
+            ("13040001", Item::DeploymentModule),
+            ("Deployment Module", Item::DeploymentModule),
+            ("13030005", Item::HasteModule),
+            ("HasteModule", Item::HasteModule),
+            ("1305003", Item::PhotonCoating),
+            ("PhotONCOATing", Item::PhotonCoating),
+            ("1308001", Item::AntiInterferenceModule),
+            ("Antiinterferencemodule", Item::AntiInterferenceModule),
             ("1309001", Item::AbsorptionModule),
             ("AbsorptionModule", Item::AbsorptionModule),
             ("Absorption Module", Item::AbsorptionModule),
@@ -185,6 +217,10 @@ mod tests {
     #[test]
     fn test_to_string_items() {
         let tests = &[
+            (Item::AntiInterferenceModule, "Anti-Interference Module"),
+            (Item::PhotonCoating, "Photon Coating"),
+            (Item::DeploymentModule, "Deployment Module"),
+            (Item::HasteModule, "Haste Module"),
             (Item::AbsorptionModule, "Absorption Module"),
             (
                 Item::AdvancedFirepowerControlSystem,
