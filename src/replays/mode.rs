@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::BattleOverview;
 use crate::BattleRecord;
 
-use super::{Item, MapPoint, PlayerName, PlayerSummary, Unit, UnitInstance};
+use super::{Item, MapPoint, PlayerName, PlayerSummary, Skills, Specialist, Unit, UnitInstance};
 
 use std::str::FromStr;
 
@@ -52,7 +52,23 @@ impl GameMode {
                 .unlocked_units
                 .int
                 .iter()
-                .filter_map(|unit_index| Unit::from_str(unit_index).ok())
+                .filter_map(|unit_id| Unit::from_str(unit_id).ok())
+                .collect();
+
+            let specialist_cards: Vec<Specialist> = rounds[rounds.len() - 1]
+                .player_data
+                .officers
+                .int
+                .iter()
+                .filter_map(|specialist_id| Specialist::from_str(specialist_id).ok())
+                .collect();
+
+            let skills: Vec<Skills> = rounds[rounds.len() - 1]
+                .player_data
+                .commander_skills
+                .commander_skill_data
+                .iter()
+                .filter_map(|skill_data| Skills::from_str(&skill_data.id).ok())
                 .collect();
 
             if need_last_round_set {
@@ -96,6 +112,8 @@ impl GameMode {
                     score,
                     last_round_units,
                     unlocked_units,
+                    specialist_cards,
+                    skills,
                 };
                 if last_round_result == "Win" {
                     winners.push(summary);

@@ -1,4 +1,4 @@
-use super::{Unit, UnitInstance};
+use super::{Skills, Specialist, Unit, UnitInstance};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerName(String);
@@ -16,13 +16,6 @@ pub struct PlayerSummary {
     pub score: usize,
     pub unlocked_units: Vec<Unit>,
     pub last_round_units: Vec<UnitInstance>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct Commander(String);
-
-impl From<String> for Commander {
-    fn from(name: String) -> Self {
-        Commander(name)
-    }
+    pub specialist_cards: Vec<Specialist>,
+    pub skills: Vec<Skills>,
 }
