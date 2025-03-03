@@ -3,13 +3,9 @@ use anyhow::Result;
 use crate::BattleOverview;
 use crate::BattleRecord;
 
-use super::{Item, MapPoint, PlayerName, PlayerResult, Unit, UnitInstance};
-
-use thiserror::Error;
+use super::{Item, MapPoint, PlayerName, PlayerSummary, Unit, UnitInstance};
 
 use std::str::FromStr;
-
-use strum::{Display, EnumString};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
@@ -38,7 +34,6 @@ impl GameMode {
                 // bot likely, skip for now
                 continue;
             }
-            let start_hp: i32 = rounds[1].player_data.reactor_core.parse().unwrap_or(0);
             let last_round_hp: i32 = rounds[rounds.len() - 1]
                 .player_data
                 .reactor_core
@@ -95,7 +90,7 @@ impl GameMode {
                             .ok()
                     })
                     .collect();
-                let result = PlayerResult {
+                let summary = PlayerSummary {
                     name,
                     last_round_hp,
                     score,
@@ -103,9 +98,9 @@ impl GameMode {
                     unlocked_units,
                 };
                 if last_round_result == "Win" {
-                    winners.push(result);
+                    winners.push(summary);
                 } else {
-                    losers.push(result);
+                    losers.push(summary);
                 }
             }
         }

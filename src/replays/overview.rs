@@ -1,4 +1,4 @@
-use super::{BattleRecord, GameMode, PlayerResult};
+use super::{BattleRecord, GameMode, PlayerSummary};
 
 use anyhow::Result;
 
@@ -7,8 +7,8 @@ pub struct BattleOverview {
     pub occurred_on: String,
     pub mode: GameMode,
     pub rounds: usize,
-    pub winners: Vec<PlayerResult>,
-    pub losers: Vec<PlayerResult>,
+    pub winners: Vec<PlayerSummary>,
+    pub losers: Vec<PlayerSummary>,
 }
 
 impl BattleRecord {
@@ -30,14 +30,14 @@ mod tests {
 
         let record = BattleRecord::new_from_file(fixtures.join("battle_record.xml"), false)
             .expect("this shouldn't die");
-        let overview = record.get_battle_overview().expect("Shouldn't die");
-        //println!("{:#?}", overview);
+        let _overview = record.get_battle_overview().expect("Shouldn't die");
+        //println!("{:#?}", _overview);
 
         let record = BattleRecord::new_from_file(fixtures.join("battle_record2.xml"), false)
             .expect("this shouldn't die");
 
-        let overview = record.get_battle_overview().expect("Shouldn't die");
-        //println!("{:#?}", overview);
+        let _overview = record.get_battle_overview().expect("Shouldn't die");
+        //println!("{:#?}", _overview);
 
         let record = BattleRecord::new_from_file(fixtures.join("4player_brawl2.xml"), false)
             .expect("this shouldn't die");

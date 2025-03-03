@@ -10,21 +10,12 @@ impl From<String> for PlayerName {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct PlayerResult {
+pub struct PlayerSummary {
     pub name: PlayerName,
     pub last_round_hp: i32,
     pub score: usize,
     pub unlocked_units: Vec<Unit>,
     pub last_round_units: Vec<UnitInstance>,
-}
-
-#[derive(Debug)]
-pub struct PlayerData {
-    pub name: PlayerName,
-    pub commander: Commander,
-    pub starting_hp: i32,
-    pub ending_hp: i32,
-    pub unlocked_units: Vec<Unit>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
