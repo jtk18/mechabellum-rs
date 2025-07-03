@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use enigo::{Button, Coordinate, Direction, Enigo, Settings};
+use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
 use image::{DynamicImage, ImageBuffer};
 use log::{info, warn};
 use regex::Regex;
@@ -15,8 +15,6 @@ use tempfile::NamedTempFile;
 
 #[cfg(target_os = "windows")]
 use windows::core::PCSTR;
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, SetForegroundWindow, ShowWindow, SW_RESTORE,
@@ -134,10 +132,14 @@ impl MechabellumTester {
             let window_title = std::ffi::CString::new(self.config.window_title.clone())?;
             let hwnd = FindWindowA(PCSTR::null(), PCSTR(window_title.as_ptr() as *const u8));
 
-            if !hwnd.is_invalid() {
-                let _ = ShowWindow(hwnd, SW_RESTORE);
-                let _ = SetForegroundWindow(hwnd);
-                info!("Focused game window: {}", self.config.window_title);
+            if let Ok(handle) = hwnd {
+                if !handle.is_invalid() {
+                    let _ = ShowWindow(handle, SW_RESTORE);
+                    let _ = SetForegroundWindow(handle);
+                    info!("Focused game window: {}", self.config.window_title);
+                } else {
+                    warn!("Invalid window handle for: {}", self.config.window_title);
+                }
             } else {
                 warn!("Could not find game window: {}", self.config.window_title);
             }
