@@ -10,7 +10,8 @@ use std::path::Path;
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use tesseract::Tesseract;
+use tempfile::NamedTempFile;
+use regex::Regex;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HWND;
@@ -57,7 +58,6 @@ struct ResourceUpdate {
 struct MechabellumTester {
     config: GameConfig,
     enigo: Enigo,
-    tesseract: Tesseract,
 }
 
 impl MechabellumTester {
@@ -70,14 +70,31 @@ impl MechabellumTester {
         let enigo = Enigo::new(&Settings::default())
             .context("Failed to initialize Enigo")?;
 
-        let tesseract = Tesseract::new(None, Some("eng"))
-            .context("Failed to initialize Tesseract")?;
+        // Test tesseract installation
+        Self::test_tesseract()?;
 
         Ok(MechabellumTester {
             config,
             enigo,
-            tesseract,
         })
+    }
+
+    fn test_tesseract() -> Result<()> {
+        info!("Testing Tesseract installation...");
+        
+        let output = Command::new("tesseract")
+            .arg("--version")
+            .output()
+            .context("Failed to run tesseract command. Make sure Tesseract is installed and in your PATH")?;
+
+        if output.status.success() {
+            let version_info = String::from_utf8_lossy(&output.stderr);
+            info!("Tesseract found: {}", version_info.lines().next().unwrap_or("Unknown version"));
+        } else {
+            return Err(anyhow::anyhow!("Tesseract command failed"));
+        }
+
+        Ok(())
     }
 
     fn launch_game(&self) -> Result<()> {
@@ -177,19 +194,45 @@ impl MechabellumTester {
             region.height as u32,
         );
 
-        // Save temporary image for tesseract
-        let temp_path = format!("temp_region_{}.png", region_name);
-        cropped.save(&temp_path).context("Failed to save temporary image")?;
+        // Create a temporary file for the cropped image
+        let temp_file = NamedTempFile::with_suffix(".png")
+            .context("Failed to create temporary file")?;
+        let temp_path = temp_file.path();
+        
+        cropped.save(temp_path).context("Failed to save temporary image")?;
 
-        // Extract text using tesseract
-        let extracted_text = self.tesseract.get_text(&temp_path)
-            .context("Failed to extract text with tesseract")?;
+        // Run tesseract on the temporary file
+        let output = Command::new("tesseract")
+            .arg(temp_path)
+            .arg("stdout")
+            .arg("-l")
+            .arg("eng")
+            .output()
+            .context("Failed to run tesseract command")?;
 
-        // Clean up temporary file
-        let _ = fs::remove_file(&temp_path);
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow::anyhow!("Tesseract failed: {}", error_msg));
+        }
 
+        let extracted_text = String::from_utf8_lossy(&output.stdout);
         let cleaned_text = extracted_text.trim().to_string();
+        
         info!("Extracted text from region '{}': '{}'", region_name, cleaned_text);
+
+        // Apply regex pattern if specified
+        if let Some(pattern) = &region.extract_pattern {
+            let regex = Regex::new(pattern)
+                .context("Failed to compile regex pattern")?;
+            
+            if let Some(captures) = regex.captures(&cleaned_text) {
+                if let Some(matched) = captures.get(1) {
+                    let pattern_result = matched.as_str().to_string();
+                    info!("Pattern matched: '{}'", pattern_result);
+                    return Ok(pattern_result);
+                }
+            }
+        }
 
         Ok(cleaned_text)
     }

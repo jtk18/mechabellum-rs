@@ -30,6 +30,8 @@ cargo --version
 
 ### 2. Install Tesseract OCR
 
+**IMPORTANT**: This project uses the Tesseract executable directly, so you only need to install Tesseract itself - no additional development libraries required.
+
 #### Option A: Using Chocolatey (Recommended)
 ```bash
 # Install Chocolatey first if you don't have it
@@ -233,22 +235,27 @@ fn run_test_sequence(&mut self) -> Result<()> {
    - Ensure you have Visual Studio Build Tools installed
    - Try running `cargo clean` then `cargo build` again
 
-3. **Game window not found**:
+3. **`leptonica-sys` or `vcpkg` build errors**:
+   - This error has been fixed in the latest version - we now use Tesseract executable directly
+   - If you still encounter this, make sure you're using the updated `Cargo.toml` and `main.rs`
+   - Run `cargo clean` and `cargo build --release` again
+
+4. **Game window not found**:
    - Check that the `window_title` in config matches exactly
    - Ensure the game is actually running
    - Try running the game manually first
 
-4. **Steam launch fails**:
+5. **Steam launch fails**:
    - Verify Steam is installed and running
    - Check that the `steam_app_id` is correct (669330 for Mechabellum)
    - Ensure you own the game on Steam
 
-5. **Mouse clicks not working**:
+6. **Mouse clicks not working**:
    - Verify coordinates are correct for your screen resolution
    - Check that the game window is in focus
    - Try adjusting coordinates in the config file
 
-6. **OCR text extraction poor quality**:
+7. **OCR text extraction poor quality**:
    - Ensure text regions are properly sized
    - Check that the game is running at stable FPS
    - Try different screen regions or larger capture areas
