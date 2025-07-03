@@ -240,22 +240,27 @@ fn run_test_sequence(&mut self) -> Result<()> {
    - If you still encounter this, make sure you're using the updated `Cargo.toml` and `main.rs`
    - Run `cargo clean` and `cargo build --release` again
 
-4. **Game window not found**:
+4. **Outdated dependency API errors**:
+   - All dependencies have been updated to latest versions (enigo 0.5.0, screenshots 0.8.10)
+   - Run `cargo clean` and `cargo build --release` if you have compilation issues
+   - The API usage has been updated for the latest versions
+
+5. **Game window not found**:
    - Check that the `window_title` in config matches exactly
    - Ensure the game is actually running
    - Try running the game manually first
 
-5. **Steam launch fails**:
+6. **Steam launch fails**:
    - Verify Steam is installed and running
    - Check that the `steam_app_id` is correct (669330 for Mechabellum)
    - Ensure you own the game on Steam
 
-6. **Mouse clicks not working**:
+7. **Mouse clicks not working**:
    - Verify coordinates are correct for your screen resolution
    - Check that the game window is in focus
    - Try adjusting coordinates in the config file
 
-7. **OCR text extraction poor quality**:
+8. **OCR text extraction poor quality**:
    - Ensure text regions are properly sized
    - Check that the game is running at stable FPS
    - Try different screen regions or larger capture areas

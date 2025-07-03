@@ -1,5 +1,5 @@
 use anyhow::{Result, Context};
-use enigo::{Enigo, Settings, Button, Coordinate, Direction, Mouse, Key, Keyboard};
+use enigo::{Enigo, Button, Coordinate, Mouse};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use log::{info, warn, error, debug};
 use screenshots::Screen;
@@ -67,7 +67,7 @@ impl MechabellumTester {
         let config: GameConfig = serde_json::from_str(&config_content)
             .context("Failed to parse config JSON")?;
 
-        let enigo = Enigo::new(&Settings::default())
+        let enigo = Enigo::new()
             .context("Failed to initialize Enigo")?;
 
         // Test tesseract installation
@@ -153,10 +153,12 @@ impl MechabellumTester {
         let primary_screen = screens.first().context("No screens found")?;
         
         let screenshot = primary_screen.capture().context("Failed to capture screen")?;
+        
+        // Convert screenshot to DynamicImage  
         let image = DynamicImage::ImageRgba8(
             ImageBuffer::from_raw(
-                screenshot.width(),
-                screenshot.height(),
+                screenshot.width() as u32,
+                screenshot.height() as u32,
                 screenshot.as_raw().to_vec(),
             ).context("Failed to create image buffer")?
         );
@@ -170,12 +172,14 @@ impl MechabellumTester {
 
         info!("Clicking button: {} at ({}, {})", button_name, button.x, button.y);
         
+        // Move mouse to button position
         self.enigo.move_mouse(button.x, button.y, Coordinate::Abs)
             .context("Failed to move mouse")?;
         
         thread::sleep(Duration::from_millis(100));
         
-        self.enigo.button(Button::Left, Direction::Click)
+        // Click the left mouse button
+        self.enigo.click(Button::Left)
             .context("Failed to click button")?;
         
         thread::sleep(Duration::from_millis(500));
