@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use enigo::{Button, Coordinate, Enigo, Mouse};
-use image::{DynamicImage, ImageBuffer, Rgba};
-use log::{debug, error, info, warn};
+use enigo::{Button, Coordinate, Direction, Enigo, Settings};
+use image::{DynamicImage, ImageBuffer};
+use log::{info, warn};
 use regex::Regex;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
@@ -69,7 +69,7 @@ impl MechabellumTester {
         let config: GameConfig =
             serde_json::from_str(&config_content).context("Failed to parse config JSON")?;
 
-        let enigo = Enigo::new().context("Failed to initialize Enigo")?;
+        let enigo = Enigo::new(&Settings::default()).context("Failed to initialize Enigo")?;
 
         // Test tesseract installation
         Self::test_tesseract()?;
@@ -134,9 +134,9 @@ impl MechabellumTester {
             let window_title = std::ffi::CString::new(self.config.window_title.clone())?;
             let hwnd = FindWindowA(PCSTR::null(), PCSTR(window_title.as_ptr() as *const u8));
 
-            if hwnd.0 != 0 {
-                ShowWindow(hwnd, SW_RESTORE);
-                SetForegroundWindow(hwnd);
+            if !hwnd.is_invalid() {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+                let _ = SetForegroundWindow(hwnd);
                 info!("Focused game window: {}", self.config.window_title);
             } else {
                 warn!("Could not find game window: {}", self.config.window_title);
@@ -193,7 +193,7 @@ impl MechabellumTester {
 
         // Click the left mouse button
         self.enigo
-            .click(Button::Left)
+            .button(Button::Left, Direction::Click)
             .context("Failed to click button")?;
 
         thread::sleep(Duration::from_millis(500));
@@ -288,7 +288,7 @@ impl MechabellumTester {
         );
 
         let path = Path::new(file_path);
-        let mut content = if path.exists() {
+        let content = if path.exists() {
             fs::read_to_string(path).context("Failed to read resource file")?
         } else {
             "{}".to_string()
