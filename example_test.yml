@@ -1,0 +1,42 @@
+name: "Mechabellum Basic Test"
+description: "Example test sequence demonstrating the DSL capabilities"
+
+steps:
+  - action: screenshot
+    name: "main_menu"
+    description: "Capture main menu interface"
+  
+  - action: click
+    target: "main_menu"
+    description: "Click main menu button"
+    wait: 2000
+  
+  - action: read
+    target: "version_info"
+    description: "Extract version information"
+    save_to: "game_data.json"
+    key: "version"
+  
+  - action: verify
+    target: "version_info"
+    expect: "Version"
+    description: "Verify version text is visible"
+  
+  - action: screenshot
+    name: "after_menu_click"
+    description: "Capture state after menu interaction"
+  
+  - action: wait
+    duration: 1000
+    description: "Wait for UI to stabilize"
+  
+  - action: click
+    target: "play_button"
+    description: "Click the play button"
+    wait: 3000
+  
+  - action: read
+    target: "player_name"
+    description: "Extract current player name"
+    save_to: "player_stats.json"
+    key: "current_player"

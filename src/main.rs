@@ -6,6 +6,7 @@ use log::{info, warn};
 use regex::Regex;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
+use serde_yaml;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -95,6 +96,12 @@ enum Commands {
         #[arg(short, long)]
         template: Vec<String>,
     },
+    /// Execute a test sequence from a YAML file
+    ExecuteScript {
+        /// Path to the YAML test script file
+        #[arg(short, long)]
+        script: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -130,6 +137,46 @@ struct ResourceUpdate {
     file_path: String,
     key: String,
     value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TestScript {
+    name: String,
+    steps: Vec<TestStep>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "action")]
+enum TestStep {
+    #[serde(rename = "screenshot")]
+    Screenshot {
+        name: String,
+        description: Option<String>,
+    },
+    #[serde(rename = "click")]
+    Click {
+        target: String,
+        description: Option<String>,
+        wait: Option<u64>,
+    },
+    #[serde(rename = "read")]
+    Read {
+        target: String,
+        description: Option<String>,
+        save_to: Option<String>,
+        key: Option<String>,
+    },
+    #[serde(rename = "verify")]
+    Verify {
+        target: String,
+        expect: String,
+        description: Option<String>,
+    },
+    #[serde(rename = "wait")]
+    Wait {
+        duration: u64,
+        description: Option<String>,
+    },
 }
 
 struct MechabellumTester {
@@ -492,6 +539,111 @@ impl MechabellumTester {
         // For example: navigating menus, checking game state, etc.
 
         info!("Test sequence completed successfully");
+
+        // Close the game window gracefully
+        info!("Closing game window...");
+        self.close_game_window()?;
+        info!("Game window closed");
+
+        Ok(())
+    }
+
+    fn execute_script(&mut self, script_path: &str) -> Result<()> {
+        info!("Loading test script: {}", script_path);
+
+        let script_content =
+            fs::read_to_string(script_path).context("Failed to read test script file")?;
+
+        let script: TestScript =
+            serde_yaml::from_str(&script_content).context("Failed to parse test script YAML")?;
+
+        info!("Executing test script: {}", script.name);
+
+        // Launch the game
+        self.launch_game()?;
+
+        // Wait a bit more for the game to fully load
+        thread::sleep(Duration::from_secs(10));
+
+        // Execute each step
+        for (step_index, step) in script.steps.iter().enumerate() {
+            info!("Executing step {}: {:?}", step_index + 1, step);
+
+            match step {
+                TestStep::Screenshot { name, description } => {
+                    if let Some(desc) = description {
+                        info!("Taking screenshot '{}': {}", name, desc);
+                    }
+                    let screenshot = self.take_screenshot()?;
+                    let screenshot_path = format!("script_screenshot_{}.png", name);
+                    screenshot.save(&screenshot_path)?;
+                    info!("Screenshot saved to: {}", screenshot_path);
+                }
+
+                TestStep::Click {
+                    target,
+                    description,
+                    wait,
+                } => {
+                    if let Some(desc) = description {
+                        info!("Clicking '{}': {}", target, desc);
+                    }
+                    self.click_button(target)?;
+
+                    if let Some(wait_ms) = wait {
+                        thread::sleep(Duration::from_millis(*wait_ms));
+                    }
+                }
+
+                TestStep::Read {
+                    target,
+                    description,
+                    save_to,
+                    key,
+                } => {
+                    if let Some(desc) = description {
+                        info!("Reading from '{}': {}", target, desc);
+                    }
+                    let text = self.extract_text_from_region(target)?;
+
+                    if let (Some(file_path), Some(key_name)) = (save_to, key) {
+                        self.update_resource_file(file_path, key_name, &text)?;
+                    }
+                }
+
+                TestStep::Verify {
+                    target,
+                    expect,
+                    description,
+                } => {
+                    if let Some(desc) = description {
+                        info!("Verifying '{}': {}", target, desc);
+                    }
+                    let success = self.verify_text(target, expect)?;
+                    if !success {
+                        return Err(anyhow::anyhow!(
+                            "Verification failed for '{}': expected text '{}' not found",
+                            target,
+                            expect
+                        ));
+                    }
+                }
+
+                TestStep::Wait {
+                    duration,
+                    description,
+                } => {
+                    if let Some(desc) = description {
+                        info!("Waiting {} ms: {}", duration, desc);
+                    } else {
+                        info!("Waiting {} ms", duration);
+                    }
+                    thread::sleep(Duration::from_millis(*duration));
+                }
+            }
+        }
+
+        info!("Test script '{}' completed successfully", script.name);
 
         // Close the game window gracefully
         info!("Closing game window...");
@@ -1022,6 +1174,20 @@ fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        Some(Commands::ExecuteScript { script }) => {
+            info!("Executing test script: {}", script);
+
+            let config_path = "config.json";
+            if !Path::new(config_path).exists() {
+                create_default_config(config_path)?;
+                info!("Created default config file: {}", config_path);
+                info!("Please edit the config file and run again");
+                return Ok(());
+            }
+
+            let mut tester = MechabellumTester::new(config_path, cli.save_screenshots)?;
+            tester.execute_script(&script)?;
         }
         Some(Commands::Run) | None => {
             info!("Starting Mechabellum Tester");
