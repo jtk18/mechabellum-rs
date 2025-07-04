@@ -173,7 +173,13 @@ struct ResourceUpdate {
 #[derive(Debug, Serialize, Deserialize)]
 struct TestScript {
     name: String,
+    #[serde(default = "default_game_startup_wait")]
+    game_startup_wait: u64,
     steps: Vec<TestStep>,
+}
+
+fn default_game_startup_wait() -> u64 {
+    10000 // Default 10 seconds, was previously hardcoded at 30 seconds + 10 seconds
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -705,12 +711,13 @@ impl MechabellumTester {
             serde_yaml::from_str(&script_content).context("Failed to parse test script YAML")?;
 
         info!("Executing test script: {}", script.name);
+        info!("Game startup wait time: {} ms", script.game_startup_wait);
 
         // Launch the game
         self.launch_game()?;
 
-        // Wait a bit more for the game to fully load
-        thread::sleep(Duration::from_secs(10));
+        // Wait for the game to fully load (configurable)
+        thread::sleep(Duration::from_millis(script.game_startup_wait));
 
         // Execute steps with proper cleanup - use a closure to ensure cleanup happens
         let execution_result = (|| -> Result<()> {
