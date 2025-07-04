@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
-use image::{DynamicImage, ImageBuffer, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use log::{info, warn};
 use regex::Regex;
 use screenshots::Screen;
