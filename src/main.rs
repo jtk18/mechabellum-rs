@@ -30,7 +30,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, GetDpiForSystem, MDT_EFFECTIVE_DPI};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
+    FindWindowA, GetSystemMetrics, PostMessageA, SetForegroundWindow, ShowWindow, SM_CXSCREEN,
+    SM_CYSCREEN, SW_RESTORE, WM_CLOSE,
 };
 
 #[derive(Parser)]
@@ -307,15 +308,48 @@ impl MechabellumTester {
                     "GetDpiForMonitor: X={} DPI (scale: {}), Y={} DPI (scale: {})",
                     monitor_dpi_x, monitor_scale_x, monitor_dpi_y, monitor_scale_y
                 );
-
-                // Use monitor DPI as it's most likely to reflect actual scaling
-                info!("=== Using Monitor DPI ===");
-                return Ok(monitor_scale_x);
             } else {
-                warn!("GetDpiForMonitor failed, falling back to system DPI");
+                warn!("GetDpiForMonitor failed");
             }
 
-            info!("=== Using System DPI ===");
+            // Method 4: Compare logical vs physical screen dimensions
+            let logical_width = GetSystemMetrics(SM_CXSCREEN);
+            let logical_height = GetSystemMetrics(SM_CYSCREEN);
+            info!("Logical screen size: {}x{}", logical_width, logical_height);
+
+            // Get physical screen size using screenshot
+            let screens = screenshots::Screen::all().context("Failed to get screens")?;
+            let primary_screen = screens.first().context("No screens found")?;
+            let screenshot = primary_screen
+                .capture()
+                .context("Failed to capture screen")?;
+            let physical_width = screenshot.width();
+            let physical_height = screenshot.height();
+            info!(
+                "Physical screen size: {}x{}",
+                physical_width, physical_height
+            );
+
+            // Calculate scaling factor from resolution difference
+            let width_scale = physical_width as f64 / logical_width as f64;
+            let height_scale = physical_height as f64 / logical_height as f64;
+            info!(
+                "Resolution-based scale: width={}, height={}",
+                width_scale, height_scale
+            );
+
+            // Use the larger scale factor (they should be the same for uniform scaling)
+            let resolution_scale = width_scale.max(height_scale);
+
+            if resolution_scale > 1.0 {
+                info!(
+                    "=== Using Resolution-based Scaling: {} ===",
+                    resolution_scale
+                );
+                return Ok(resolution_scale);
+            }
+
+            info!("=== Falling back to System DPI ===");
             Ok(system_scale)
         }
     }
