@@ -102,6 +102,27 @@ enum Commands {
         #[arg(short, long)]
         script: String,
     },
+    /// Crop a template from a larger screenshot
+    CropTemplate {
+        /// Path to the source screenshot image
+        #[arg(short, long)]
+        screenshot: String,
+        /// Name for the cropped template file (without extension)
+        #[arg(short, long)]
+        name: String,
+        /// X coordinate for cropping
+        #[arg(short = 'x', long)]
+        x: i32,
+        /// Y coordinate for cropping
+        #[arg(short = 'y', long)]
+        y: i32,
+        /// Width of the crop region
+        #[arg(short = 'w', long)]
+        width: i32,
+        /// Height of the crop region
+        #[arg(short = 'H', long)]
+        height: i32,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -352,14 +373,18 @@ impl MechabellumTester {
             .get(button_name)
             .context(format!("Button '{}' not found in config", button_name))?;
 
+        // Calculate center position of the button
+        let center_x = button.x + button.width / 2;
+        let center_y = button.y + button.height / 2;
+
         info!(
-            "Clicking button: {} at ({}, {})",
-            button_name, button.x, button.y
+            "Clicking button: {} at center ({}, {}) of region ({}, {}) {}x{}",
+            button_name, center_x, center_y, button.x, button.y, button.width, button.height
         );
 
-        // Move mouse to button position
+        // Move mouse to button center position
         self.enigo
-            .move_mouse(button.x, button.y, Coordinate::Abs)
+            .move_mouse(center_x, center_y, Coordinate::Abs)
             .context("Failed to move mouse")?;
 
         thread::sleep(Duration::from_millis(100));
@@ -1068,6 +1093,49 @@ fn save_marked_screenshot(
     Ok(())
 }
 
+fn crop_template_from_screenshot(
+    screenshot_path: &str,
+    template_name: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<()> {
+    info!(
+        "Cropping template '{}' from screenshot '{}' at ({}, {}) with size {}x{}",
+        template_name, screenshot_path, x, y, width, height
+    );
+
+    let screenshot = image::open(screenshot_path).context("Failed to load screenshot")?;
+
+    let (screenshot_width, screenshot_height) = screenshot.dimensions();
+
+    // Validate crop region
+    if x + width > screenshot_width || y + height > screenshot_height {
+        return Err(anyhow::anyhow!(
+            "Crop region ({}, {}) {}x{} exceeds screenshot dimensions {}x{}",
+            x,
+            y,
+            width,
+            height,
+            screenshot_width,
+            screenshot_height
+        ));
+    }
+
+    // Crop the region
+    let cropped = screenshot.crop_imm(x, y, width, height);
+
+    // Save the cropped template
+    let template_path = format!("{}.png", template_name);
+    cropped
+        .save(&template_path)
+        .context("Failed to save cropped template")?;
+
+    info!("Successfully saved cropped template to: {}", template_path);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     env_logger::init();
 
@@ -1203,6 +1271,30 @@ fn main() -> Result<()> {
 
             let mut tester = MechabellumTester::new(config_path, cli.save_screenshots)?;
             tester.execute_script(&script)?;
+        }
+        Some(Commands::CropTemplate {
+            screenshot,
+            name,
+            x,
+            y,
+            width,
+            height,
+        }) => {
+            info!(
+                "Cropping template '{}' from screenshot '{}' at ({}, {}) with size {}x{}",
+                name, screenshot, x, y, width, height
+            );
+
+            crop_template_from_screenshot(
+                &screenshot,
+                &name,
+                x as u32,
+                y as u32,
+                width as u32,
+                height as u32,
+            )?;
+
+            info!("Template '{}' successfully cropped and saved!", name);
         }
         Some(Commands::Run) | None => {
             info!("Starting Mechabellum Tester");
