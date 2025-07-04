@@ -18,7 +18,11 @@ use tempfile::NamedTempFile;
 #[cfg(target_os = "windows")]
 use windows::core::PCSTR;
 #[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
+#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, WPARAM};
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, LOGPIXELSX};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
@@ -204,6 +208,7 @@ struct MechabellumTester {
     config: GameConfig,
     enigo: Enigo,
     save_screenshots: bool,
+    scale_factor: f64,
 }
 
 impl MechabellumTester {
@@ -218,10 +223,15 @@ impl MechabellumTester {
         // Test tesseract installation
         Self::test_tesseract()?;
 
+        // Detect DPI scaling factor
+        let scale_factor = Self::detect_dpi_scale_factor()?;
+        info!("Detected DPI scale factor: {}", scale_factor);
+
         Ok(MechabellumTester {
             config,
             enigo,
             save_screenshots,
+            scale_factor,
         })
     }
 
@@ -246,6 +256,32 @@ impl MechabellumTester {
         }
 
         Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn detect_dpi_scale_factor() -> Result<f64> {
+        unsafe {
+            let hdc = GetDC(HWND::default());
+            if hdc.is_invalid() {
+                return Err(anyhow::anyhow!("Failed to get device context"));
+            }
+
+            let dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
+            let _ = ReleaseDC(HWND::default(), hdc);
+
+            // Standard DPI is 96, so scale factor is current DPI / 96
+            let scale_factor = dpi_x as f64 / 96.0;
+            info!("Detected DPI: {}, Scale factor: {}", dpi_x, scale_factor);
+
+            Ok(scale_factor)
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn detect_dpi_scale_factor() -> Result<f64> {
+        // Default to 1.0 for non-Windows platforms
+        info!("DPI detection not implemented for non-Windows platforms, using scale factor 1.0");
+        Ok(1.0)
     }
 
     fn launch_game(&self) -> Result<()> {
@@ -377,14 +413,23 @@ impl MechabellumTester {
         let center_x = button.x + button.width / 2;
         let center_y = button.y + button.height / 2;
 
+        // Apply DPI scaling correction using detected scale factor
+        // Screenshots are captured at scaled resolution, but mouse coordinates use physical pixels
+        let corrected_x = (center_x as f64 / self.scale_factor) as i32;
+        let corrected_y = (center_y as f64 / self.scale_factor) as i32;
+
         info!(
             "Clicking button: {} at center ({}, {}) of region ({}, {}) {}x{}",
             button_name, center_x, center_y, button.x, button.y, button.width, button.height
         );
+        info!(
+            "DPI corrected coordinates: ({}, {}) -> ({}, {}) with scale factor {}",
+            center_x, center_y, corrected_x, corrected_y, self.scale_factor
+        );
 
-        // Move mouse to button center position
+        // Move mouse to DPI-corrected button center position
         self.enigo
-            .move_mouse(center_x, center_y, Coordinate::Abs)
+            .move_mouse(corrected_x, corrected_y, Coordinate::Abs)
             .context("Failed to move mouse")?;
 
         thread::sleep(Duration::from_millis(100));
