@@ -210,6 +210,13 @@ impl MechabellumTester {
             .context(format!("Text region '{}' not found in config", region_name))?;
 
         let screenshot = self.take_screenshot()?;
+        
+        // Save full screenshot for debugging
+        let full_screenshot_path = format!("debug_full_screenshot_{}.png", region_name);
+        screenshot.save(&full_screenshot_path)
+            .context("Failed to save full screenshot")?;
+        info!("Saved full screenshot to: {}", full_screenshot_path);
+        
         let cropped = screenshot.crop_imm(
             region.x as u32,
             region.y as u32,
@@ -217,6 +224,23 @@ impl MechabellumTester {
             region.height as u32,
         );
 
+        // Save cropped region for debugging (permanent file)
+        let cropped_path = format!("debug_cropped_region_{}.png", region_name);
+        cropped.save(&cropped_path)
+            .context("Failed to save cropped region")?;
+        info!("Saved cropped region to: {}", cropped_path);
+
+        // Use the permanent cropped file for tesseract
+        let output = Command::new("tesseract")
+            .arg(&cropped_path)
+            .arg("stdout")
+            .arg("-l")
+            .arg("eng")
+            .output()
+            .context("Failed to run tesseract command")?;
+
+        // Commented out temporary file approach
+        /*
         // Create a temporary file for the cropped image
         let temp_file =
             NamedTempFile::with_suffix(".png").context("Failed to create temporary file")?;
@@ -234,6 +258,7 @@ impl MechabellumTester {
             .arg("eng")
             .output()
             .context("Failed to run tesseract command")?;
+        */
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
