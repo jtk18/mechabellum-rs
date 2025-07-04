@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
-use image::{DynamicImage, ImageBuffer};
+use image::{DynamicImage, ImageBuffer, Rgba};
 use log::{info, warn};
 use regex::Regex;
 use screenshots::Screen;
@@ -19,6 +20,40 @@ use windows::core::PCSTR;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, SetForegroundWindow, ShowWindow, SW_RESTORE,
 };
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the normal testing sequence
+    Run,
+    /// Add a new region to config by finding a template image within a screenshot
+    AddRegion {
+        /// Path to the full screenshot image
+        #[arg(short, long)]
+        screenshot: String,
+        /// Path to the template image to find
+        #[arg(short, long)]
+        template: String,
+        /// Name for the new region
+        #[arg(short, long)]
+        name: String,
+        /// Optional description for the region
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Optional expected text pattern
+        #[arg(short, long)]
+        expected_text: Option<String>,
+        /// Optional regex pattern for text extraction
+        #[arg(short = 'p', long)]
+        pattern: Option<String>,
+    },
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GameConfig {
@@ -372,21 +407,221 @@ impl MechabellumTester {
     }
 }
 
-fn main() -> Result<()> {
-    env_logger::init();
+// Template matching functionality
+fn find_template_in_image(screenshot_path: &str, template_path: &str) -> Result<(u32, u32, u32, u32)> {
+    info!("Loading screenshot: {}", screenshot_path);
+    let screenshot = image::open(screenshot_path)
+        .context("Failed to load screenshot image")?
+        .to_rgba8();
+    
+    info!("Loading template: {}", template_path);
+    let template = image::open(template_path)
+        .context("Failed to load template image")?
+        .to_rgba8();
 
-    info!("Starting Mechabellum Tester");
+    let (screenshot_width, screenshot_height) = screenshot.dimensions();
+    let (template_width, template_height) = template.dimensions();
 
-    let config_path = "config.json";
-    if !Path::new(config_path).exists() {
-        create_default_config(config_path)?;
-        info!("Created default config file: {}", config_path);
-        info!("Please edit the config file and run again");
-        return Ok(());
+    if template_width > screenshot_width || template_height > screenshot_height {
+        return Err(anyhow::anyhow!(
+            "Template image ({} x {}) is larger than screenshot ({} x {})",
+            template_width, template_height, screenshot_width, screenshot_height
+        ));
     }
 
-    let mut tester = MechabellumTester::new(config_path)?;
-    tester.run_test_sequence()?;
+    info!("Searching for template ({} x {}) in screenshot ({} x {})", 
+          template_width, template_height, screenshot_width, screenshot_height);
+
+    let mut best_match_score = f64::MAX;
+    let mut best_match_pos = (0u32, 0u32);
+
+    // Slide the template across the screenshot
+    for y in 0..=(screenshot_height - template_height) {
+        for x in 0..=(screenshot_width - template_width) {
+            let score = calculate_match_score(&screenshot, &template, x, y);
+            
+            if score < best_match_score {
+                best_match_score = score;
+                best_match_pos = (x, y);
+            }
+        }
+        
+        // Progress indicator for large images
+        if y % 50 == 0 {
+            info!("Progress: {} / {} rows", y, screenshot_height - template_height);
+        }
+    }
+
+    info!("Best match found at position ({}, {}) with score: {:.2}", 
+          best_match_pos.0, best_match_pos.1, best_match_score);
+
+    // If the match score is reasonable (lower is better), return the coordinates
+    if best_match_score < 50.0 { // Threshold for acceptable match
+        Ok((best_match_pos.0, best_match_pos.1, template_width, template_height))
+    } else {
+        Err(anyhow::anyhow!(
+            "No good match found. Best score was {:.2} (threshold: 50.0)", 
+            best_match_score
+        ))
+    }
+}
+
+fn calculate_match_score(screenshot: &ImageBuffer<Rgba<u8>, Vec<u8>>, 
+                        template: &ImageBuffer<Rgba<u8>, Vec<u8>>, 
+                        start_x: u32, start_y: u32) -> f64 {
+    let (template_width, template_height) = template.dimensions();
+    let mut total_diff = 0f64;
+    let mut pixel_count = 0;
+
+    for y in 0..template_height {
+        for x in 0..template_width {
+            let screenshot_pixel = screenshot.get_pixel(start_x + x, start_y + y);
+            let template_pixel = template.get_pixel(x, y);
+
+            // Calculate RGB difference (ignoring alpha)
+            let r_diff = (screenshot_pixel[0] as f64 - template_pixel[0] as f64).abs();
+            let g_diff = (screenshot_pixel[1] as f64 - template_pixel[1] as f64).abs();
+            let b_diff = (screenshot_pixel[2] as f64 - template_pixel[2] as f64).abs();
+
+            total_diff += r_diff + g_diff + b_diff;
+            pixel_count += 1;
+        }
+    }
+
+    total_diff / pixel_count as f64
+}
+
+fn add_region_to_config(config_path: &str, region_name: &str, x: u32, y: u32, width: u32, height: u32, 
+                       description: Option<String>, expected_text: Option<String>, 
+                       pattern: Option<String>) -> Result<()> {
+    info!("Adding region '{}' at ({}, {}) {}x{} to config", region_name, x, y, width, height);
+
+    // Load existing config or create new one
+    let mut config = if Path::new(config_path).exists() {
+        let config_content = fs::read_to_string(config_path)
+            .context("Failed to read existing config file")?;
+        serde_json::from_str::<GameConfig>(&config_content)
+            .context("Failed to parse existing config JSON")?
+    } else {
+        // Create a basic config if none exists
+        GameConfig {
+            steam_app_id: "669330".to_string(),
+            window_title: "Mechabellum".to_string(),
+            buttons: HashMap::new(),
+            text_regions: HashMap::new(),
+            resource_files: vec!["game_data.json".to_string()],
+        }
+    };
+
+    // Add the new region
+    let new_region = TextRegion {
+        x: x as i32,
+        y: y as i32,
+        width: width as i32,
+        height: height as i32,
+        expected_text,
+        extract_pattern: pattern,
+    };
+
+    config.text_regions.insert(region_name.to_string(), new_region);
+
+    // Save updated config
+    let config_json = serde_json::to_string_pretty(&config)
+        .context("Failed to serialize updated config")?;
+    fs::write(config_path, config_json)
+        .context("Failed to write updated config file")?;
+
+    info!("Successfully added region '{}' to config file: {}", region_name, config_path);
+    Ok(())
+}
+
+fn save_marked_screenshot(screenshot_path: &str, x: u32, y: u32, width: u32, height: u32, 
+                         output_path: &str) -> Result<()> {
+    let mut screenshot = image::open(screenshot_path)
+        .context("Failed to load screenshot for marking")?
+        .to_rgba8();
+
+    // Draw a red rectangle around the found region
+    let red = Rgba([255u8, 0u8, 0u8, 255u8]);
+    
+    // Draw top and bottom borders
+    for px in x..=(x + width) {
+        if px < screenshot.width() {
+            if y < screenshot.height() {
+                screenshot.put_pixel(px, y, red);
+            }
+            if y + height < screenshot.height() {
+                screenshot.put_pixel(px, y + height, red);
+            }
+        }
+    }
+    
+    // Draw left and right borders
+    for py in y..=(y + height) {
+        if py < screenshot.height() {
+            if x < screenshot.width() {
+                screenshot.put_pixel(x, py, red);
+            }
+            if x + width < screenshot.width() {
+                screenshot.put_pixel(x + width, py, red);
+            }
+        }
+    }
+
+    screenshot.save(output_path)
+        .context("Failed to save marked screenshot")?;
+    
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::AddRegion { 
+            screenshot, 
+            template, 
+            name, 
+            description, 
+            expected_text, 
+            pattern 
+        }) => {
+            info!("Running template matching to add region '{}'", name);
+            
+            // Find template in screenshot
+            let (x, y, width, height) = find_template_in_image(&screenshot, &template)?;
+            
+            info!("Template found at position: ({}, {}) with size: {}x{}", x, y, width, height);
+            
+            // Add region to config
+            let config_path = "config.json";
+            add_region_to_config(config_path, &name, x, y, width, height, 
+                               description, expected_text, pattern)?;
+            
+            info!("Region '{}' successfully added to config!", name);
+            
+            // Save a marked version of the screenshot showing the found region
+            let marked_screenshot_path = format!("marked_screenshot_{}.png", name);
+            save_marked_screenshot(&screenshot, x, y, width, height, &marked_screenshot_path)?;
+            info!("Saved marked screenshot to: {}", marked_screenshot_path);
+        }
+        Some(Commands::Run) | None => {
+            info!("Starting Mechabellum Tester");
+
+            let config_path = "config.json";
+            if !Path::new(config_path).exists() {
+                create_default_config(config_path)?;
+                info!("Created default config file: {}", config_path);
+                info!("Please edit the config file and run again");
+                return Ok(());
+            }
+
+            let mut tester = MechabellumTester::new(config_path)?;
+            tester.run_test_sequence()?;
+        }
+    }
 
     Ok(())
 }
