@@ -267,12 +267,12 @@ impl MechabellumTester {
     #[cfg(target_os = "windows")]
     fn detect_dpi_scale_factor() -> Result<f64> {
         unsafe {
-            info!("=== DPI Detection Debug ===");
+            debug!("=== DPI Detection Debug ===");
 
             // Method 1: GetDpiForSystem
             let system_dpi = GetDpiForSystem();
             let system_scale = system_dpi as f64 / 96.0;
-            info!(
+            debug!(
                 "GetDpiForSystem: {} DPI, scale factor: {}",
                 system_dpi, system_scale
             );
@@ -283,7 +283,7 @@ impl MechabellumTester {
             let device_dpi_y = GetDeviceCaps(hdc, LOGPIXELSY);
             let device_scale_x = device_dpi_x as f64 / 96.0;
             let device_scale_y = device_dpi_y as f64 / 96.0;
-            info!(
+            debug!(
                 "GetDeviceCaps: X={} DPI (scale: {}), Y={} DPI (scale: {})",
                 device_dpi_x, device_scale_x, device_dpi_y, device_scale_y
             );
@@ -304,18 +304,18 @@ impl MechabellumTester {
             {
                 let monitor_scale_x = monitor_dpi_x as f64 / 96.0;
                 let monitor_scale_y = monitor_dpi_y as f64 / 96.0;
-                info!(
+                debug!(
                     "GetDpiForMonitor: X={} DPI (scale: {}), Y={} DPI (scale: {})",
                     monitor_dpi_x, monitor_scale_x, monitor_dpi_y, monitor_scale_y
                 );
             } else {
-                warn!("GetDpiForMonitor failed");
+                debug!("GetDpiForMonitor failed");
             }
 
             // Method 4: Compare logical vs physical screen dimensions
             let logical_width = GetSystemMetrics(SM_CXSCREEN);
             let logical_height = GetSystemMetrics(SM_CYSCREEN);
-            info!("Logical screen size: {}x{}", logical_width, logical_height);
+            debug!("Logical screen size: {}x{}", logical_width, logical_height);
 
             // Get physical screen size using screenshot
             let screens = screenshots::Screen::all().context("Failed to get screens")?;
@@ -325,7 +325,7 @@ impl MechabellumTester {
                 .context("Failed to capture screen")?;
             let physical_width = screenshot.width();
             let physical_height = screenshot.height();
-            info!(
+            debug!(
                 "Physical screen size: {}x{}",
                 physical_width, physical_height
             );
@@ -333,7 +333,7 @@ impl MechabellumTester {
             // Calculate scaling factor from resolution difference
             let width_scale = physical_width as f64 / logical_width as f64;
             let height_scale = physical_height as f64 / logical_height as f64;
-            info!(
+            debug!(
                 "Resolution-based scale: width={}, height={}",
                 width_scale, height_scale
             );
@@ -342,14 +342,14 @@ impl MechabellumTester {
             let resolution_scale = width_scale.max(height_scale);
 
             if resolution_scale > 1.0 {
-                info!(
+                debug!(
                     "=== Using Resolution-based Scaling: {} ===",
                     resolution_scale
                 );
                 return Ok(resolution_scale);
             }
 
-            info!("=== Falling back to System DPI ===");
+            debug!("=== Falling back to System DPI ===");
             Ok(system_scale)
         }
     }
