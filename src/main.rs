@@ -22,7 +22,7 @@ use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, LOGPIXELSX};
+use windows::Win32::UI::HiDpi::GetDpiForSystem;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
@@ -261,17 +261,15 @@ impl MechabellumTester {
     #[cfg(target_os = "windows")]
     fn detect_dpi_scale_factor() -> Result<f64> {
         unsafe {
-            let hdc = GetDC(HWND::default());
-            if hdc.is_invalid() {
-                return Err(anyhow::anyhow!("Failed to get device context"));
-            }
-
-            let dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
-            let _ = ReleaseDC(HWND::default(), hdc);
+            // GetDpiForSystem returns the system DPI that respects the Windows display scaling setting
+            let system_dpi = GetDpiForSystem();
 
             // Standard DPI is 96, so scale factor is current DPI / 96
-            let scale_factor = dpi_x as f64 / 96.0;
-            info!("Detected DPI: {}, Scale factor: {}", dpi_x, scale_factor);
+            let scale_factor = system_dpi as f64 / 96.0;
+            info!(
+                "Detected system DPI: {}, Scale factor: {}",
+                system_dpi, scale_factor
+            );
 
             Ok(scale_factor)
         }
