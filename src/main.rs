@@ -503,6 +503,139 @@ impl MechabellumTester {
 }
 
 // Template matching functionality
+fn find_multiple_templates_in_image(
+    screenshot_path: &str,
+    template_paths: &[String],
+) -> Result<Vec<Result<(u32, u32, u32, u32)>>> {
+    info!("Loading screenshot: {}", screenshot_path);
+    let screenshot = image::open(screenshot_path)
+        .context("Failed to load screenshot image")?
+        .to_rgba8();
+
+    let (screenshot_width, screenshot_height) = screenshot.dimensions();
+    info!(
+        "Screenshot dimensions: {} x {}",
+        screenshot_width, screenshot_height
+    );
+
+    // Load all templates
+    let mut templates = Vec::new();
+    for template_path in template_paths {
+        info!("Loading template: {}", template_path);
+        match image::open(template_path) {
+            Ok(template_img) => {
+                let template = template_img.to_rgba8();
+                let (template_width, template_height) = template.dimensions();
+
+                if template_width > screenshot_width || template_height > screenshot_height {
+                    templates.push(Err(anyhow::anyhow!(
+                        "Template image ({} x {}) is larger than screenshot ({} x {})",
+                        template_width,
+                        template_height,
+                        screenshot_width,
+                        screenshot_height
+                    )));
+                } else {
+                    info!(
+                        "Template '{}' loaded: {} x {}",
+                        template_path, template_width, template_height
+                    );
+                    templates.push(Ok((template, template_width, template_height)));
+                }
+            }
+            Err(e) => {
+                templates.push(Err(anyhow::anyhow!(
+                    "Failed to load template '{}': {}",
+                    template_path,
+                    e
+                )));
+            }
+        }
+    }
+
+    // Initialize best match tracking for each template
+    let mut best_matches: Vec<Option<(f64, u32, u32, u32, u32)>> = vec![None; templates.len()];
+
+    info!(
+        "Starting single-pass template matching across {} templates",
+        templates.len()
+    );
+
+    // Single pass through the screenshot
+    for y in 0..screenshot_height {
+        for x in 0..screenshot_width {
+            // Check each template at this position
+            for (template_idx, template_result) in templates.iter().enumerate() {
+                if let Ok((template, template_width, template_height)) = template_result {
+                    // Check if template fits at this position
+                    if x + template_width <= screenshot_width
+                        && y + template_height <= screenshot_height
+                    {
+                        let score = calculate_match_score(&screenshot, template, x, y);
+
+                        // Update best match if this is better
+                        match &best_matches[template_idx] {
+                            None => {
+                                best_matches[template_idx] =
+                                    Some((score, x, y, *template_width, *template_height));
+                            }
+                            Some((best_score, _, _, _, _)) => {
+                                if score < *best_score {
+                                    best_matches[template_idx] =
+                                        Some((score, x, y, *template_width, *template_height));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Progress indicator for large images
+        if y % 50 == 0 {
+            info!("Progress: {} / {} rows", y, screenshot_height);
+        }
+    }
+
+    // Convert results
+    let mut results = Vec::new();
+    for (template_idx, template_result) in templates.iter().enumerate() {
+        match template_result {
+            Ok(_) => match &best_matches[template_idx] {
+                Some((score, x, y, width, height)) => {
+                    if *score < 50.0 {
+                        info!(
+                            "Template {} best match at ({}, {}) with score: {:.2}",
+                            template_idx, x, y, score
+                        );
+                        results.push(Ok((*x, *y, *width, *height)));
+                    } else {
+                        results.push(Err(anyhow::anyhow!(
+                                "No good match found for template {}. Best score was {:.2} (threshold: 50.0)",
+                                template_idx, score
+                            )));
+                    }
+                }
+                None => {
+                    results.push(Err(anyhow::anyhow!(
+                        "No match found for template {}",
+                        template_idx
+                    )));
+                }
+            },
+            Err(e) => {
+                results.push(Err(anyhow::anyhow!(
+                    "Template {} error: {}",
+                    template_idx,
+                    e
+                )));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 fn find_template_in_image(
     screenshot_path: &str,
     template_path: &str,
@@ -842,20 +975,18 @@ fn main() -> Result<()> {
                 screenshot
             );
 
-            // Process each template
-            for template_path in template.iter() {
+            // Find all templates in a single pass
+            let results = find_multiple_templates_in_image(&screenshot, &template)?;
+
+            // Process results
+            for (template_path, result) in template.iter().zip(results.iter()) {
                 // Extract filename without extension as the region name
                 let template_name = Path::new(template_path)
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown");
 
-                info!(
-                    "Processing template: {} -> {}",
-                    template_path, template_name
-                );
-
-                match find_template_in_image(&screenshot, template_path) {
+                match result {
                     Ok((x, y, width, height)) => {
                         info!(
                             "Template '{}' found at position: ({}, {}) with size: {}x{}",
@@ -874,10 +1005,10 @@ fn main() -> Result<()> {
                                 format!("marked_screenshot_{}.png", template_name);
                             save_marked_screenshot(
                                 &screenshot,
-                                x,
-                                y,
-                                width,
-                                height,
+                                *x,
+                                *y,
+                                *width,
+                                *height,
                                 &marked_screenshot_path,
                             )?;
                             info!("Saved marked screenshot to: {}", marked_screenshot_path);
