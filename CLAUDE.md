@@ -110,6 +110,7 @@ RUST_LOG=debug cargo run -- --save-screenshots run
 - **Window Focus**: Windows API integration to bring game window to foreground
 - **Mouse Control**: Precise clicking at configured coordinates
 - **Screenshot Capture**: Full screen and region-specific capture
+- **Graceful Shutdown**: Automatically closes game window after test completion
 
 ### **2. OCR Text Extraction**
 - **Tesseract Integration**: Direct executable calls (avoids vcpkg/leptonica-sys issues)
@@ -140,6 +141,7 @@ RUST_LOG=debug cargo run -- --save-screenshots run
 - **FindWindowA**: Locates game window by title
 - **Result Handling**: Proper error handling for Windows API Result types
 - **Window Focus**: `ShowWindow` and `SetForegroundWindow` for bringing game to front
+- **Window Closing**: `PostMessageA` with `WM_CLOSE` for graceful game shutdown
 
 ### **Enigo Mouse Control**
 - **Trait Import**: Must import `Mouse` trait for `move_mouse` and `button` methods

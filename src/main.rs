@@ -18,7 +18,7 @@ use tempfile::NamedTempFile;
 use windows::core::PCSTR;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowA, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, WM_CLOSE, SW_RESTORE,
 };
 
 #[derive(Parser)]
@@ -194,6 +194,39 @@ impl MechabellumTester {
     #[cfg(not(target_os = "windows"))]
     fn focus_game_window(&self) -> Result<()> {
         info!("Window focusing not implemented for non-Windows platforms");
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn close_game_window(&self) -> Result<()> {
+        unsafe {
+            let window_title = std::ffi::CString::new(self.config.window_title.clone())?;
+            let hwnd = FindWindowA(PCSTR::null(), PCSTR(window_title.as_ptr() as *const u8));
+
+            if let Ok(handle) = hwnd {
+                if !handle.is_invalid() {
+                    // Send WM_CLOSE message to gracefully close the window
+                    let result = PostMessageA(handle, WM_CLOSE, 0, 0);
+                    if result.is_ok() {
+                        info!("Sent close message to game window: {}", self.config.window_title);
+                        // Give the game a moment to close gracefully
+                        thread::sleep(Duration::from_secs(3));
+                    } else {
+                        warn!("Failed to send close message to game window");
+                    }
+                } else {
+                    warn!("Invalid game window handle for: {}", self.config.window_title);
+                }
+            } else {
+                warn!("Could not find game window to close: {}", self.config.window_title);
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn close_game_window(&self) -> Result<()> {
+        info!("Window closing not implemented for non-Windows platforms");
         Ok(())
     }
 
@@ -412,6 +445,12 @@ impl MechabellumTester {
         // For example: navigating menus, checking game state, etc.
 
         info!("Test sequence completed successfully");
+        
+        // Close the game window gracefully
+        info!("Closing game window...");
+        self.close_game_window()?;
+        info!("Game window closed");
+
         Ok(())
     }
 }
