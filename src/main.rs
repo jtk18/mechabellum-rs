@@ -22,7 +22,12 @@ use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 #[cfg(target_os = "windows")]
-use windows::Win32::UI::HiDpi::GetDpiForSystem;
+use windows::Win32::Graphics::Gdi::{
+    GetDC, GetDeviceCaps, MonitorFromWindow, ReleaseDC, LOGPIXELSX, LOGPIXELSY,
+    MONITOR_DEFAULTTOPRIMARY,
+};
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, GetDpiForSystem, MDT_EFFECTIVE_DPI};
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
@@ -261,17 +266,57 @@ impl MechabellumTester {
     #[cfg(target_os = "windows")]
     fn detect_dpi_scale_factor() -> Result<f64> {
         unsafe {
-            // GetDpiForSystem returns the system DPI that respects the Windows display scaling setting
-            let system_dpi = GetDpiForSystem();
+            info!("=== DPI Detection Debug ===");
 
-            // Standard DPI is 96, so scale factor is current DPI / 96
-            let scale_factor = system_dpi as f64 / 96.0;
+            // Method 1: GetDpiForSystem
+            let system_dpi = GetDpiForSystem();
+            let system_scale = system_dpi as f64 / 96.0;
             info!(
-                "Detected system DPI: {}, Scale factor: {}",
-                system_dpi, scale_factor
+                "GetDpiForSystem: {} DPI, scale factor: {}",
+                system_dpi, system_scale
             );
 
-            Ok(scale_factor)
+            // Method 2: GetDeviceCaps for desktop
+            let hdc = GetDC(HWND::default());
+            let device_dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
+            let device_dpi_y = GetDeviceCaps(hdc, LOGPIXELSY);
+            let device_scale_x = device_dpi_x as f64 / 96.0;
+            let device_scale_y = device_dpi_y as f64 / 96.0;
+            info!(
+                "GetDeviceCaps: X={} DPI (scale: {}), Y={} DPI (scale: {})",
+                device_dpi_x, device_scale_x, device_dpi_y, device_scale_y
+            );
+            let _ = ReleaseDC(HWND::default(), hdc);
+
+            // Method 3: GetDpiForMonitor for primary monitor
+            let monitor = MonitorFromWindow(HWND::default(), MONITOR_DEFAULTTOPRIMARY);
+            let mut monitor_dpi_x: u32 = 0;
+            let mut monitor_dpi_y: u32 = 0;
+
+            if GetDpiForMonitor(
+                monitor,
+                MDT_EFFECTIVE_DPI,
+                &mut monitor_dpi_x,
+                &mut monitor_dpi_y,
+            )
+            .is_ok()
+            {
+                let monitor_scale_x = monitor_dpi_x as f64 / 96.0;
+                let monitor_scale_y = monitor_dpi_y as f64 / 96.0;
+                info!(
+                    "GetDpiForMonitor: X={} DPI (scale: {}), Y={} DPI (scale: {})",
+                    monitor_dpi_x, monitor_scale_x, monitor_dpi_y, monitor_scale_y
+                );
+
+                // Use monitor DPI as it's most likely to reflect actual scaling
+                info!("=== Using Monitor DPI ===");
+                return Ok(monitor_scale_x);
+            } else {
+                warn!("GetDpiForMonitor failed, falling back to system DPI");
+            }
+
+            info!("=== Using System DPI ===");
+            Ok(system_scale)
         }
     }
 
