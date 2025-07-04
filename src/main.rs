@@ -565,92 +565,107 @@ impl MechabellumTester {
         // Wait a bit more for the game to fully load
         thread::sleep(Duration::from_secs(10));
 
-        // Execute each step
-        for (step_index, step) in script.steps.iter().enumerate() {
-            info!("Executing step {}: {:?}", step_index + 1, step);
+        // Execute steps with proper cleanup - use a closure to ensure cleanup happens
+        let execution_result = (|| -> Result<()> {
+            // Execute each step
+            for (step_index, step) in script.steps.iter().enumerate() {
+                info!("Executing step {}: {:?}", step_index + 1, step);
 
-            match step {
-                TestStep::Screenshot { name, description } => {
-                    if let Some(desc) = description {
-                        info!("Taking screenshot '{}': {}", name, desc);
+                match step {
+                    TestStep::Screenshot { name, description } => {
+                        if let Some(desc) = description {
+                            info!("Taking screenshot '{}': {}", name, desc);
+                        }
+                        let screenshot = self.take_screenshot()?;
+                        let screenshot_path = format!("script_screenshot_{}.png", name);
+                        screenshot.save(&screenshot_path)?;
+                        info!("Screenshot saved to: {}", screenshot_path);
                     }
-                    let screenshot = self.take_screenshot()?;
-                    let screenshot_path = format!("script_screenshot_{}.png", name);
-                    screenshot.save(&screenshot_path)?;
-                    info!("Screenshot saved to: {}", screenshot_path);
-                }
 
-                TestStep::Click {
-                    target,
-                    description,
-                    wait,
-                } => {
-                    if let Some(desc) = description {
-                        info!("Clicking '{}': {}", target, desc);
-                    }
-                    self.click_button(target)?;
+                    TestStep::Click {
+                        target,
+                        description,
+                        wait,
+                    } => {
+                        if let Some(desc) = description {
+                            info!("Clicking '{}': {}", target, desc);
+                        }
+                        self.click_button(target)?;
 
-                    if let Some(wait_ms) = wait {
-                        thread::sleep(Duration::from_millis(*wait_ms));
+                        if let Some(wait_ms) = wait {
+                            thread::sleep(Duration::from_millis(*wait_ms));
+                        }
                     }
-                }
 
-                TestStep::Read {
-                    target,
-                    description,
-                    save_to,
-                    key,
-                } => {
-                    if let Some(desc) = description {
-                        info!("Reading from '{}': {}", target, desc);
-                    }
-                    let text = self.extract_text_from_region(target)?;
+                    TestStep::Read {
+                        target,
+                        description,
+                        save_to,
+                        key,
+                    } => {
+                        if let Some(desc) = description {
+                            info!("Reading from '{}': {}", target, desc);
+                        }
+                        let text = self.extract_text_from_region(target)?;
 
-                    if let (Some(file_path), Some(key_name)) = (save_to, key) {
-                        self.update_resource_file(file_path, key_name, &text)?;
+                        if let (Some(file_path), Some(key_name)) = (save_to, key) {
+                            self.update_resource_file(file_path, key_name, &text)?;
+                        }
                     }
-                }
 
-                TestStep::Verify {
-                    target,
-                    expect,
-                    description,
-                } => {
-                    if let Some(desc) = description {
-                        info!("Verifying '{}': {}", target, desc);
+                    TestStep::Verify {
+                        target,
+                        expect,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!("Verifying '{}': {}", target, desc);
+                        }
+                        let success = self.verify_text(target, expect)?;
+                        if !success {
+                            return Err(anyhow::anyhow!(
+                                "Verification failed for '{}': expected text '{}' not found",
+                                target,
+                                expect
+                            ));
+                        }
                     }
-                    let success = self.verify_text(target, expect)?;
-                    if !success {
-                        return Err(anyhow::anyhow!(
-                            "Verification failed for '{}': expected text '{}' not found",
-                            target,
-                            expect
-                        ));
-                    }
-                }
 
-                TestStep::Wait {
-                    duration,
-                    description,
-                } => {
-                    if let Some(desc) = description {
-                        info!("Waiting {} ms: {}", duration, desc);
-                    } else {
-                        info!("Waiting {} ms", duration);
+                    TestStep::Wait {
+                        duration,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!("Waiting {} ms: {}", duration, desc);
+                        } else {
+                            info!("Waiting {} ms", duration);
+                        }
+                        thread::sleep(Duration::from_millis(*duration));
                     }
-                    thread::sleep(Duration::from_millis(*duration));
                 }
             }
+            Ok(())
+        })();
+
+        // ALWAYS close the game window, regardless of success or failure
+        info!("Closing game window...");
+        if let Err(close_error) = self.close_game_window() {
+            warn!("Failed to close game window: {}", close_error);
+        } else {
+            info!("Game window closed");
         }
 
-        info!("Test script '{}' completed successfully", script.name);
-
-        // Close the game window gracefully
-        info!("Closing game window...");
-        self.close_game_window()?;
-        info!("Game window closed");
-
-        Ok(())
+        // Handle the execution result after cleanup
+        match execution_result {
+            Ok(()) => {
+                info!("Test script '{}' completed successfully", script.name);
+                Ok(())
+            }
+            Err(e) => {
+                warn!("Test script '{}' failed: {}", script.name, e);
+                Err(e)
+            }
+        }
     }
 }
 
