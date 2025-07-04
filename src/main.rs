@@ -367,7 +367,7 @@ impl MechabellumTester {
         Ok(1.0)
     }
 
-    fn launch_game(&self) -> Result<()> {
+    fn launch_game(&self, startup_wait_ms: u64) -> Result<()> {
         info!("Launching Mechabellum via Steam");
 
         let steam_url = format!("steam://rungameid/{}", self.config.steam_app_id);
@@ -388,8 +388,8 @@ impl MechabellumTester {
                 .context("Failed to launch Steam game")?;
         }
 
-        info!("Waiting for game to start...");
-        thread::sleep(Duration::from_secs(30));
+        info!("Waiting for game to start ({} ms)...", startup_wait_ms);
+        thread::sleep(Duration::from_millis(startup_wait_ms));
 
         self.focus_game_window()?;
         Ok(())
@@ -665,11 +665,8 @@ impl MechabellumTester {
     fn run_test_sequence(&mut self) -> Result<()> {
         info!("Starting Mechabellum test sequence");
 
-        // Launch the game
-        self.launch_game()?;
-
-        // Wait a bit more for the game to fully load
-        thread::sleep(Duration::from_secs(10));
+        // Launch the game with default wait time
+        self.launch_game(default_game_startup_wait())?;
 
         // Example test sequence - customize based on your needs
         info!("Running test sequence...");
@@ -713,11 +710,8 @@ impl MechabellumTester {
         info!("Executing test script: {}", script.name);
         info!("Game startup wait time: {} ms", script.game_startup_wait);
 
-        // Launch the game
-        self.launch_game()?;
-
-        // Wait for the game to fully load (configurable)
-        thread::sleep(Duration::from_millis(script.game_startup_wait));
+        // Launch the game with configurable wait time
+        self.launch_game(script.game_startup_wait)?;
 
         // Execute steps with proper cleanup - use a closure to ensure cleanup happens
         let execution_result = (|| -> Result<()> {
