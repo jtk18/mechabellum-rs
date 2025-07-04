@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
-use log::{info, warn};
+use log::{debug, info, warn};
 use regex::Regex;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
