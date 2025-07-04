@@ -53,7 +53,7 @@ enum Commands {
         #[arg(short = 'w', long)]
         width: i32,
         /// Height
-        #[arg(short = 'h', long)]
+        #[arg(short = 'H', long)]
         height: i32,
         /// Optional description for the region
         #[arg(short, long)]
@@ -80,7 +80,7 @@ enum Commands {
         #[arg(short = 'w', long)]
         width: i32,
         /// Height
-        #[arg(short = 'h', long)]
+        #[arg(short = 'H', long)]
         height: i32,
         /// Optional description for the button
         #[arg(short, long)]
