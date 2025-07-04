@@ -28,15 +28,17 @@ image = "0.25"            # Image processing and template matching
 screenshots = "0.8.10"    # Screen capture
 clap = { version = "4.0", features = ["derive"] }  # CLI argument parsing
 windows = "0.58"          # Windows API integration
+serde_yaml = "0.9"        # YAML parsing for DSL test scripts
 ```
 
 ## Project Structure
 
 ### **Main Source File (`src/main.rs`)**
-- **CLI Commands**: Four modes - `run` (normal testing), `add-region` (direct coordinate input), `add-button` (direct coordinate input), and `find-regions` (batch template matching)
+- **CLI Commands**: Five modes - `run` (normal testing), `add-region` (direct coordinate input), `add-button` (direct coordinate input), `find-regions` (batch template matching), and `execute-script` (YAML-based test sequences)
 - **MechabellumTester**: Main struct handling game automation
 - **Template Matching**: Optimized functions for finding UI elements in screenshots with single-pass batch processing
 - **Config Management**: JSON-based configuration for buttons, text regions, and settings
+- **DSL Engine**: YAML-based Domain Specific Language for defining test sequences
 
 ### **Configuration (`config.json`)**
 ```json
@@ -106,6 +108,12 @@ cargo run -- --save-screenshots find-regions \
   --screenshot "main_menu.png" \
   --template "button1.png" \
   --template "button2.png"
+
+# Execute a YAML test script
+cargo run -- execute-script --script example_test.yml
+
+# Execute test script with debug screenshots
+cargo run -- --save-screenshots execute-script --script example_test.yml
 ```
 
 ### **Debug Mode**
@@ -145,6 +153,14 @@ RUST_LOG=debug cargo run -- --save-screenshots run
 - **JSON Updates**: Modifies game data files with extracted information
 - **Flexible Structure**: Supports any JSON key-value updates
 - **File Creation**: Creates new files if they don't exist
+
+### **5. YAML-Based Test DSL**
+- **Declarative Syntax**: Define test sequences in human-readable YAML format
+- **Five Action Types**: `screenshot`, `click`, `read`, `verify`, `wait`
+- **Flexible Parameters**: Optional descriptions, wait times, file outputs
+- **Config Integration**: References buttons/regions defined in config.json
+- **Error Handling**: Fails fast with descriptive error messages
+- **Debug Support**: Works with `--save-screenshots` flag for troubleshooting
 
 ## Important Implementation Details
 
@@ -207,10 +223,18 @@ Without the flag, temporary files are used and automatically cleaned up.
 ## Code Conventions
 
 ### **Code Formatting**
-- **ALWAYS run `cargo fmt`** before committing any Rust code changes
+- **MANDATORY: Run `cargo fmt` after EVERY code change and before presenting your changes to a human**
 - Use standard Rust formatting conventions (handled automatically by `cargo fmt`)
 - Maintain consistent indentation and line wrapping
 - Format long function signatures and parameter lists properly
+- Claude Code must run `cargo fmt` immediately after making any modifications to Rust files
+
+### **DSL Maintenance**
+- **MANDATORY: Keep DSL documentation synchronized with code changes**
+- When modifying TestStep enum or DSL functionality, update the YAML Test DSL Syntax section
+- When adding new action types, document them with examples in this file
+- Ensure example_test.yml demonstrates current DSL capabilities
+- Update CLI command documentation when DSL commands change
 
 ### **Error Handling**
 - Use `anyhow::Result` for all fallible functions
@@ -263,4 +287,4 @@ Without the flag, temporary files are used and automatically cleaned up.
 - Only performs legitimate automation tasks
 - Does not modify game files or memory
 - Respects game's terms of service
-- All operations are external to the game process\n\n## CLI Command Reference\n\n### **find-regions** (Optimized Batch Template Matching)\n```bash\ncargo run -- find-regions --screenshot SCREENSHOT --template TEMPLATE1 --template TEMPLATE2 ...\n```\n- Efficiently searches for multiple templates in a single pass through the screenshot\n- Outputs ready-to-use `add-region` commands for each found template\n- Template names automatically derived from filenames (without extension)\n- Use `--save-screenshots` flag to generate marked screenshots showing detection results\n\n### **add-region** (Direct Coordinate Input)\n```bash\ncargo run -- add-region --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a text region directly to config.json with specified coordinates\n- Optional: `--description DESC`, `--expected-text TEXT`, `--pattern REGEX`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **add-button** (Direct Coordinate Input)\n```bash\ncargo run -- add-button --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a button directly to config.json with specified coordinates\n- Optional: `--description DESC`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **run** (Normal Game Testing)\n```bash\ncargo run [-- --save-screenshots] [run]\n```\n- Executes the main game automation sequence\n- Optional: `--save-screenshots` saves debug images for troubleshooting\n\n## New Workflow Advantages\n\n1. **Performance**: Single-pass template matching is 5x+ faster for multiple templates\n2. **Flexibility**: Separate detection from configuration allows custom parameters\n3. **Reliability**: Automatic template naming prevents naming conflicts\n4. **Scalability**: Easily process dozens of templates efficiently\n5. **Debugging**: Optional marked screenshots verify detection accuracy
+- All operations are external to the game process\n\n## CLI Command Reference\n\n### **find-regions** (Optimized Batch Template Matching)\n```bash\ncargo run -- find-regions --screenshot SCREENSHOT --template TEMPLATE1 --template TEMPLATE2 ...\n```\n- Efficiently searches for multiple templates in a single pass through the screenshot\n- Outputs ready-to-use `add-region` commands for each found template\n- Template names automatically derived from filenames (without extension)\n- Use `--save-screenshots` flag to generate marked screenshots showing detection results\n\n### **add-region** (Direct Coordinate Input)\n```bash\ncargo run -- add-region --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a text region directly to config.json with specified coordinates\n- Optional: `--description DESC`, `--expected-text TEXT`, `--pattern REGEX`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **add-button** (Direct Coordinate Input)\n```bash\ncargo run -- add-button --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a button directly to config.json with specified coordinates\n- Optional: `--description DESC`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **run** (Normal Game Testing)\n```bash\ncargo run [-- --save-screenshots] [run]\n```\n- Executes the main game automation sequence\n- Optional: `--save-screenshots` saves debug images for troubleshooting\n\n### **execute-script** (YAML-Based Test Sequences)\n```bash\ncargo run -- execute-script --script TEST_SCRIPT.yml\n```\n- Executes a YAML-defined test sequence instead of hardcoded logic\n- References buttons and regions from config.json\n- Optional: `--save-screenshots` saves debug images for each step\n\n## YAML Test DSL Syntax\n\n### **DSL Structure**\n```yaml\nname: "Test Script Name"\ndescription: "Optional description"\nsteps:\n  - action: ACTION_TYPE\n    # action-specific parameters\n```\n\n### **Action Types**\n\n#### **screenshot** - Capture Screen\n```yaml\n- action: screenshot\n  name: "screenshot_name"           # Required: filename suffix\n  description: "Optional description"\n```\n\n#### **click** - Click Button\n```yaml\n- action: click\n  target: "button_name"            # Required: button name from config.json\n  description: "Optional description"\n  wait: 2000                       # Optional: milliseconds to wait after click\n```\n\n#### **read** - Extract Text\n```yaml\n- action: read\n  target: "region_name"            # Required: text region name from config.json\n  description: "Optional description"\n  save_to: "output.json"           # Optional: JSON file to update\n  key: "extracted_value"           # Optional: JSON key for saved value\n```\n\n#### **verify** - Check Text\n```yaml\n- action: verify\n  target: "region_name"            # Required: text region name from config.json\n  expect: "Expected Text"          # Required: text that must be present\n  description: "Optional description"\n```\n\n#### **wait** - Pause Execution\n```yaml\n- action: wait\n  duration: 1000                   # Required: milliseconds to wait\n  description: "Optional description"\n```\n\n### **Example Test Script**\n```yaml\nname: "Mechabellum Basic Test"\ndescription: "Example test sequence"\nsteps:\n  - action: screenshot\n    name: "main_menu"\n    description: "Capture main menu"\n  \n  - action: click\n    target: "main_menu"\n    description: "Click main menu button"\n    wait: 2000\n  \n  - action: read\n    target: "version_info"\n    description: "Extract version"\n    save_to: "game_data.json"\n    key: "version"\n  \n  - action: verify\n    target: "version_info"\n    expect: "Version"\n    description: "Verify version text"\n```\n\n## New Workflow Advantages\n\n1. **Performance**: Single-pass template matching is 5x+ faster for multiple templates\n2. **Flexibility**: Separate detection from configuration allows custom parameters\n3. **Reliability**: Automatic template naming prevents naming conflicts\n4. **Scalability**: Easily process dozens of templates efficiently\n5. **Debugging**: Optional marked screenshots verify detection accuracy\n6. **Maintainability**: YAML test scripts are easier to read and modify than hardcoded sequences\n7. **Reusability**: Different test scenarios can be defined in separate YAML files
