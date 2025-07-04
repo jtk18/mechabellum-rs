@@ -86,7 +86,7 @@ impl MechabellumTester {
         )?;
 
         if output.status.success() {
-            let version_info = String::from_utf8_lossy(&output.stderr);
+            let version_info = String::from_utf8_lossy(&output.stdout);
             info!(
                 "Tesseract found: {}",
                 version_info.lines().next().unwrap_or("Unknown version")
