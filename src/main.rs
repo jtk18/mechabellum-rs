@@ -18,7 +18,7 @@ use tempfile::NamedTempFile;
 use windows::core::PCSTR;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, WM_CLOSE, SW_RESTORE,
+    FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
 };
 
 #[derive(Parser)]
@@ -36,17 +36,23 @@ struct Cli {
 enum Commands {
     /// Run the normal testing sequence
     Run,
-    /// Add a new region to config by finding a template image within a screenshot
+    /// Add a new region to config with specified coordinates
     AddRegion {
-        /// Path to the full screenshot image
-        #[arg(short, long)]
-        screenshot: String,
-        /// Path to the template image to find
-        #[arg(short, long)]
-        template: String,
         /// Name for the new region
         #[arg(short, long)]
         name: String,
+        /// X coordinate
+        #[arg(short = 'x', long)]
+        x: i32,
+        /// Y coordinate
+        #[arg(short = 'y', long)]
+        y: i32,
+        /// Width
+        #[arg(short = 'w', long)]
+        width: i32,
+        /// Height
+        #[arg(short = 'h', long)]
+        height: i32,
         /// Optional description for the region
         #[arg(short, long)]
         description: Option<String>,
@@ -56,6 +62,36 @@ enum Commands {
         /// Optional regex pattern for text extraction
         #[arg(short = 'p', long)]
         pattern: Option<String>,
+    },
+    /// Add a new button to config with specified coordinates
+    AddButton {
+        /// Name for the new button
+        #[arg(short, long)]
+        name: String,
+        /// X coordinate
+        #[arg(short = 'x', long)]
+        x: i32,
+        /// Y coordinate
+        #[arg(short = 'y', long)]
+        y: i32,
+        /// Width
+        #[arg(short = 'w', long)]
+        width: i32,
+        /// Height
+        #[arg(short = 'h', long)]
+        height: i32,
+        /// Optional description for the button
+        #[arg(short, long)]
+        description: Option<String>,
+    },
+    /// Find multiple template images within a screenshot and output add-region commands
+    FindRegions {
+        /// Path to the full screenshot image
+        #[arg(short, long)]
+        screenshot: String,
+        /// Paths to template images to find (specify multiple times)
+        #[arg(short, long)]
+        template: Vec<String>,
     },
 }
 
@@ -208,17 +244,26 @@ impl MechabellumTester {
                     // Send WM_CLOSE message to gracefully close the window
                     let result = PostMessageA(handle, WM_CLOSE, 0, 0);
                     if result.is_ok() {
-                        info!("Sent close message to game window: {}", self.config.window_title);
+                        info!(
+                            "Sent close message to game window: {}",
+                            self.config.window_title
+                        );
                         // Give the game a moment to close gracefully
                         thread::sleep(Duration::from_secs(3));
                     } else {
                         warn!("Failed to send close message to game window");
                     }
                 } else {
-                    warn!("Invalid game window handle for: {}", self.config.window_title);
+                    warn!(
+                        "Invalid game window handle for: {}",
+                        self.config.window_title
+                    );
                 }
             } else {
-                warn!("Could not find game window to close: {}", self.config.window_title);
+                warn!(
+                    "Could not find game window to close: {}",
+                    self.config.window_title
+                );
             }
         }
         Ok(())
@@ -445,7 +490,7 @@ impl MechabellumTester {
         // For example: navigating menus, checking game state, etc.
 
         info!("Test sequence completed successfully");
-        
+
         // Close the game window gracefully
         info!("Closing game window...");
         self.close_game_window()?;
@@ -621,6 +666,60 @@ fn add_region_to_config(
     Ok(())
 }
 
+fn add_button_to_config(
+    config_path: &str,
+    button_name: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    description: Option<String>,
+) -> Result<()> {
+    info!(
+        "Adding button '{}' at ({}, {}) {}x{} to config",
+        button_name, x, y, width, height
+    );
+
+    // Load existing config or create new one
+    let mut config = if Path::new(config_path).exists() {
+        let config_content =
+            fs::read_to_string(config_path).context("Failed to read existing config file")?;
+        serde_json::from_str::<GameConfig>(&config_content)
+            .context("Failed to parse existing config JSON")?
+    } else {
+        // Create a basic config if none exists
+        GameConfig {
+            steam_app_id: "669330".to_string(),
+            window_title: "Mechabellum".to_string(),
+            buttons: HashMap::new(),
+            text_regions: HashMap::new(),
+            resource_files: vec!["game_data.json".to_string()],
+        }
+    };
+
+    // Add the new button
+    let new_button = ButtonConfig {
+        x: x as i32,
+        y: y as i32,
+        width: width as i32,
+        height: height as i32,
+        description: description.unwrap_or_else(|| format!("Button at ({}, {})", x, y)),
+    };
+
+    config.buttons.insert(button_name.to_string(), new_button);
+
+    // Save updated config
+    let config_json =
+        serde_json::to_string_pretty(&config).context("Failed to serialize updated config")?;
+    fs::write(config_path, config_json).context("Failed to write updated config file")?;
+
+    info!(
+        "Successfully added button '{}' to config file: {}",
+        button_name, config_path
+    );
+    Ok(())
+}
+
 fn save_marked_screenshot(
     screenshot_path: &str,
     x: u32,
@@ -674,21 +773,18 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::AddRegion {
-            screenshot,
-            template,
             name,
+            x,
+            y,
+            width,
+            height,
             description,
             expected_text,
             pattern,
         }) => {
-            info!("Running template matching to add region '{}'", name);
-
-            // Find template in screenshot
-            let (x, y, width, height) = find_template_in_image(&screenshot, &template)?;
-
             info!(
-                "Template found at position: ({}, {}) with size: {}x{}",
-                x, y, width, height
+                "Adding region '{}' with coordinates ({}, {}) {}x{}",
+                name, x, y, width, height
             );
 
             // Add region to config
@@ -696,21 +792,103 @@ fn main() -> Result<()> {
             add_region_to_config(
                 config_path,
                 &name,
-                x,
-                y,
-                width,
-                height,
+                x as u32,
+                y as u32,
+                width as u32,
+                height as u32,
                 description,
                 expected_text,
                 pattern,
             )?;
 
             info!("Region '{}' successfully added to config!", name);
+        }
+        Some(Commands::AddButton {
+            name,
+            x,
+            y,
+            width,
+            height,
+            description,
+        }) => {
+            info!(
+                "Adding button '{}' with coordinates ({}, {}) {}x{}",
+                name, x, y, width, height
+            );
 
-            // Save a marked version of the screenshot showing the found region
-            let marked_screenshot_path = format!("marked_screenshot_{}.png", name);
-            save_marked_screenshot(&screenshot, x, y, width, height, &marked_screenshot_path)?;
-            info!("Saved marked screenshot to: {}", marked_screenshot_path);
+            // Add button to config
+            let config_path = "config.json";
+            add_button_to_config(
+                config_path,
+                &name,
+                x as u32,
+                y as u32,
+                width as u32,
+                height as u32,
+                description,
+            )?;
+
+            info!("Button '{}' successfully added to config!", name);
+        }
+        Some(Commands::FindRegions {
+            screenshot,
+            template,
+        }) => {
+            info!(
+                "Finding {} templates in screenshot '{}'",
+                template.len(),
+                screenshot
+            );
+
+            // Process each template
+            for template_path in template.iter() {
+                // Extract filename without extension as the region name
+                let template_name = Path::new(template_path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+
+                info!(
+                    "Processing template: {} -> {}",
+                    template_path, template_name
+                );
+
+                match find_template_in_image(&screenshot, template_path) {
+                    Ok((x, y, width, height)) => {
+                        info!(
+                            "Template '{}' found at position: ({}, {}) with size: {}x{}",
+                            template_name, x, y, width, height
+                        );
+
+                        // Output the add-region command for this template
+                        println!(
+                            "cargo run -- add-region --name {} --x {} --y {} --width {} --height {}",
+                            template_name, x, y, width, height
+                        );
+
+                        // Save a marked version of the screenshot showing the found region
+                        if cli.save_screenshots {
+                            let marked_screenshot_path =
+                                format!("marked_screenshot_{}.png", template_name);
+                            save_marked_screenshot(
+                                &screenshot,
+                                x,
+                                y,
+                                width,
+                                height,
+                                &marked_screenshot_path,
+                            )?;
+                            info!("Saved marked screenshot to: {}", marked_screenshot_path);
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to find template '{}' in screenshot: {}",
+                            template_name, e
+                        );
+                    }
+                }
+            }
         }
         Some(Commands::Run) | None => {
             info!("Starting Mechabellum Tester");
