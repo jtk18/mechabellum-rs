@@ -64,6 +64,9 @@ windows = "0.58"          # Windows API integration
 
 ### **Build and Run**
 ```bash
+# Format code (ALWAYS run before committing)
+cargo fmt
+
 # Clean build
 cargo clean && cargo build --release
 
@@ -71,6 +74,9 @@ cargo clean && cargo build --release
 cargo run
 # or explicitly 
 cargo run -- run
+
+# Normal testing mode with debug screenshots
+cargo run -- --save-screenshots run
 
 # Template matching mode
 cargo run -- add-region \
@@ -80,11 +86,21 @@ cargo run -- add-region \
   --description "Button description" \
   --expected-text "PLAY" \
   --pattern "PLAY.*"
+
+# Template matching with debug screenshots
+cargo run -- --save-screenshots add-region \
+  --screenshot "screenshot.png" \
+  --template "button.png" \
+  --name "new_button"
 ```
 
 ### **Debug Mode**
 ```bash
+# Debug logging
 RUST_LOG=debug cargo run
+
+# Debug logging with screenshot saving
+RUST_LOG=debug cargo run -- --save-screenshots run
 ```
 
 ## Key Features
@@ -99,7 +115,8 @@ RUST_LOG=debug cargo run
 - **Tesseract Integration**: Direct executable calls (avoids vcpkg/leptonica-sys issues)
 - **Region-based**: Extracts text from specific screen coordinates
 - **Pattern Matching**: Regex support for extracting specific data
-- **Debug Screenshots**: Saves full and cropped images for troubleshooting
+- **Conditional Debug Screenshots**: `--save-screenshots` flag saves full and cropped images for troubleshooting
+- **Temporary Files**: Uses temporary files by default for cleaner operation
 
 ### **3. Template Matching**
 - **Automatic Detection**: Finds smaller images within larger screenshots
@@ -138,9 +155,12 @@ RUST_LOG=debug cargo run
 ## Debugging and Troubleshooting
 
 ### **Debug File Outputs**
+When using `--save-screenshots` flag:
 - `debug_full_screenshot_{region_name}.png` - Complete screen capture
 - `debug_cropped_region_{region_name}.png` - Extracted region for OCR
-- `marked_screenshot_{region_name}.png` - Screenshot with red border showing detected region
+- `marked_screenshot_{region_name}.png` - Screenshot with red border showing detected region (template matching only)
+
+Without the flag, temporary files are used and automatically cleaned up.
 
 ### **Common Issues and Solutions**
 
@@ -165,6 +185,12 @@ RUST_LOG=debug cargo run
    - Check Windows permissions for automation
 
 ## Code Conventions
+
+### **Code Formatting**
+- **ALWAYS run `cargo fmt`** before committing any Rust code changes
+- Use standard Rust formatting conventions (handled automatically by `cargo fmt`)
+- Maintain consistent indentation and line wrapping
+- Format long function signatures and parameter lists properly
 
 ### **Error Handling**
 - Use `anyhow::Result` for all fallible functions

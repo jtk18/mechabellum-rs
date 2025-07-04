@@ -24,6 +24,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Save debug screenshots to permanent files instead of temporary files
+    #[arg(long, global = true)]
+    save_screenshots: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -93,10 +97,11 @@ struct ResourceUpdate {
 struct MechabellumTester {
     config: GameConfig,
     enigo: Enigo,
+    save_screenshots: bool,
 }
 
 impl MechabellumTester {
-    fn new(config_path: &str) -> Result<Self> {
+    fn new(config_path: &str, save_screenshots: bool) -> Result<Self> {
         let config_content =
             fs::read_to_string(config_path).context("Failed to read config file")?;
         let config: GameConfig =
@@ -107,7 +112,11 @@ impl MechabellumTester {
         // Test tesseract installation
         Self::test_tesseract()?;
 
-        Ok(MechabellumTester { config, enigo })
+        Ok(MechabellumTester {
+            config,
+            enigo,
+            save_screenshots,
+        })
     }
 
     fn test_tesseract() -> Result<()> {
@@ -245,13 +254,6 @@ impl MechabellumTester {
             .context(format!("Text region '{}' not found in config", region_name))?;
 
         let screenshot = self.take_screenshot()?;
-        
-        // Save full screenshot for debugging
-        let full_screenshot_path = format!("debug_full_screenshot_{}.png", region_name);
-        screenshot.save(&full_screenshot_path)
-            .context("Failed to save full screenshot")?;
-        info!("Saved full screenshot to: {}", full_screenshot_path);
-        
         let cropped = screenshot.crop_imm(
             region.x as u32,
             region.y as u32,
@@ -259,41 +261,48 @@ impl MechabellumTester {
             region.height as u32,
         );
 
-        // Save cropped region for debugging (permanent file)
-        let cropped_path = format!("debug_cropped_region_{}.png", region_name);
-        cropped.save(&cropped_path)
-            .context("Failed to save cropped region")?;
-        info!("Saved cropped region to: {}", cropped_path);
+        let output = if self.save_screenshots {
+            // Save debug screenshots for troubleshooting
+            let full_screenshot_path = format!("debug_full_screenshot_{}.png", region_name);
+            screenshot
+                .save(&full_screenshot_path)
+                .context("Failed to save full screenshot")?;
+            info!("Saved full screenshot to: {}", full_screenshot_path);
 
-        // Use the permanent cropped file for tesseract
-        let output = Command::new("tesseract")
-            .arg(&cropped_path)
-            .arg("stdout")
-            .arg("-l")
-            .arg("eng")
-            .output()
-            .context("Failed to run tesseract command")?;
+            // Save cropped region for debugging (permanent file)
+            let cropped_path = format!("debug_cropped_region_{}.png", region_name);
+            cropped
+                .save(&cropped_path)
+                .context("Failed to save cropped region")?;
+            info!("Saved cropped region to: {}", cropped_path);
 
-        // Commented out temporary file approach
-        /*
-        // Create a temporary file for the cropped image
-        let temp_file =
-            NamedTempFile::with_suffix(".png").context("Failed to create temporary file")?;
-        let temp_path = temp_file.path();
+            // Use the permanent cropped file for tesseract
+            Command::new("tesseract")
+                .arg(&cropped_path)
+                .arg("stdout")
+                .arg("-l")
+                .arg("eng")
+                .output()
+                .context("Failed to run tesseract command")?
+        } else {
+            // Use temporary file approach for normal operation
+            let temp_file =
+                NamedTempFile::with_suffix(".png").context("Failed to create temporary file")?;
+            let temp_path = temp_file.path();
 
-        cropped
-            .save(temp_path)
-            .context("Failed to save temporary image")?;
+            cropped
+                .save(temp_path)
+                .context("Failed to save temporary image")?;
 
-        // Run tesseract on the temporary file
-        let output = Command::new("tesseract")
-            .arg(temp_path)
-            .arg("stdout")
-            .arg("-l")
-            .arg("eng")
-            .output()
-            .context("Failed to run tesseract command")?;
-        */
+            // Run tesseract on the temporary file
+            Command::new("tesseract")
+                .arg(temp_path)
+                .arg("stdout")
+                .arg("-l")
+                .arg("eng")
+                .output()
+                .context("Failed to run tesseract command")?
+        };
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -408,12 +417,15 @@ impl MechabellumTester {
 }
 
 // Template matching functionality
-fn find_template_in_image(screenshot_path: &str, template_path: &str) -> Result<(u32, u32, u32, u32)> {
+fn find_template_in_image(
+    screenshot_path: &str,
+    template_path: &str,
+) -> Result<(u32, u32, u32, u32)> {
     info!("Loading screenshot: {}", screenshot_path);
     let screenshot = image::open(screenshot_path)
         .context("Failed to load screenshot image")?
         .to_rgba8();
-    
+
     info!("Loading template: {}", template_path);
     let template = image::open(template_path)
         .context("Failed to load template image")?
@@ -425,12 +437,17 @@ fn find_template_in_image(screenshot_path: &str, template_path: &str) -> Result<
     if template_width > screenshot_width || template_height > screenshot_height {
         return Err(anyhow::anyhow!(
             "Template image ({} x {}) is larger than screenshot ({} x {})",
-            template_width, template_height, screenshot_width, screenshot_height
+            template_width,
+            template_height,
+            screenshot_width,
+            screenshot_height
         ));
     }
 
-    info!("Searching for template ({} x {}) in screenshot ({} x {})", 
-          template_width, template_height, screenshot_width, screenshot_height);
+    info!(
+        "Searching for template ({} x {}) in screenshot ({} x {})",
+        template_width, template_height, screenshot_width, screenshot_height
+    );
 
     let mut best_match_score = f64::MAX;
     let mut best_match_pos = (0u32, 0u32);
@@ -439,36 +456,51 @@ fn find_template_in_image(screenshot_path: &str, template_path: &str) -> Result<
     for y in 0..=(screenshot_height - template_height) {
         for x in 0..=(screenshot_width - template_width) {
             let score = calculate_match_score(&screenshot, &template, x, y);
-            
+
             if score < best_match_score {
                 best_match_score = score;
                 best_match_pos = (x, y);
             }
         }
-        
+
         // Progress indicator for large images
         if y % 50 == 0 {
-            info!("Progress: {} / {} rows", y, screenshot_height - template_height);
+            info!(
+                "Progress: {} / {} rows",
+                y,
+                screenshot_height - template_height
+            );
         }
     }
 
-    info!("Best match found at position ({}, {}) with score: {:.2}", 
-          best_match_pos.0, best_match_pos.1, best_match_score);
+    info!(
+        "Best match found at position ({}, {}) with score: {:.2}",
+        best_match_pos.0, best_match_pos.1, best_match_score
+    );
 
     // If the match score is reasonable (lower is better), return the coordinates
-    if best_match_score < 50.0 { // Threshold for acceptable match
-        Ok((best_match_pos.0, best_match_pos.1, template_width, template_height))
+    if best_match_score < 50.0 {
+        // Threshold for acceptable match
+        Ok((
+            best_match_pos.0,
+            best_match_pos.1,
+            template_width,
+            template_height,
+        ))
     } else {
         Err(anyhow::anyhow!(
-            "No good match found. Best score was {:.2} (threshold: 50.0)", 
+            "No good match found. Best score was {:.2} (threshold: 50.0)",
             best_match_score
         ))
     }
 }
 
-fn calculate_match_score(screenshot: &ImageBuffer<Rgba<u8>, Vec<u8>>, 
-                        template: &ImageBuffer<Rgba<u8>, Vec<u8>>, 
-                        start_x: u32, start_y: u32) -> f64 {
+fn calculate_match_score(
+    screenshot: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    template: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    start_x: u32,
+    start_y: u32,
+) -> f64 {
     let (template_width, template_height) = template.dimensions();
     let mut total_diff = 0f64;
     let mut pixel_count = 0;
@@ -491,15 +523,26 @@ fn calculate_match_score(screenshot: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     total_diff / pixel_count as f64
 }
 
-fn add_region_to_config(config_path: &str, region_name: &str, x: u32, y: u32, width: u32, height: u32, 
-                       description: Option<String>, expected_text: Option<String>, 
-                       pattern: Option<String>) -> Result<()> {
-    info!("Adding region '{}' at ({}, {}) {}x{} to config", region_name, x, y, width, height);
+fn add_region_to_config(
+    config_path: &str,
+    region_name: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    description: Option<String>,
+    expected_text: Option<String>,
+    pattern: Option<String>,
+) -> Result<()> {
+    info!(
+        "Adding region '{}' at ({}, {}) {}x{} to config",
+        region_name, x, y, width, height
+    );
 
     // Load existing config or create new one
     let mut config = if Path::new(config_path).exists() {
-        let config_content = fs::read_to_string(config_path)
-            .context("Failed to read existing config file")?;
+        let config_content =
+            fs::read_to_string(config_path).context("Failed to read existing config file")?;
         serde_json::from_str::<GameConfig>(&config_content)
             .context("Failed to parse existing config JSON")?
     } else {
@@ -523,27 +566,37 @@ fn add_region_to_config(config_path: &str, region_name: &str, x: u32, y: u32, wi
         extract_pattern: pattern,
     };
 
-    config.text_regions.insert(region_name.to_string(), new_region);
+    config
+        .text_regions
+        .insert(region_name.to_string(), new_region);
 
     // Save updated config
-    let config_json = serde_json::to_string_pretty(&config)
-        .context("Failed to serialize updated config")?;
-    fs::write(config_path, config_json)
-        .context("Failed to write updated config file")?;
+    let config_json =
+        serde_json::to_string_pretty(&config).context("Failed to serialize updated config")?;
+    fs::write(config_path, config_json).context("Failed to write updated config file")?;
 
-    info!("Successfully added region '{}' to config file: {}", region_name, config_path);
+    info!(
+        "Successfully added region '{}' to config file: {}",
+        region_name, config_path
+    );
     Ok(())
 }
 
-fn save_marked_screenshot(screenshot_path: &str, x: u32, y: u32, width: u32, height: u32, 
-                         output_path: &str) -> Result<()> {
+fn save_marked_screenshot(
+    screenshot_path: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    output_path: &str,
+) -> Result<()> {
     let mut screenshot = image::open(screenshot_path)
         .context("Failed to load screenshot for marking")?
         .to_rgba8();
 
     // Draw a red rectangle around the found region
     let red = Rgba([255u8, 0u8, 0u8, 255u8]);
-    
+
     // Draw top and bottom borders
     for px in x..=(x + width) {
         if px < screenshot.width() {
@@ -555,7 +608,7 @@ fn save_marked_screenshot(screenshot_path: &str, x: u32, y: u32, width: u32, hei
             }
         }
     }
-    
+
     // Draw left and right borders
     for py in y..=(y + height) {
         if py < screenshot.height() {
@@ -568,40 +621,53 @@ fn save_marked_screenshot(screenshot_path: &str, x: u32, y: u32, width: u32, hei
         }
     }
 
-    screenshot.save(output_path)
+    screenshot
+        .save(output_path)
         .context("Failed to save marked screenshot")?;
-    
+
     Ok(())
 }
 
 fn main() -> Result<()> {
     env_logger::init();
-    
+
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::AddRegion { 
-            screenshot, 
-            template, 
-            name, 
-            description, 
-            expected_text, 
-            pattern 
+        Some(Commands::AddRegion {
+            screenshot,
+            template,
+            name,
+            description,
+            expected_text,
+            pattern,
         }) => {
             info!("Running template matching to add region '{}'", name);
-            
+
             // Find template in screenshot
             let (x, y, width, height) = find_template_in_image(&screenshot, &template)?;
-            
-            info!("Template found at position: ({}, {}) with size: {}x{}", x, y, width, height);
-            
+
+            info!(
+                "Template found at position: ({}, {}) with size: {}x{}",
+                x, y, width, height
+            );
+
             // Add region to config
             let config_path = "config.json";
-            add_region_to_config(config_path, &name, x, y, width, height, 
-                               description, expected_text, pattern)?;
-            
+            add_region_to_config(
+                config_path,
+                &name,
+                x,
+                y,
+                width,
+                height,
+                description,
+                expected_text,
+                pattern,
+            )?;
+
             info!("Region '{}' successfully added to config!", name);
-            
+
             // Save a marked version of the screenshot showing the found region
             let marked_screenshot_path = format!("marked_screenshot_{}.png", name);
             save_marked_screenshot(&screenshot, x, y, width, height, &marked_screenshot_path)?;
@@ -618,7 +684,7 @@ fn main() -> Result<()> {
                 return Ok(());
             }
 
-            let mut tester = MechabellumTester::new(config_path)?;
+            let mut tester = MechabellumTester::new(config_path, cli.save_screenshots)?;
             tester.run_test_sequence()?;
         }
     }
