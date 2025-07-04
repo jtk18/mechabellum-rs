@@ -17,6 +17,8 @@ use tempfile::NamedTempFile;
 #[cfg(target_os = "windows")]
 use windows::core::PCSTR;
 #[cfg(target_os = "windows")]
+use windows::Win32::Foundation::{LPARAM, WPARAM};
+#[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowA, PostMessageA, SetForegroundWindow, ShowWindow, SW_RESTORE, WM_CLOSE,
 };
@@ -242,7 +244,7 @@ impl MechabellumTester {
             if let Ok(handle) = hwnd {
                 if !handle.is_invalid() {
                     // Send WM_CLOSE message to gracefully close the window
-                    let result = PostMessageA(handle, WM_CLOSE, 0, 0);
+                    let result = PostMessageA(handle, WM_CLOSE, WPARAM(0), LPARAM(0));
                     if result.is_ok() {
                         info!(
                             "Sent close message to game window: {}",
@@ -614,7 +616,7 @@ fn add_region_to_config(
     y: u32,
     width: u32,
     height: u32,
-    description: Option<String>,
+    _description: Option<String>,
     expected_text: Option<String>,
     pattern: Option<String>,
 ) -> Result<()> {
