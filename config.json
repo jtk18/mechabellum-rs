@@ -1,0 +1,63 @@
+{
+  "steam_app_id": "669330",
+  "window_title": "Mechabellum",
+  "buttons": {
+    "crawler": {
+      "x": 525,
+      "y": 588,
+      "width": 125,
+      "height": 45,
+      "description": "Button at (525, 588)"
+    },
+    "solo_button": {
+      "x": 794,
+      "y": 44,
+      "width": 84,
+      "height": 48,
+      "description": "Solo button"
+    },
+    "unit_modification": {
+      "x": 1187,
+      "y": 41,
+      "width": 301,
+      "height": 54,
+      "description": "Button at (1187, 41)"
+    },
+    "fang": {
+      "x": 743,
+      "y": 587,
+      "width": 82,
+      "height": 43,
+      "description": "Button at (743, 587)"
+    },
+    "bar": {
+      "x": 482,
+      "y": 1149,
+      "width": 1162,
+      "height": 44,
+      "description": "Button at (482, 1149)"
+    }
+  },
+  "text_regions": {
+    "version_info": {
+      "x": 11,
+      "y": 123,
+      "width": 195,
+      "height": 36,
+      "expected_text": null,
+      "extract_pattern": "Version (.*)"
+    },
+    "player_name": {
+      "x": 396,
+      "y": 1410,
+      "width": 353,
+      "height": 51,
+      "expected_text": null,
+      "extract_pattern": "(.*)"
+    }
+  },
+  "resource_files": [
+    "game_data.json",
+    "player_stats.json"
+  ]
+}
