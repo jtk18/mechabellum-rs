@@ -156,7 +156,7 @@ RUST_LOG=debug cargo run -- --save-screenshots run
 
 ### **5. YAML-Based Test DSL**
 - **Declarative Syntax**: Define test sequences in human-readable YAML format
-- **Five Action Types**: `screenshot`, `click`, `read`, `verify`, `wait`
+- **Six Action Types**: `screenshot`, `click`, `read`, `verify`, `wait`, `drag`
 - **Flexible Parameters**: Optional descriptions, wait times, file outputs
 - **Config Integration**: References buttons/regions defined in config.json
 - **Error Handling**: Fails fast with descriptive error messages
@@ -287,6 +287,152 @@ Without the flag, temporary files are used and automatically cleaned up.
 - Only performs legitimate automation tasks
 - Does not modify game files or memory
 - Respects game's terms of service
-- All operations are external to the game process\n\n## CLI Command Reference\n\n### **find-regions** (Optimized Batch Template Matching)\n```bash\ncargo run -- find-regions --screenshot SCREENSHOT --template TEMPLATE1 --template TEMPLATE2 ...\n```\n- Efficiently searches for multiple templates in a single pass through the screenshot\n- Outputs ready-to-use `add-region` commands for each found template\n- Template names automatically derived from filenames (without extension)\n- Use `--save-screenshots` flag to generate marked screenshots showing detection results\n\n### **add-region** (Direct Coordinate Input)\n```bash\ncargo run -- add-region --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a text region directly to config.json with specified coordinates\n- Optional: `--description DESC`, `--expected-text TEXT`, `--pattern REGEX`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **add-button** (Direct Coordinate Input)\n```bash\ncargo run -- add-button --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]\n```\n- Adds a button directly to config.json with specified coordinates\n- Optional: `--description DESC`\n- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`\n\n### **run** (Normal Game Testing)\n```bash\ncargo run [-- --save-screenshots] [run]\n```\n- Executes the main game automation sequence\n- Optional: `--save-screenshots` saves debug images for troubleshooting\n\n### **execute-script** (YAML-Based Test Sequences)\n```bash\ncargo run -- execute-script --script TEST_SCRIPT.yml\n```\n- Executes a YAML-defined test sequence instead of hardcoded logic\n- References buttons and regions from config.json\n- Optional: `--save-screenshots` saves debug images for each step\n\n## YAML Test DSL Syntax\n\n### **DSL Structure**\n```yaml\nname: "Test Script Name"
-game_startup_wait: 5000\ndescription: "Optional description"\nsteps:\n  - action: ACTION_TYPE\n    # action-specific parameters\n```\n\n### **Action Types**\n\n#### **screenshot** - Capture Screen\n```yaml\n- action: screenshot\n  name: "screenshot_name"           # Required: filename suffix\n  description: "Optional description"\n```\n\n#### **click** - Click Button\n```yaml\n- action: click\n  target: "button_name"            # Required: button name from config.json\n  description: "Optional description"\n  wait: 2000                       # Optional: milliseconds to wait after click\n```\n\n#### **read** - Extract Text\n```yaml\n- action: read\n  target: "region_name"            # Required: text region name from config.json\n  description: "Optional description"\n  save_to: "output.json"           # Optional: JSON file to update\n  key: "extracted_value"           # Optional: JSON key for saved value\n```\n\n#### **verify** - Check Text\n```yaml\n- action: verify\n  target: "region_name"            # Required: text region name from config.json\n  expect: "Expected Text"          # Required: text that must be present\n  description: "Optional description"\n```\n\n#### **wait** - Pause Execution\n```yaml\n- action: wait\n  duration: 1000                   # Required: milliseconds to wait\n  description: "Optional description"\n```\n\n### **Example Test Script**\n```yaml\nname: "Mechabellum Basic Test"
-game_startup_wait: 5000\ndescription: "Example test sequence"\nsteps:\n  - action: screenshot\n    name: "main_menu"\n    description: "Capture main menu"\n  \n  - action: click\n    target: "main_menu"\n    description: "Click main menu button"\n    wait: 2000\n  \n  - action: read\n    target: "version_info"\n    description: "Extract version"\n    save_to: "game_data.json"\n    key: "version"\n  \n  - action: verify\n    target: "version_info"\n    expect: "Version"\n    description: "Verify version text"\n```\n\n## New Workflow Advantages\n\n1. **Performance**: Single-pass template matching is 5x+ faster for multiple templates\n2. **Flexibility**: Separate detection from configuration allows custom parameters\n3. **Reliability**: Automatic template naming prevents naming conflicts\n4. **Scalability**: Easily process dozens of templates efficiently\n5. **Debugging**: Optional marked screenshots verify detection accuracy\n6. **Maintainability**: YAML test scripts are easier to read and modify than hardcoded sequences\n7. **Reusability**: Different test scenarios can be defined in separate YAML files
+- All operations are external to the game process
+
+## CLI Command Reference
+
+### **find-regions** (Optimized Batch Template Matching)
+```bash
+cargo run -- find-regions --screenshot SCREENSHOT --template TEMPLATE1 --template TEMPLATE2 ...
+```
+- Efficiently searches for multiple templates in a single pass through the screenshot
+- Outputs ready-to-use `add-region` commands for each found template
+- Template names automatically derived from filenames (without extension)
+- Use `--save-screenshots` flag to generate marked screenshots showing detection results
+
+### **add-region** (Direct Coordinate Input)
+```bash
+cargo run -- add-region --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]
+```
+- Adds a text region directly to config.json with specified coordinates
+- Optional: `--description DESC`, `--expected-text TEXT`, `--pattern REGEX`
+- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`
+
+### **add-button** (Direct Coordinate Input)
+```bash
+cargo run -- add-button --name NAME --x X --y Y --width WIDTH --height HEIGHT [OPTIONS]
+```
+- Adds a button directly to config.json with specified coordinates
+- Optional: `--description DESC`
+- Use `-H` for height (uppercase) to avoid conflict with help flag `-h`
+
+### **run** (Normal Game Testing)
+```bash
+cargo run [-- --save-screenshots] [run]
+```
+- Executes the main game automation sequence
+- Optional: `--save-screenshots` saves debug images for troubleshooting
+
+### **execute-script** (YAML-Based Test Sequences)
+```bash
+cargo run -- execute-script --script TEST_SCRIPT.yml
+```
+- Executes a YAML-defined test sequence instead of hardcoded logic
+- References buttons and regions from config.json
+- Optional: `--save-screenshots` saves debug images for each step
+
+## YAML Test DSL Syntax
+
+### **DSL Structure**
+```yaml
+name: "Test Script Name"
+game_startup_wait: 5000
+description: "Optional description"
+steps:
+  - action: ACTION_TYPE
+    # action-specific parameters
+```
+
+### **Action Types**
+
+#### **screenshot** - Capture Screen
+```yaml
+- action: screenshot
+  name: "screenshot_name"           # Required: filename suffix
+  description: "Optional description"
+```
+
+#### **click** - Click Button
+```yaml
+- action: click
+  target: "button_name"            # Required: button name from config.json
+  description: "Optional description"
+  wait: 2000                       # Optional: milliseconds to wait after click
+```
+
+#### **read** - Extract Text
+```yaml
+- action: read
+  target: "region_name"            # Required: text region name from config.json
+  description: "Optional description"
+  save_to: "output.json"           # Optional: JSON file to update
+  key: "extracted_value"           # Optional: JSON key for saved value
+```
+
+#### **verify** - Check Text
+```yaml
+- action: verify
+  target: "region_name"            # Required: text region name from config.json
+  expect: "Expected Text"          # Required: text that must be present
+  description: "Optional description"
+```
+
+#### **wait** - Pause Execution
+```yaml
+- action: wait
+  duration: 1000                   # Required: milliseconds to wait
+  description: "Optional description"
+```
+
+#### **drag** - Drag from Region
+```yaml
+- action: drag
+  target: "region_name"            # Required: region name from config.json (buttons or text_regions)
+  direction: "up"                  # Required: "up", "down", "left", or "right"
+  distance: 100                    # Required: pixels to drag
+  description: "Optional description"
+```
+
+### **Example Test Script**
+```yaml
+name: "Mechabellum Basic Test"
+game_startup_wait: 5000
+description: "Example test sequence"
+steps:
+  - action: screenshot
+    name: "main_menu"
+    description: "Capture main menu"
+  
+  - action: click
+    target: "main_menu"
+    description: "Click main menu button"
+    wait: 2000
+  
+  - action: read
+    target: "version_info"
+    description: "Extract version"
+    save_to: "game_data.json"
+    key: "version"
+  
+  - action: verify
+    target: "version_info"
+    expect: "Version"
+    description: "Verify version text"
+  
+  - action: drag
+    target: "scroll_area"
+    direction: "down"
+    distance: 200
+    description: "Scroll down 200 pixels"
+```
+
+## New Workflow Advantages
+
+1. **Performance**: Single-pass template matching is 5x+ faster for multiple templates
+2. **Flexibility**: Separate detection from configuration allows custom parameters
+3. **Reliability**: Automatic template naming prevents naming conflicts
+4. **Scalability**: Easily process dozens of templates efficiently
+5. **Debugging**: Optional marked screenshots verify detection accuracy
+6. **Maintainability**: YAML test scripts are easier to read and modify than hardcoded sequences
+7. **Reusability**: Different test scenarios can be defined in separate YAML files
+8. **Mouse Actions**: Supports clicking and dragging for comprehensive UI interaction

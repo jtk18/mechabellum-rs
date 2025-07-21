@@ -214,6 +214,13 @@ enum TestStep {
         duration: u64,
         description: Option<String>,
     },
+    #[serde(rename = "drag")]
+    Drag {
+        target: String,
+        direction: String,
+        distance: i32,
+        description: Option<String>,
+    },
 }
 
 struct MechabellumTester {
@@ -526,6 +533,90 @@ impl MechabellumTester {
         Ok(())
     }
 
+    fn drag_from_region(
+        &mut self,
+        region_name: &str,
+        direction: &str,
+        distance: i32,
+    ) -> Result<()> {
+        // Get the region from either buttons or text_regions
+        let (start_x, start_y) = if let Some(button) = self.config.buttons.get(region_name) {
+            (button.x + button.width / 2, button.y + button.height / 2)
+        } else if let Some(text_region) = self.config.text_regions.get(region_name) {
+            (
+                text_region.x + text_region.width / 2,
+                text_region.y + text_region.height / 2,
+            )
+        } else {
+            return Err(anyhow::anyhow!(
+                "Region '{}' not found in buttons or text_regions",
+                region_name
+            ));
+        };
+
+        // Calculate end position based on direction and distance
+        let (end_x, end_y) = match direction.to_lowercase().as_str() {
+            "up" => (start_x, start_y - distance),
+            "down" => (start_x, start_y + distance),
+            "left" => (start_x - distance, start_y),
+            "right" => (start_x + distance, start_y),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Invalid direction '{}'. Must be 'up', 'down', 'left', or 'right'",
+                    direction
+                ))
+            }
+        };
+
+        // Apply DPI scaling correction
+        let corrected_start_x = (start_x as f64 / self.scale_factor) as i32;
+        let corrected_start_y = (start_y as f64 / self.scale_factor) as i32;
+        let corrected_end_x = (end_x as f64 / self.scale_factor) as i32;
+        let corrected_end_y = (end_y as f64 / self.scale_factor) as i32;
+
+        info!(
+            "Dragging from region '{}' at ({}, {}) {} pixels {} to ({}, {})",
+            region_name, start_x, start_y, distance, direction, end_x, end_y
+        );
+        info!(
+            "DPI corrected coordinates: ({}, {}) -> ({}, {}) with scale factor {}",
+            corrected_start_x,
+            corrected_start_y,
+            corrected_end_x,
+            corrected_end_y,
+            self.scale_factor
+        );
+
+        // Move mouse to start position
+        self.enigo
+            .move_mouse(corrected_start_x, corrected_start_y, Coordinate::Abs)
+            .context("Failed to move mouse to start position")?;
+
+        thread::sleep(Duration::from_millis(100));
+
+        // Press mouse button down
+        self.enigo
+            .button(Button::Left, Direction::Press)
+            .context("Failed to press mouse button")?;
+
+        thread::sleep(Duration::from_millis(100));
+
+        // Move mouse to end position while holding button
+        self.enigo
+            .move_mouse(corrected_end_x, corrected_end_y, Coordinate::Abs)
+            .context("Failed to move mouse to end position")?;
+
+        thread::sleep(Duration::from_millis(100));
+
+        // Release mouse button
+        self.enigo
+            .button(Button::Left, Direction::Release)
+            .context("Failed to release mouse button")?;
+
+        thread::sleep(Duration::from_millis(500));
+        Ok(())
+    }
+
     fn extract_text_from_region(&self, region_name: &str) -> Result<String> {
         let region = self
             .config
@@ -789,6 +880,26 @@ impl MechabellumTester {
                             info!("Waiting {} ms", duration);
                         }
                         thread::sleep(Duration::from_millis(*duration));
+                    }
+
+                    TestStep::Drag {
+                        target,
+                        direction,
+                        distance,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!(
+                                "Dragging from '{}' {} pixels {}: {}",
+                                target, distance, direction, desc
+                            );
+                        } else {
+                            info!(
+                                "Dragging from '{}' {} pixels {}",
+                                target, distance, direction
+                            );
+                        }
+                        self.drag_from_region(target, direction, *distance)?;
                     }
                 }
             }
