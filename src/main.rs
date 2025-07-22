@@ -630,10 +630,10 @@ impl MechabellumTester {
 
     fn extract_text_from_region(&self, region_name: &str) -> Result<String> {
         // Try to get region from text_regions first, then from buttons
-        let (x, y, width, height) = if let Some(region) = self.config.text_regions.get(region_name) {
-            (region.x, region.y, region.width, region.height)
+        let (x, y, width, height, pattern_opt) = if let Some(region) = self.config.text_regions.get(region_name) {
+            (region.x, region.y, region.width, region.height, region.extract_pattern.as_ref())
         } else if let Some(button) = self.config.buttons.get(region_name) {
-            (button.x, button.y, button.width, button.height)
+            (button.x, button.y, button.width, button.height, None)
         } else {
             return Err(anyhow::anyhow!(
                 "Region '{}' not found in text_regions or buttons in config",
@@ -706,7 +706,7 @@ impl MechabellumTester {
         );
 
         // Apply regex pattern if specified
-        if let Some(pattern) = &region.extract_pattern {
+        if let Some(pattern) = &pattern_opt {
             let regex = Regex::new(pattern).context("Failed to compile regex pattern")?;
 
             if let Some(captures) = regex.captures(&cleaned_text) {
