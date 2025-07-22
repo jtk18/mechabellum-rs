@@ -9,19 +9,68 @@
       "height": 45,
       "description": "Button at (525, 588)"
     },
-    "solo_button": {
-      "x": 794,
-      "y": 44,
-      "width": 84,
-      "height": 48,
-      "description": "Solo button"
+    "sledgehammer": {
+      "x": 1893,
+      "y": 582,
+      "width": 180,
+      "height": 50,
+      "description": "Button at (1893, 582)"
     },
-    "unit_modification": {
-      "x": 1187,
-      "y": 41,
-      "width": 301,
-      "height": 54,
-      "description": "Button at (1187, 41)"
+    "raiden": {
+      "x": 2121,
+      "y": 1025,
+      "width": 122,
+      "height": 43,
+      "description": "Button at (2121, 1025)"
+    },
+    "melting_point": {
+      "x": 1485,
+      "y": 1020,
+      "width": 188,
+      "height": 50,
+      "description": "Button at (1485, 1020)"
+    },
+    "wraith": {
+      "x": 728,
+      "y": 1028,
+      "width": 117,
+      "height": 34,
+      "description": "Button at (728, 1028)"
+    },
+    "stormcaller": {
+      "x": 2093,
+      "y": 585,
+      "width": 175,
+      "height": 51,
+      "description": "Button at (2093, 585)"
+    },
+    "phantom_ray": {
+      "x": 492,
+      "y": 1025,
+      "width": 186,
+      "height": 45,
+      "description": "Button at (492, 1025)"
+    },
+    "marksman": {
+      "x": 1503,
+      "y": 594,
+      "width": 158,
+      "height": 36,
+      "description": "Button at (1503, 594)"
+    },
+    "bar": {
+      "x": 482,
+      "y": 1149,
+      "width": 1162,
+      "height": 44,
+      "description": "Button at (482, 1149)"
+    },
+    "mustang": {
+      "x": 1716,
+      "y": 585,
+      "width": 131,
+      "height": 47,
+      "description": "Button at (1716, 585)"
     },
     "fang": {
       "x": 743,
@@ -30,12 +79,61 @@
       "height": 43,
       "description": "Button at (743, 587)"
     },
-    "bar": {
-      "x": 482,
-      "y": 1149,
-      "width": 1162,
-      "height": 44,
-      "description": "Button at (482, 1149)"
+    "solo_button": {
+      "x": 794,
+      "y": 44,
+      "width": 84,
+      "height": 48,
+      "description": "Solo button"
+    },
+    "fortress": {
+      "x": 1709,
+      "y": 1028,
+      "width": 141,
+      "height": 43,
+      "description": "Button at (1709, 1028)"
+    },
+    "unit_modification": {
+      "x": 1187,
+      "y": 41,
+      "width": 301,
+      "height": 54,
+      "description": "Button at (1187, 41)"
+    },
+    "arclight": {
+      "x": 1323,
+      "y": 591,
+      "width": 123,
+      "height": 41,
+      "description": "Button at (1323, 591)"
+    },
+    "farseer": {
+      "x": 1125,
+      "y": 1026,
+      "width": 119,
+      "height": 42,
+      "description": "Button at (1125, 1026)"
+    },
+    "scorpion": {
+      "x": 915,
+      "y": 1026,
+      "width": 138,
+      "height": 41,
+      "description": "Button at (915, 1026)"
+    },
+    "void_eye": {
+      "x": 1115,
+      "y": 587,
+      "width": 136,
+      "height": 45,
+      "description": "Button at (1115, 587)"
+    },
+    "sandworm": {
+      "x": 1902,
+      "y": 1026,
+      "width": 156,
+      "height": 47,
+      "description": "Button at (1902, 1026)"
     }
   },
   "text_regions": {
