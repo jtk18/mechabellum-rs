@@ -629,18 +629,24 @@ impl MechabellumTester {
     }
 
     fn extract_text_from_region(&self, region_name: &str) -> Result<String> {
-        let region = self
-            .config
-            .text_regions
-            .get(region_name)
-            .context(format!("Text region '{}' not found in config", region_name))?;
+        // Try to get region from text_regions first, then from buttons
+        let (x, y, width, height) = if let Some(region) = self.config.text_regions.get(region_name) {
+            (region.x, region.y, region.width, region.height)
+        } else if let Some(button) = self.config.buttons.get(region_name) {
+            (button.x, button.y, button.width, button.height)
+        } else {
+            return Err(anyhow::anyhow!(
+                "Region '{}' not found in text_regions or buttons in config",
+                region_name
+            ));
+        };
 
         let screenshot = self.take_screenshot()?;
         let cropped = screenshot.crop_imm(
-            region.x as u32,
-            region.y as u32,
-            region.width as u32,
-            region.height as u32,
+            x as u32,
+            y as u32,
+            width as u32,
+            height as u32,
         );
 
         let output = if self.save_screenshots {
