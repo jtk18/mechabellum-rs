@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, warn};
+use rayon::prelude::*;
 use regex::Regex;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -928,7 +931,7 @@ impl MechabellumTester {
     }
 }
 
-// Template matching functionality
+// Template matching functionality with multi-threading and progress bar
 fn find_multiple_templates_in_image(
     screenshot_path: &str,
     template_paths: &[String],
@@ -979,55 +982,87 @@ fn find_multiple_templates_in_image(
         }
     }
 
-    // Initialize best match tracking for each template
-    let mut best_matches: Vec<Option<(f64, u32, u32, u32, u32)>> = vec![None; templates.len()];
+    // Initialize best match tracking for each template using Arc<Mutex> for thread safety
+    let best_matches: Arc<Mutex<Vec<Option<(f64, u32, u32, u32, u32)>>>> =
+        Arc::new(Mutex::new(vec![None; templates.len()]));
 
     info!(
-        "Starting single-pass template matching across {} templates",
+        "Starting multi-threaded template matching across {} templates",
         templates.len()
     );
 
-    // Single pass through the screenshot
-    for y in 0..screenshot_height {
-        for x in 0..screenshot_width {
-            // Check each template at this position
-            for (template_idx, template_result) in templates.iter().enumerate() {
-                if let Ok((template, template_width, template_height)) = template_result {
-                    // Check if template fits at this position
-                    if x + template_width <= screenshot_width
-                        && y + template_height <= screenshot_height
-                    {
-                        let score = calculate_match_score(&screenshot, template, x, y);
+    // Setup progress bar
+    let total_pixels = (screenshot_width as u64) * (screenshot_height as u64);
+    let progress_bar = ProgressBar::new(total_pixels);
+    progress_bar.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} pixels ({percent}%) {msg}")
+            .expect("Failed to set progress bar template")
+            .progress_chars("#>-"),
+    );
+    progress_bar.set_message("Searching for templates...");
 
-                        // Update best match if this is better
-                        match &best_matches[template_idx] {
-                            None => {
-                                best_matches[template_idx] =
-                                    Some((score, x, y, *template_width, *template_height));
-                            }
-                            Some((best_score, _, _, _, _)) => {
-                                if score < *best_score {
-                                    best_matches[template_idx] =
+    // Create chunks of rows for parallel processing
+    let chunk_size = std::cmp::max(1, screenshot_height / rayon::current_num_threads() as u32);
+    let row_chunks: Vec<u32> = (0..screenshot_height)
+        .step_by(chunk_size as usize)
+        .collect();
+
+    // Process chunks in parallel
+    row_chunks.par_iter().for_each(|&start_y| {
+        let end_y = std::cmp::min(start_y + chunk_size, screenshot_height);
+
+        for y in start_y..end_y {
+            for x in 0..screenshot_width {
+                // Check each template at this position
+                for (template_idx, template_result) in templates.iter().enumerate() {
+                    if let Ok((template, template_width, template_height)) = template_result {
+                        // Check if template fits at this position
+                        if x + template_width <= screenshot_width
+                            && y + template_height <= screenshot_height
+                        {
+                            let score = calculate_match_score(&screenshot, template, x, y);
+
+                            // Update best match if this is better (thread-safe)
+                            let mut best_matches_guard = best_matches.lock().unwrap();
+                            match &best_matches_guard[template_idx] {
+                                None => {
+                                    best_matches_guard[template_idx] =
                                         Some((score, x, y, *template_width, *template_height));
+                                }
+                                Some((best_score, _, _, _, _)) => {
+                                    if score < *best_score {
+                                        best_matches_guard[template_idx] =
+                                            Some((score, x, y, *template_width, *template_height));
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                // Update progress bar (every 100 pixels to avoid too much contention)
+                if x % 100 == 0 {
+                    progress_bar.inc(100);
+                }
+            }
+
+            // Update progress for remaining pixels in the row
+            if screenshot_width % 100 != 0 {
+                progress_bar.inc((screenshot_width % 100) as u64);
             }
         }
+    });
 
-        // Progress indicator for large images
-        if y % 50 == 0 {
-            info!("Progress: {} / {} rows", y, screenshot_height);
-        }
-    }
+    progress_bar.finish_with_message("Template matching completed!");
 
     // Convert results
     let mut results = Vec::new();
+    let best_matches_final = best_matches.lock().unwrap();
+
     for (template_idx, template_result) in templates.iter().enumerate() {
         match template_result {
-            Ok(_) => match &best_matches[template_idx] {
+            Ok(_) => match &best_matches_final[template_idx] {
                 Some((score, x, y, width, height)) => {
                     if *score < 50.0 {
                         info!(
@@ -1097,6 +1132,18 @@ fn find_template_in_image(
     let mut best_match_score = f64::MAX;
     let mut best_match_pos = (0u32, 0u32);
 
+    // Setup progress bar for single template matching
+    let total_positions = ((screenshot_height - template_height + 1) as u64)
+        * ((screenshot_width - template_width + 1) as u64);
+    let progress_bar = ProgressBar::new(total_positions);
+    progress_bar.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} positions ({percent}%) {msg}")
+            .expect("Failed to set progress bar template")
+            .progress_chars("#>-"),
+    );
+    progress_bar.set_message("Searching for template...");
+
     // Slide the template across the screenshot
     for y in 0..=(screenshot_height - template_height) {
         for x in 0..=(screenshot_width - template_width) {
@@ -1106,17 +1153,12 @@ fn find_template_in_image(
                 best_match_score = score;
                 best_match_pos = (x, y);
             }
-        }
 
-        // Progress indicator for large images
-        if y % 50 == 0 {
-            info!(
-                "Progress: {} / {} rows",
-                y,
-                screenshot_height - template_height
-            );
+            progress_bar.inc(1);
         }
     }
+
+    progress_bar.finish_with_message("Template search completed!");
 
     info!(
         "Best match found at position ({}, {}) with score: {:.2}",
