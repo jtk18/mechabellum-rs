@@ -705,19 +705,6 @@ impl MechabellumTester {
             region_name, cleaned_text
         );
 
-        // Apply regex pattern if specified
-        if let Some(pattern) = &region.extract_pattern {
-            let regex = Regex::new(pattern).context("Failed to compile regex pattern")?;
-
-            if let Some(captures) = regex.captures(&cleaned_text) {
-                if let Some(matched) = captures.get(1) {
-                    let pattern_result = matched.as_str().to_string();
-                    info!("Pattern matched: '{}'", pattern_result);
-                    return Ok(pattern_result);
-                }
-            }
-        }
-
         Ok(cleaned_text)
     }
 
