@@ -393,6 +393,16 @@ steps:
   description: "Optional description"
 ```
 
+#### **wait_for_text** - Wait for Text to Appear
+```yaml
+- action: wait_for_text
+  target: "region_name"            # Required: text region name from config.json
+  expect: "Expected Text"          # Required: text that must be present
+  timeout: 30000                   # Optional: timeout in milliseconds (default: 30000)
+  check_interval: 1000            # Optional: check interval in milliseconds (default: 1000)
+  description: "Optional description"
+```
+
 ### **Example Test Script**
 ```yaml
 name: "Mechabellum Basic Test"
@@ -402,6 +412,13 @@ steps:
   - action: screenshot
     name: "main_menu"
     description: "Capture main menu"
+  
+  - action: wait_for_text
+    target: "main_menu_title"
+    expect: "MAIN MENU"
+    timeout: 60000
+    check_interval: 2000
+    description: "Wait for main menu to fully load"
   
   - action: click
     target: "main_menu"
@@ -436,3 +453,4 @@ steps:
 6. **Maintainability**: YAML test scripts are easier to read and modify than hardcoded sequences
 7. **Reusability**: Different test scenarios can be defined in separate YAML files
 8. **Mouse Actions**: Supports clicking and dragging for comprehensive UI interaction
+9. **Smart Waiting**: `wait_for_text` command eliminates fixed delays by waiting for actual game state changes

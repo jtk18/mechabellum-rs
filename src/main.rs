@@ -224,6 +224,14 @@ enum TestStep {
         distance: i32,
         description: Option<String>,
     },
+    #[serde(rename = "wait_for_text")]
+    WaitForText {
+        target: String,
+        expect: String,
+        timeout: Option<u64>,
+        check_interval: Option<u64>,
+        description: Option<String>,
+    },
 }
 
 struct MechabellumTester {
@@ -756,6 +764,63 @@ impl MechabellumTester {
         Ok(())
     }
 
+    fn wait_for_text_in_region(
+        &self,
+        region_name: &str,
+        expected_text: &str,
+        timeout_ms: u64,
+        check_interval_ms: u64,
+    ) -> Result<()> {
+        info!(
+            "Waiting for text '{}' in region '{}' (timeout: {}ms, interval: {}ms)",
+            expected_text, region_name, timeout_ms, check_interval_ms
+        );
+
+        let start_time = std::time::Instant::now();
+        let timeout_duration = Duration::from_millis(timeout_ms);
+
+        loop {
+            // Check if timeout has been reached
+            if start_time.elapsed() > timeout_duration {
+                return Err(anyhow::anyhow!(
+                    "Timeout waiting for text '{}' in region '{}' after {}ms",
+                    expected_text,
+                    region_name,
+                    timeout_ms
+                ));
+            }
+
+            // Try to extract text from the region
+            match self.extract_text_from_region(region_name) {
+                Ok(extracted_text) => {
+                    debug!(
+                        "Extracted text from region '{}': '{}'",
+                        region_name, extracted_text
+                    );
+
+                    if extracted_text.contains(expected_text) {
+                        info!(
+                            "Found expected text '{}' in region '{}' after {}ms",
+                            expected_text,
+                            region_name,
+                            start_time.elapsed().as_millis()
+                        );
+                        return Ok(());
+                    }
+                }
+                Err(e) => {
+                    debug!(
+                        "Failed to extract text from region '{}': {}",
+                        region_name, e
+                    );
+                }
+            }
+
+            // Wait before next check
+            thread::sleep(Duration::from_millis(check_interval_ms));
+        }
+    }
+
     fn run_test_sequence(&mut self) -> Result<()> {
         info!("Starting Mechabellum test sequence");
 
@@ -903,6 +968,33 @@ impl MechabellumTester {
                             );
                         }
                         self.drag_from_region(target, direction, *distance)?;
+                    }
+
+                    TestStep::WaitForText {
+                        target,
+                        expect,
+                        timeout,
+                        check_interval,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!(
+                                "Waiting for text '{}' in region '{}': {}",
+                                expect, target, desc
+                            );
+                        } else {
+                            info!("Waiting for text '{}' in region '{}'", expect, target);
+                        }
+
+                        let timeout_ms = timeout.unwrap_or(30000); // Default 30 seconds
+                        let check_interval_ms = check_interval.unwrap_or(1000); // Default 1 second
+
+                        self.wait_for_text_in_region(
+                            target,
+                            expect,
+                            timeout_ms,
+                            check_interval_ms,
+                        )?;
                     }
                 }
             }
