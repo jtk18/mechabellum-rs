@@ -241,6 +241,20 @@ enum TestStep {
         category: Option<String>,
         description: Option<String>,
     },
+    #[serde(rename = "create_object_array")]
+    CreateObjectArray {
+        array_name: String,
+        regions: Vec<String>,
+        object_keys: Vec<String>,
+        description: Option<String>,
+    },
+    #[serde(rename = "save_object_array")]
+    SaveObjectArray {
+        array_name: String,
+        save_to: String,
+        json_key: String,
+        description: Option<String>,
+    },
 }
 
 struct MechabellumTester {
@@ -248,6 +262,7 @@ struct MechabellumTester {
     enigo: Enigo,
     save_screenshots: bool,
     scale_factor: f64,
+    object_arrays: HashMap<String, Vec<serde_json::Value>>,
 }
 
 impl MechabellumTester {
@@ -271,6 +286,7 @@ impl MechabellumTester {
             enigo,
             save_screenshots,
             scale_factor,
+            object_arrays: HashMap::new(),
         })
     }
 
@@ -907,6 +923,124 @@ impl MechabellumTester {
         Ok(())
     }
 
+    fn add_object_to_array(
+        &mut self,
+        array_name: &str,
+        regions: &[String],
+        object_keys: &[String],
+    ) -> Result<()> {
+        info!(
+            "Adding object to array '{}' from {} regions",
+            array_name,
+            regions.len()
+        );
+
+        // Validate that regions and object_keys have the same length
+        if regions.len() != object_keys.len() {
+            return Err(anyhow::anyhow!(
+                "Regions count ({}) must match object_keys count ({})",
+                regions.len(),
+                object_keys.len()
+            ));
+        }
+
+        // Extract text from each region and build object
+        let mut object_data = serde_json::Map::new();
+        for (region_name, object_key) in regions.iter().zip(object_keys.iter()) {
+            match self.extract_text_from_region(region_name) {
+                Ok(extracted_text) => {
+                    info!(
+                        "Extracted '{}' from region '{}' for key '{}'",
+                        extracted_text, region_name, object_key
+                    );
+                    object_data.insert(
+                        object_key.clone(),
+                        serde_json::Value::String(extracted_text),
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to extract text from region '{}' for key '{}': {}",
+                        region_name, object_key, e
+                    );
+                    // Continue with other regions rather than failing completely
+                    object_data.insert(
+                        object_key.clone(),
+                        serde_json::Value::String("ERROR".to_string()),
+                    );
+                }
+            }
+        }
+
+        // Create or get the array
+        let array = self
+            .object_arrays
+            .entry(array_name.to_string())
+            .or_insert_with(Vec::new);
+
+        // Add the object to the array
+        array.push(serde_json::Value::Object(object_data));
+
+        info!(
+            "Added object to array '{}'. Array now has {} objects",
+            array_name,
+            array.len()
+        );
+
+        Ok(())
+    }
+
+    fn save_object_array_to_file(
+        &self,
+        array_name: &str,
+        file_path: &str,
+        json_key: &str,
+    ) -> Result<()> {
+        info!(
+            "Saving object array '{}' to file '{}' under key '{}'",
+            array_name, file_path, json_key
+        );
+
+        // Get the array from memory
+        let array = self
+            .object_arrays
+            .get(array_name)
+            .ok_or_else(|| anyhow::anyhow!("Object array '{}' not found in memory", array_name))?;
+
+        let path = Path::new(file_path);
+
+        // Load existing data or create new structure
+        let mut file_data: serde_json::Value = if path.exists() {
+            let content = fs::read_to_string(path).context("Failed to read object array file")?;
+            serde_json::from_str(&content).context("Failed to parse object array file as JSON")?
+        } else {
+            serde_json::json!({})
+        };
+
+        // Ensure the root is an object
+        if !file_data.is_object() {
+            file_data = serde_json::json!({});
+        }
+
+        // Update or create the array under the specified key
+        file_data[json_key] = serde_json::Value::Array(array.clone());
+
+        // Write back to file
+        let updated_content = serde_json::to_string_pretty(&file_data)
+            .context("Failed to serialize object array JSON")?;
+
+        fs::write(path, updated_content).context("Failed to write updated object array file")?;
+
+        info!(
+            "Successfully saved object array '{}' with {} objects to file '{}' under key '{}'",
+            array_name,
+            array.len(),
+            file_path,
+            json_key
+        );
+        Ok(())
+    }
+
     fn run_test_sequence(&mut self) -> Result<()> {
         info!("Starting Mechabellum test sequence");
 
@@ -1144,6 +1278,51 @@ impl MechabellumTester {
                             &stats_data,
                             category.as_deref(),
                         )?;
+                    }
+
+                    TestStep::CreateObjectArray {
+                        array_name,
+                        regions,
+                        object_keys,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!(
+                                "Creating/adding to object array '{}' from {} regions: {}",
+                                array_name,
+                                regions.len(),
+                                desc
+                            );
+                        } else {
+                            info!(
+                                "Creating/adding to object array '{}' from {} regions",
+                                array_name,
+                                regions.len()
+                            );
+                        }
+
+                        self.add_object_to_array(array_name, regions, object_keys)?;
+                    }
+
+                    TestStep::SaveObjectArray {
+                        array_name,
+                        save_to,
+                        json_key,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!(
+                                "Saving object array '{}' to file '{}' under key '{}': {}",
+                                array_name, save_to, json_key, desc
+                            );
+                        } else {
+                            info!(
+                                "Saving object array '{}' to file '{}' under key '{}'",
+                                array_name, save_to, json_key
+                            );
+                        }
+
+                        self.save_object_array_to_file(array_name, save_to, json_key)?;
                     }
                 }
             }

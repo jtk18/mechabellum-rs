@@ -414,6 +414,24 @@ steps:
   description: "Optional description"
 ```
 
+#### **create_object_array** - Create or Add to Named Object Array
+```yaml
+- action: create_object_array
+  array_name: "battle_results"    # Required: name of the array (creates on first call, adds on subsequent)
+  regions: ["winner", "score", "duration"]  # Required: list of region names
+  object_keys: ["winner", "score", "duration"]  # Required: corresponding object keys
+  description: "Optional description"
+```
+
+#### **save_object_array** - Save Named Array to JSON File
+```yaml
+- action: save_object_array
+  array_name: "battle_results"    # Required: name of the array to save
+  save_to: "results.json"         # Required: JSON file to save to
+  json_key: "battles"             # Required: key to store the array under
+  description: "Optional description"
+```
+
 ### **Example Test Script**
 ```yaml
 name: "Mechabellum Basic Test"
@@ -468,6 +486,24 @@ steps:
     save_to: "units.json"
     category: "technologies"
     description: "Read Mustang technology bonuses"
+  
+  - action: create_object_array
+    array_name: "battle_log"
+    regions: ["battle_winner", "battle_score", "battle_duration"]
+    object_keys: ["winner", "score", "duration"]
+    description: "Record first battle result"
+  
+  - action: create_object_array
+    array_name: "battle_log"
+    regions: ["battle_winner", "battle_score", "battle_duration"]
+    object_keys: ["winner", "score", "duration"]
+    description: "Record second battle result"
+  
+  - action: save_object_array
+    array_name: "battle_log"
+    save_to: "game_data.json"
+    json_key: "battle_results"
+    description: "Save all battle results to file"
 ```
 
 ## New Workflow Advantages
@@ -482,3 +518,4 @@ steps:
 8. **Mouse Actions**: Supports clicking and dragging for comprehensive UI interaction
 9. **Smart Waiting**: `wait_for_text` command eliminates fixed delays by waiting for actual game state changes
 10. **Unit Data Management**: `read_unit_stats` command efficiently collects and organizes unit statistics with category support
+11. **Object Array Management**: `create_object_array` and `save_object_array` commands enable collection and persistence of structured data sets
