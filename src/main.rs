@@ -232,6 +232,15 @@ enum TestStep {
         check_interval: Option<u64>,
         description: Option<String>,
     },
+    #[serde(rename = "read_unit_stats")]
+    ReadUnitStats {
+        unit_name: String,
+        regions: Vec<String>,
+        stats_keys: Vec<String>,
+        save_to: String,
+        category: Option<String>,
+        description: Option<String>,
+    },
 }
 
 struct MechabellumTester {
@@ -630,24 +639,26 @@ impl MechabellumTester {
 
     fn extract_text_from_region(&self, region_name: &str) -> Result<String> {
         // Try to get region from text_regions first, then from buttons
-        let (x, y, width, height, pattern_opt) = if let Some(region) = self.config.text_regions.get(region_name) {
-            (region.x, region.y, region.width, region.height, region.extract_pattern.as_ref())
-        } else if let Some(button) = self.config.buttons.get(region_name) {
-            (button.x, button.y, button.width, button.height, None)
-        } else {
-            return Err(anyhow::anyhow!(
-                "Region '{}' not found in text_regions or buttons in config",
-                region_name
-            ));
-        };
+        let (x, y, width, height, pattern_opt) =
+            if let Some(region) = self.config.text_regions.get(region_name) {
+                (
+                    region.x,
+                    region.y,
+                    region.width,
+                    region.height,
+                    region.extract_pattern.as_ref(),
+                )
+            } else if let Some(button) = self.config.buttons.get(region_name) {
+                (button.x, button.y, button.width, button.height, None)
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Region '{}' not found in text_regions or buttons in config",
+                    region_name
+                ));
+            };
 
         let screenshot = self.take_screenshot()?;
-        let cropped = screenshot.crop_imm(
-            x as u32,
-            y as u32,
-            width as u32,
-            height as u32,
-        );
+        let cropped = screenshot.crop_imm(x as u32, y as u32, width as u32, height as u32);
 
         let output = if self.save_screenshots {
             // Save debug screenshots for troubleshooting
@@ -827,6 +838,75 @@ impl MechabellumTester {
         }
     }
 
+    fn update_unit_stats(
+        &self,
+        unit_name: &str,
+        file_path: &str,
+        stats_data: &HashMap<String, String>,
+        category: Option<&str>,
+    ) -> Result<()> {
+        info!(
+            "Updating unit stats for '{}' in file '{}' with {} stats",
+            unit_name,
+            file_path,
+            stats_data.len()
+        );
+
+        let path = Path::new(file_path);
+
+        // Load existing data or create new structure
+        let mut unit_data: serde_json::Value = if path.exists() {
+            let content = fs::read_to_string(path).context("Failed to read unit stats file")?;
+            serde_json::from_str(&content).context("Failed to parse unit stats file as JSON")?
+        } else {
+            serde_json::json!({})
+        };
+
+        // Ensure the unit entry exists
+        if !unit_data.is_object() {
+            unit_data = serde_json::json!({});
+        }
+
+        if unit_data.get(unit_name).is_none() {
+            unit_data[unit_name] = serde_json::json!({});
+        }
+
+        // Update stats either in a category or directly under the unit
+        let target_object = if let Some(cat) = category {
+            // Create category if it doesn't exist
+            if unit_data[unit_name].get(cat).is_none() {
+                unit_data[unit_name][cat] = serde_json::json!({});
+            }
+            &mut unit_data[unit_name][cat]
+        } else {
+            &mut unit_data[unit_name]
+        };
+
+        // Update each stat
+        for (key, value) in stats_data {
+            target_object[key] = serde_json::Value::String(value.clone());
+            info!(
+                "Updated {}: {} = {}",
+                if category.is_some() {
+                    format!("{}.{}", category.unwrap(), key)
+                } else {
+                    key.clone()
+                },
+                unit_name,
+                value
+            );
+        }
+
+        // Write back to file
+        let updated_content = serde_json::to_string_pretty(&unit_data)
+            .context("Failed to serialize unit stats JSON")?;
+
+        fs::write(path, updated_content).context("Failed to write updated unit stats file")?;
+
+        info!("Successfully updated unit stats file: {}", file_path);
+        Ok(())
+    }
+
     fn run_test_sequence(&mut self) -> Result<()> {
         info!("Starting Mechabellum test sequence");
 
@@ -1000,6 +1080,69 @@ impl MechabellumTester {
                             expect,
                             timeout_ms,
                             check_interval_ms,
+                        )?;
+                    }
+
+                    TestStep::ReadUnitStats {
+                        unit_name,
+                        regions,
+                        stats_keys,
+                        save_to,
+                        category,
+                        description,
+                    } => {
+                        if let Some(desc) = description {
+                            info!(
+                                "Reading unit stats for '{}' from {} regions: {}",
+                                unit_name,
+                                regions.len(),
+                                desc
+                            );
+                        } else {
+                            info!(
+                                "Reading unit stats for '{}' from {} regions",
+                                unit_name,
+                                regions.len()
+                            );
+                        }
+
+                        // Validate that regions and stats_keys have the same length
+                        if regions.len() != stats_keys.len() {
+                            return Err(anyhow::anyhow!(
+                                "Regions count ({}) must match stats_keys count ({})",
+                                regions.len(),
+                                stats_keys.len()
+                            ));
+                        }
+
+                        // Extract text from each region and build stats map
+                        let mut stats_data = HashMap::new();
+                        for (region_name, stat_key) in regions.iter().zip(stats_keys.iter()) {
+                            match self.extract_text_from_region(region_name) {
+                                Ok(extracted_text) => {
+                                    info!(
+                                        "Extracted '{}' from region '{}' for stat '{}'",
+                                        extracted_text, region_name, stat_key
+                                    );
+                                    stats_data.insert(stat_key.clone(), extracted_text);
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to extract text from region '{}' for stat '{}': {}",
+                                        region_name, stat_key, e
+                                    );
+                                    // Continue with other regions rather than failing completely
+                                    stats_data.insert(stat_key.clone(), "ERROR".to_string());
+                                }
+                            }
+                        }
+
+                        // Update the unit stats file
+                        self.update_unit_stats(
+                            unit_name,
+                            save_to,
+                            &stats_data,
+                            category.as_deref(),
                         )?;
                     }
                 }

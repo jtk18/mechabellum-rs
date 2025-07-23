@@ -403,6 +403,17 @@ steps:
   description: "Optional description"
 ```
 
+#### **read_unit_stats** - Read Multiple Stats for a Unit
+```yaml
+- action: read_unit_stats
+  unit_name: "Mustang"             # Required: name of the unit
+  regions: ["hp_region", "dmg_region", "range_region"]  # Required: list of region names
+  stats_keys: ["health", "damage", "range"]             # Required: corresponding stat keys
+  save_to: "units.json"           # Required: JSON file to save/update
+  category: "base_stats"          # Optional: category to group stats under
+  description: "Optional description"
+```
+
 ### **Example Test Script**
 ```yaml
 name: "Mechabellum Basic Test"
@@ -441,6 +452,22 @@ steps:
     direction: "down"
     distance: 200
     description: "Scroll down 200 pixels"
+  
+  - action: read_unit_stats
+    unit_name: "Mustang"
+    regions: ["unit_hp", "unit_damage", "unit_range"]
+    stats_keys: ["health", "damage", "range"]
+    save_to: "units.json"
+    category: "base_stats"
+    description: "Read Mustang base statistics"
+  
+  - action: read_unit_stats
+    unit_name: "Mustang"
+    regions: ["tech1_bonus", "tech2_bonus"]
+    stats_keys: ["armor_bonus", "speed_bonus"]
+    save_to: "units.json"
+    category: "technologies"
+    description: "Read Mustang technology bonuses"
 ```
 
 ## New Workflow Advantages
@@ -454,3 +481,4 @@ steps:
 7. **Reusability**: Different test scenarios can be defined in separate YAML files
 8. **Mouse Actions**: Supports clicking and dragging for comprehensive UI interaction
 9. **Smart Waiting**: `wait_for_text` command eliminates fixed delays by waiting for actual game state changes
+10. **Unit Data Management**: `read_unit_stats` command efficiently collects and organizes unit statistics with category support
