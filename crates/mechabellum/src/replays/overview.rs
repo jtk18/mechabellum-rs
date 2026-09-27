@@ -87,24 +87,28 @@ impl BattleRecord {
             {
                 let score: usize = report.score.parse().unwrap_or(0);
 
-                let last_round_units: Vec<UnitInstance> = report
-                    .unit_datas
-                    .new_unit_data
-                    .iter()
-                    .map(|data| UnitInstance {
-                        unit_type: Unit::from_replay_id(&data.id),
-                        xp: data.exp.parse().unwrap_or(0),
-                        position: MapPoint(
-                            data.position.x.parse().unwrap_or(0),
-                            data.position.y.parse().unwrap_or(0),
-                        ),
-                        equipment: data
-                            .equipments
-                            .ids(&data.equipment_id)
-                            .filter_map(|id| Item::from_str(id).ok())
-                            .collect(),
-                    })
-                    .collect();
+                // The report holds the army as the last round began; the army that fought it
+                // is rebuilt from that round's actions (see final_round).
+                let last = &rounds[rounds.len() - 1];
+                let last_round_units: Vec<UnitInstance> = super::final_round::replay_deployment(
+                    &last.player_data,
+                    &last.action_records.match_action_data,
+                )
+                .iter()
+                .map(|data| UnitInstance {
+                    unit_type: Unit::from_replay_id(&data.id),
+                    xp: data.exp.parse().unwrap_or(0),
+                    position: MapPoint(
+                        data.position.x.parse().unwrap_or(0),
+                        data.position.y.parse().unwrap_or(0),
+                    ),
+                    equipment: data
+                        .equipments
+                        .ids(&data.equipment_id)
+                        .filter_map(|id| Item::from_str(id).ok())
+                        .collect(),
+                })
+                .collect();
                 let summary = PlayerSummary {
                     id: player.id.clone(),
                     name,

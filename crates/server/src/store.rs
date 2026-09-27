@@ -129,7 +129,8 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// Bumped when derived tables change; opening an older database rebuilds them from the stored
 /// replays. 2: player_techs. 3: player_cards. 4: specialist names by game version.
 /// 5: starting specialists count as picks. 6: dates of offline games. 7: tech IDs.
-const SCHEMA_VERSION: i64 = 7;
+/// 8: the last round's army is rebuilt from its actions, not its starting snapshot.
+const SCHEMA_VERSION: i64 = 8;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
