@@ -21,6 +21,11 @@ pub struct Args {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Check every replay in a folder for inconsistencies (what the server rejects)
+    Validate {
+        /// Folder of .grbr/.xml replays (read only)
+        dir: PathBuf,
+    },
     /// Extract the ID -> name table from a Mechabellum install
     GenNames {
         /// Game install directory (contains Mechabellum_Data and ProjectDatas)

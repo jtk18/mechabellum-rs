@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS player_cards (
     PRIMARY KEY (battle_id, player_id, card),
     FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
 );
+-- Ratings at match start, captured from the game's log (replays don't record them).
+CREATE TABLE IF NOT EXISTS player_ratings (
+    battle_id   TEXT NOT NULL,
+    player_id   TEXT NOT NULL,
+    elo         INTEGER,
+    rank_point  INTEGER,
+    level       INTEGER,
+    elo_games   INTEGER,
+    PRIMARY KEY (battle_id, player_id)
+);
 CREATE TABLE IF NOT EXISTS replay_blobs (
     battle_id TEXT PRIMARY KEY,
     xml_gz    BLOB NOT NULL
@@ -122,6 +132,25 @@ pub struct UploadKey {
 pub enum IngestOutcome {
     Added { battle_id: String },
     Duplicate { battle_id: String },
+}
+
+/// Why a shared upload was turned away. `status` is the HTTP status to answer with.
+#[derive(Debug, Serialize)]
+pub struct Rejection {
+    pub status: u16,
+    pub reason: String,
+    pub problems: Vec<mechabellum::Problem>,
+}
+
+/// A player's rating when a match started.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rating {
+    pub player_id: String,
+    pub elo: Option<i64>,
+    pub rank_point: Option<i64>,
+    pub level: Option<i64>,
+    /// Ranked games played, when known.
+    pub elo_games: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -292,6 +321,12 @@ impl Store {
         if !has_uploader {
             conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
         }
+        let keys_bound = conn
+            .prepare("SELECT 1 FROM pragma_table_info('upload_keys') WHERE name = 'player_id'")?
+            .exists([])?;
+        if !keys_bound {
+            conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN player_id TEXT")?;
+        }
         let store = Store {
             conn: Mutex::new(conn),
         };
@@ -372,6 +407,226 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(IngestOutcome::Added { battle_id })
+    }
+
+    /// Store a replay shared by a community member, after the checks in docs/upload-trust.md:
+    /// - it must pass validation, and offline games aren't accepted
+    /// - each key uploads for one Mechabellum account, bound on first upload from `claimed`,
+    ///   and that account must have played in the match
+    /// - every other player's name is removed before storing
+    ///
+    /// When the match is already stored (the opponent shared it first), the uploader's own name
+    /// is filled in.
+    pub fn ingest_shared(
+        &self,
+        bytes: &[u8],
+        key_name: &str,
+        claimed: Option<&str>,
+    ) -> Result<std::result::Result<IngestOutcome, Rejection>> {
+        let reject = |status: u16, reason: String, problems: Vec<mechabellum::Problem>| {
+            Ok(Err(Rejection {
+                status,
+                reason,
+                problems,
+            }))
+        };
+        let Some(document) = BattleRecord::extract_document(bytes) else {
+            return reject(400, "Not a Mechabellum replay.".into(), vec![]);
+        };
+        let record = match BattleRecord::from_bytes(document.as_bytes(), Path::new("<upload>")) {
+            Ok(record) => record,
+            Err(e) => return reject(422, format!("The replay couldn't be read: {e}"), vec![]),
+        };
+        let problems = record.validate();
+        if problems.iter().any(|p| p.code == "offline") {
+            return reject(
+                422,
+                "Offline games against bots aren't shared.".into(),
+                problems,
+            );
+        }
+        if !problems.is_empty() {
+            return reject(422, "The replay doesn't add up.".into(), problems);
+        }
+
+        let bound: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT player_id FROM upload_keys WHERE name = ?1",
+                [key_name],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        let Some(player) = bound.clone().or_else(|| claimed.map(str::to_owned)) else {
+            return reject(
+                400,
+                "Say which player you are with the X-Mechabellum-Player header.".into(),
+                vec![],
+            );
+        };
+        let Some(own) = record
+            .player_records
+            .player_record
+            .iter()
+            .find(|p| p.id.trim() == player)
+        else {
+            return reject(
+                403,
+                format!("This key shares games for player {player}, who isn't in this match."),
+                vec![],
+            );
+        };
+        let own_name = own.name.clone();
+        if bound.is_none() {
+            self.conn().execute(
+                "UPDATE upload_keys SET player_id = ?2 WHERE name = ?1 AND player_id IS NULL",
+                params![key_name, player],
+            )?;
+        }
+
+        let shared = mechabellum::hide_other_names(document, &player);
+        let outcome = self.ingest(shared.as_bytes(), Path::new("<upload>"), Some(key_name))?;
+        if let IngestOutcome::Duplicate { battle_id } = &outcome {
+            self.conn().execute(
+                "UPDATE players SET name = ?3 WHERE battle_id = ?1 AND player_id = ?2 AND name = ?4",
+                params![battle_id, player, own_name, mechabellum::HIDDEN_NAME],
+            )?;
+        }
+        Ok(Ok(outcome))
+    }
+
+    /// The account a key uploads for, once bound.
+    pub fn key_player(&self, key_name: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT player_id FROM upload_keys WHERE name = ?1",
+                [key_name],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
+    /// Whether `player` took part in a stored match.
+    pub fn ratings_allowed(&self, battle_id: &str, player: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .prepare_cached("SELECT 1 FROM players WHERE battle_id = ?1 AND player_id = ?2")?
+            .exists(params![battle_id, player])?)
+    }
+
+    /// Which of these battle IDs aren't stored yet.
+    pub fn missing(&self, battle_ids: &[String]) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached("SELECT 1 FROM matches WHERE battle_id = ?1")?;
+        let mut missing = Vec::new();
+        for id in battle_ids {
+            if !stmt.exists([id])? {
+                missing.push(id.clone());
+            }
+        }
+        Ok(missing)
+    }
+
+    /// Record ratings for players in a stored match. Returns how many were stored; ratings for
+    /// players not in that match are ignored.
+    pub fn add_ratings(&self, battle_id: &str, ratings: &[Rating]) -> Result<usize> {
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut stored = 0;
+        for r in ratings {
+            let in_match = tx
+                .prepare_cached("SELECT 1 FROM players WHERE battle_id = ?1 AND player_id = ?2")?
+                .exists(params![battle_id, r.player_id])?;
+            if in_match {
+                stored += tx.execute(
+                    "INSERT OR REPLACE INTO player_ratings
+                         (battle_id, player_id, elo, rank_point, level, elo_games)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        battle_id,
+                        r.player_id,
+                        r.elo,
+                        r.rank_point,
+                        r.level,
+                        r.elo_games
+                    ],
+                )?;
+            }
+        }
+        tx.commit()?;
+        Ok(stored)
+    }
+
+    /// Ratings for a stored match, one per player that has one.
+    pub fn ratings(&self, battle_id: &str) -> Result<Vec<Rating>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT player_id, elo, rank_point, level, elo_games FROM player_ratings
+             WHERE battle_id = ?1 ORDER BY player_id",
+        )?;
+        let rows = stmt
+            .query_map([battle_id], |r| {
+                Ok(Rating {
+                    player_id: r.get(0)?,
+                    elo: r.get(1)?,
+                    rank_point: r.get(2)?,
+                    level: r.get(3)?,
+                    elo_games: r.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// Every stored battle ID, newest first.
+    pub fn battle_ids(&self) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT battle_id FROM matches ORDER BY occurred_on DESC")?;
+        let ids = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
+    /// A stored replay's XML.
+    pub fn replay_document(&self, battle_id: &str) -> Result<Option<String>> {
+        let blob: Option<Vec<u8>> = self
+            .conn()
+            .query_row(
+                "SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1",
+                [battle_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(gz) = blob else {
+            return Ok(None);
+        };
+        let mut xml = String::new();
+        GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
+        Ok(Some(xml))
+    }
+
+    /// Remove everything an uploader shared, e.g. after finding them poisoning the data.
+    /// Returns how many matches were removed.
+    pub fn purge_uploader(&self, key_name: &str) -> Result<usize> {
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "DELETE FROM replay_blobs WHERE battle_id IN
+                 (SELECT battle_id FROM matches WHERE uploaded_by = ?1)",
+            [key_name],
+        )?;
+        tx.execute(
+            "DELETE FROM player_ratings WHERE battle_id IN
+                 (SELECT battle_id FROM matches WHERE uploaded_by = ?1)",
+            [key_name],
+        )?;
+        let removed = tx.execute("DELETE FROM matches WHERE uploaded_by = ?1", [key_name])?;
+        tx.commit()?;
+        Ok(removed)
     }
 
     /// Create an upload key. Returns the key, which is only available now; the database keeps

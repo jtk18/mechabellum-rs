@@ -43,6 +43,11 @@ enum Command {
     Import { dir: PathBuf },
     /// Rebuild all stats from the stored replays, e.g. after a parser upgrade
     Reindex,
+    /// Remove every match an upload key shared (then revoke the key with `keys revoke`)
+    Purge {
+        /// The key's name
+        uploader: String,
+    },
     /// Manage upload keys
     Keys {
         #[command(subcommand)]
@@ -133,6 +138,12 @@ async fn main() -> Result<()> {
             );
         }
         Command::Reindex => println!("reindexed {} replays", store.reindex()?),
+        Command::Purge { uploader } => {
+            println!(
+                "removed {} matches shared by {uploader}",
+                store.purge_uploader(&uploader)?
+            );
+        }
         Command::Keys { command } => match command {
             KeysCommand::Add { name } => {
                 let key = store.create_key(&name)?;

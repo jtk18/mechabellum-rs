@@ -1,3 +1,4 @@
+mod anonymize;
 mod battle_record;
 mod detail;
 mod game_data;
@@ -11,10 +12,12 @@ mod player;
 mod skills;
 mod specialist;
 mod units;
+mod validate;
 
 use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
+pub use anonymize::{hide_other_names, HIDDEN_NAME};
 pub use battle_record::BattleRecord;
 pub use detail::unit_id_in_name;
 pub use detail::{
@@ -32,6 +35,7 @@ pub use player::*;
 pub use skills::Skills;
 pub use specialist::{specialist_name, Specialist, LEGACY_NAMES_BEFORE};
 pub use units::*;
+pub use validate::Problem;
 
 use std::ffi::OsStr;
 use std::fs;

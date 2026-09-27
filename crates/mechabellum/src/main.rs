@@ -16,6 +16,32 @@ fn main() {
     env_logger::init();
     let args = Args::parse();
 
+    if let Some(Command::Validate { dir }) = &args.command {
+        let mut checked = 0;
+        let mut flagged = 0;
+        let mut counts = std::collections::BTreeMap::<&str, usize>::new();
+        for entry in fs::read_dir(dir).expect("Unable to read directory") {
+            let path = entry.expect("directory entry").path();
+            if !path.extension().is_some_and(|e| e == "grbr" || e == "xml") {
+                continue;
+            }
+            let Ok(record) = BattleRecord::new_from_file(&path, false) else {
+                continue;
+            };
+            checked += 1;
+            let problems = record.validate();
+            if !problems.is_empty() {
+                flagged += 1;
+                for p in &problems {
+                    *counts.entry(p.code).or_default() += 1;
+                }
+                println!("{}: {}", path.display(), problems[0].detail);
+            }
+        }
+        println!("checked {checked}, flagged {flagged}, by check: {counts:?}");
+        return;
+    }
+
     if let Some(Command::GenNames { game_dir, output }) = args.command {
         let names =
             GameNames::extract_from_install(&game_dir).expect("Unable to read game install");
