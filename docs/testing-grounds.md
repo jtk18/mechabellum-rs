@@ -114,6 +114,9 @@ Rotation and techs (verified 2026-09-27, same replay check):
   not research on a unit.
 - Hovering a unit in the Squad list shows its equipped techs and stats.
 
+Items: the hexagon slot left of a unit's tech buttons shows equipment, but clicking it does
+nothing. Items come from cards, which Testing Grounds Tools can grant; not explored yet.
+
 Still to do: items, other maps (each
 needs its 6 calibration points, gathered with `grounds drop x,y ...` and read back from the replay),
 and a Command Center anchor per map.
