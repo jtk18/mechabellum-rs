@@ -101,6 +101,7 @@ interface StatsFilter {
   game_mode?: string;
   player_id?: string;
   opponents_of?: string;
+  include_offline?: boolean;
 }
 
 type WatchEvent =
@@ -136,6 +137,7 @@ function currentFilter(): StatsFilter {
   const me = facets?.main_player?.[0];
   if (me && view === "me") filter.player_id = me;
   if (me && view === "opponents") filter.opponents_of = me;
+  if ($<HTMLInputElement>("filter-offline").checked) filter.include_offline = true;
   return filter;
 }
 
@@ -669,7 +671,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await invoke("set_replay_dir", { dir: null });
     await refreshStatus();
   });
-  for (const id of ["filter-version", "filter-mode", "filter-view"]) {
+  for (const id of ["filter-version", "filter-mode", "filter-view", "filter-offline"]) {
     $(id).addEventListener("change", () => refreshStats());
   }
   const redrawHeatmap = () => lastTrends && renderHeatmap(lastTrends);

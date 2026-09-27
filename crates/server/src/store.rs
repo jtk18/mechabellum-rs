@@ -191,6 +191,10 @@ pub struct StatsFilter {
     /// Only count matches that two players shared and whose copies agree.
     #[serde(default)]
     pub corroborated_only: bool,
+    /// Count offline games against bots too (practice and Testing Grounds, whose battle IDs
+    /// are timestamps like `25-01-27__20-36-14-492`). Left out by default.
+    #[serde(default)]
+    pub include_offline: bool,
 }
 
 /// Matches with copies from at least two players that agree, and none that disagree.
@@ -234,10 +238,11 @@ const SCOPE: &str = "WITH scope AS (
           SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6)))
       AND (?7 = 0 OR m.battle_id IN (
           SELECT battle_id FROM match_copies GROUP BY battle_id
-          HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2)))";
+          HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2))
+      AND (?8 = 1 OR instr(m.battle_id, '__') = 0))";
 
 impl StatsFilter {
-    fn params(&self) -> [&dyn rusqlite::ToSql; 7] {
+    fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
         [
             &self.min_version,
             &self.max_version,
@@ -246,6 +251,7 @@ impl StatsFilter {
             &self.player_id,
             &self.opponents_of,
             &self.corroborated_only,
+            &self.include_offline,
         ]
     }
 }
