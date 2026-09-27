@@ -208,7 +208,11 @@ impl GameNames {
             )
         })?;
         let assets = std::fs::read(data.join("resources.assets"))?;
-        let version = std::fs::read_to_string(game_dir.join("ProjectDatas").join("GameData.grdb"))
+        // ProjectDatas sits in the install folder on Windows, inside Mechabellum.app on macOS.
+        let project_datas = crate::install::replay_dir_in_install(game_dir)
+            .and_then(|replays| replays.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| game_dir.join("ProjectDatas"));
+        let version = std::fs::read_to_string(project_datas.join("GameData.grdb"))
             .ok()
             .and_then(|s| {
                 let start = s.find("<SaveVersion>")? + "<SaveVersion>".len();

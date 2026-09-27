@@ -110,10 +110,22 @@ pub fn parse_ratings(text: &str) -> Vec<(String, Vec<Rating>)> {
 /// Read the previous session's log once, then follow the current one as it grows. Runs until
 /// `stop` is set.
 pub fn follow(dirs: Vec<PathBuf>, store: Arc<Store>, stop: Arc<AtomicBool>) {
-    let Some(dir) = dirs.into_iter().find(|d| d.join("Player.log").is_file()) else {
-        log::info!("no Mechabellum Player.log found; ratings won't be captured");
-        return;
+    // The game creates its log on first launch, which may come after this app starts.
+    let mut announced = false;
+    let dir = loop {
+        if let Some(dir) = dirs.iter().find(|d| d.join("Player.log").is_file()) {
+            break dir.clone();
+        }
+        if !announced {
+            log::info!("no Mechabellum Player.log yet; checking every 5 s");
+            announced = true;
+        }
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(5));
     };
+    log::info!("reading ratings from {}", dir.join("Player.log").display());
     let save = |text: &str| {
         for (battle, ratings) in parse_ratings(text) {
             if let Err(e) = store.put_ratings(&battle, &ratings) {
