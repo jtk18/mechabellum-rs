@@ -76,7 +76,8 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Tester track
 
-21. **Read unlocked techs** per unit from `ProjectDatas/GameData.grdb` instead of OCR.
+21. ~~Read unlocked techs~~ Done: `mechabellum::profile` reads GameData.grdb; the Loadout tab shows
+    each unit's unlocked techs with your games and win rate with each.
 22. **Automate Testing Grounds** setup from board code. Done so far: the board code format
     (docs/board-code.md; `mechabellum::board`), "Copy board code" on the match board, and
     `replay-parse board` / `check-board`. Next: map board squares to screen positions in Testing

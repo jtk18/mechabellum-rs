@@ -346,6 +346,25 @@ async fn board_code(
         .ok_or_else(|| "That round isn't in the replay.".into())
 }
 
+/// The techs each unit has unlocked in Unit Modification, from the game's GameData.grdb next to
+/// the replay folder. Empty when it can't be found.
+#[tauri::command]
+fn loadout(state: State<'_, AppState>) -> Vec<mechabellum::profile::UnitLoadout> {
+    let Some(replays) = state.watching.lock().unwrap().clone() else {
+        return Vec::new();
+    };
+    let Some(file) = replays.parent().map(|p| p.join("GameData.grdb")) else {
+        return Vec::new();
+    };
+    match std::fs::read(&file) {
+        Ok(bytes) => mechabellum::profile::unlocked_techs(&String::from_utf8_lossy(&bytes)),
+        Err(e) => {
+            log::info!("no loadout from {}: {e}", file.display());
+            Vec::new()
+        }
+    }
+}
+
 /// Put text on the clipboard. Done here rather than in the page, which may not have focus.
 #[tauri::command]
 fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
@@ -658,6 +677,7 @@ pub fn run() {
             match_ratings,
             board_code,
             copy_text,
+            loadout,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

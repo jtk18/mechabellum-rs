@@ -16,6 +16,7 @@
       <nav class="tabs" aria-label="Views">
         <button type="button" class="tab" data-view="stats" aria-current="page">Stats</button>
         <button type="button" class="tab" data-view="matches">Matches</button>
+        <button type="button" class="tab" data-view="loadout">Loadout</button>
         <button type="button" class="tab" data-view="sharing">Settings</button>
       </nav>
       <div class="status" id="status" aria-live="polite"></div>
@@ -141,6 +142,14 @@
           <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
         </div>
         <aside class="unit-panel" id="unit-panel" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section id="view-loadout" class="loadout-view" hidden aria-labelledby="loadout-title">
+      <div class="panel">
+        <h2 id="loadout-title">Your unit modifications <small>techs you've unlocked, and how your games with each went</small></h2>
+        <p class="panel-note" id="loadout-note"></p>
+        <div class="loadout-grid" id="loadout-grid"></div>
       </div>
     </section>
 

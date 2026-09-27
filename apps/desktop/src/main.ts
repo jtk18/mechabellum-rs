@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { art, artImage, loadArt } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
+import { renderLoadout } from "./loadout";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -556,7 +557,7 @@ async function refreshStatus(): Promise<Status> {
   return status;
 }
 
-type View = "stats" | "matches" | "match" | "sharing";
+type View = "stats" | "matches" | "match" | "sharing" | "loadout";
 
 function showView(view: View) {
   if (view === "matches" && !matchListLoaded) {
@@ -567,6 +568,8 @@ function showView(view: View) {
   $("view-matches").hidden = view !== "matches";
   $("view-match").hidden = view !== "match";
   $("view-sharing").hidden = view !== "sharing";
+  $("view-loadout").hidden = view !== "loadout";
+  if (view === "loadout") renderLoadout(facets?.main_player?.[0] ?? null);
   for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
     const current = tab.dataset.view === view || (view === "match" && tab.dataset.view === "matches");
     if (current) tab.setAttribute("aria-current", "page");
