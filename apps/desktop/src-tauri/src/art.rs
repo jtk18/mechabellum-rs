@@ -2,8 +2,9 @@
 //! is shipped with the app or kept in the repository.
 //!
 //! Sprites are read straight out of the game's Unity files by the `unity-sprites` crate (pure
-//! Rust, no .NET, nothing downloaded or run). The background is the "clean" key art from the
-//! official press kit.
+//! Rust, no .NET, nothing downloaded or run). The one exception to "nothing shipped" is the
+//! background: the "clean" key art from the official press kit
+//! (Mechabellum_Keyart_16x9_Clean.png), bundled at 1920 px so first run needs no network.
 
 use anyhow::{anyhow, Context, Result};
 use mechabellum::{GameNames, NameKind};
@@ -12,17 +13,15 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-/// Official press kit: Mechabellum_Keyart_16x9_Clean.png
-const KEY_ART_URL: &str = "https://drive.usercontent.google.com/download?id=11k5SALLz_OV_59W86rjYG9RjuGN1QomM&export=download&confirm=t";
+/// Official press kit key art, resized to 1920x1080 and saved as JPEG (quality 82).
+const KEY_ART: &[u8] = include_bytes!("../assets/key-art-background.jpg");
 /// The steps of an extraction, in order, as the splash screen lists them.
-pub const STEPS: [&str; 4] = [
+pub const STEPS: [&str; 3] = [
     "Find the game's data files",
     "Extract unit, tech, and specialist art",
     "Match art to units, techs, and specialists",
-    "Download the key art background",
 ];
 
 /// Where an extraction is: overall fraction done, the step it's on (index into [`STEPS`]),
@@ -31,7 +30,7 @@ pub const STEPS: [&str; 4] = [
 pub struct Progress {
     pub fraction: f32,
     pub step: usize,
-    pub steps: [&'static str; 4],
+    pub steps: [&'static str; 3],
     pub detail: String,
 }
 
@@ -205,20 +204,10 @@ fn cards_by_record(
     map
 }
 
-/// Download the press kit key art and shrink it to a background-sized JPEG.
+/// Write the bundled key art into the art folder.
 fn background(art_dir: &Path) -> Result<String> {
-    let mut bytes = Vec::new();
-    ureq::get(KEY_ART_URL)
-        .call()?
-        .into_reader()
-        .take(100 * 1024 * 1024)
-        .read_to_end(&mut bytes)?;
-    let image = image::load_from_memory(&bytes).context("decoding key art")?;
-    let resized = image.resize(1920, 1920, image::imageops::FilterType::Triangle);
     let file = "background.jpg";
-    let mut out = std::fs::File::create(art_dir.join(file))?;
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82)
-        .encode_image(&resized.to_rgb8())?;
+    std::fs::write(art_dir.join(file), KEY_ART)?;
     Ok(file.into())
 }
 
@@ -293,7 +282,7 @@ pub fn extract(
                 }
                 let n = done.fetch_add(1, Ordering::Relaxed) + 1;
                 progress(Progress::new(
-                    0.05 + 0.8 * n as f32 / total.max(1) as f32,
+                    0.05 + 0.85 * n as f32 / total.max(1) as f32,
                     1,
                     format!("{n} of {total} images · {}", sprite.name),
                 ));
@@ -361,11 +350,6 @@ pub fn extract(
     manifest.research_center = exists("Mech_Portrait_Research_Center_1A.png")
         .then(|| "Mech_Portrait_Research_Center_1A.png".into());
 
-    progress(Progress::new(
-        0.9,
-        3,
-        "Official press kit art, resized to 1920 px",
-    ));
     manifest.background = match background(art_dir) {
         Ok(file) => Some(file),
         Err(e) => {
