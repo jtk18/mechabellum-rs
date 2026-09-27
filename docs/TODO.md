@@ -9,11 +9,11 @@ run `cargo test --workspace` and `npm run build` (apps/desktop) before committin
 push each finished item, tick it here, and note surprises in ORIENTATION.md. Nothing is sent
 to outside servers; sync tests use a local server on 127.0.0.1.
 
-0. **Bug: tonight's 10 games were not ingested.** The replay folder has 1,063 files, but the
-   app (started before the session) still reports 1,053 matches. The watcher missed files
-   the game wrote while running. Diagnose (notify events on Program Files? write pattern?),
-   fix, add a periodic rescan as a safety net, and add a regression test.
-0b. Then confirm those games' ratings from `Player.log` (20 match-start lines) land in
+0. **Hidden window goes stale.** The watcher stored tonight's 10 games live (1,063 stored), but
+   the window kept showing 1,053 until it was reopened from the tray. Refresh when the window
+   is shown. Also find the 10 stored matches that `/api/stats` doesn't count (1,053 of 1,063;
+   probably no `players` rows) and either fix their ingest or explain them in the UI.
+0b. Confirm tonight's ratings from `Player.log` (20 match-start lines) land in
    `player_ratings`.
 Then items 1, 2, 4, 5, 6, 7, 8, 9, 11, 13, 14 (single instance, autostart), 24, 21, 12.
 

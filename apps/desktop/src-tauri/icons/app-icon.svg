@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Source for every app icon: regenerate with `npx tauri icon src-tauri/icons/app-icon.svg`.
+       A chamfered armor plate over a battlefield grid, with rising bars in the two side colors. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3642"/>
+      <stop offset="1" stop-color="#11171e"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a9aab"/>
+      <stop offset="1" stop-color="#3a4654"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5aa2f0"/>
+      <stop offset="1" stop-color="#2a6cc0"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0783f"/>
+      <stop offset="1" stop-color="#b8441a"/>
+    </linearGradient>
+    <clipPath id="inside">
+      <path d="M216 96H808L928 216V808L808 928H216L96 808V216Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Plate with chamfered corners and a bevelled rim. -->
+  <path d="M200 48H824L976 200V824L824 976H200L48 824V200Z" fill="url(#rim)"/>
+  <path d="M216 96H808L928 216V808L808 928H216L96 808V216Z" fill="url(#plate)"/>
+
+  <!-- Battlefield grid. -->
+  <g clip-path="url(#inside)" stroke="#ffffff" stroke-opacity="0.07" stroke-width="6">
+    <path d="M96 272H928M96 448H928M96 624H928M96 800H928M272 96V928M448 96V928M624 96V928M800 96V928"/>
+  </g>
+
+  <!-- Rising bars: two blue, one orange, tops cut like armor. -->
+  <path d="M212 820V612L262 562H362V820Z" fill="url(#blue)"/>
+  <path d="M437 820V452L487 402H587V820Z" fill="url(#blue)"/>
+  <path d="M662 820V262L712 212H812V820Z" fill="url(#orange)"/>
+
+  <!-- Ground line. -->
+  <rect x="176" y="836" width="672" height="28" rx="6" fill="#d6dde5"/>
+</svg>
