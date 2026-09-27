@@ -201,6 +201,15 @@ impl BattleRecord {
         {
             return date.format("%Y-%m-%dT00:00:00Z").to_string();
         }
+        // Offline games are named by local time instead: 25-01-27__20-36-14-492
+        if let Some(when) = self
+            .battle_info
+            .battle_id
+            .get(..18)
+            .and_then(|d| chrono::NaiveDateTime::parse_from_str(d, "%y-%m-%d__%H-%M-%S").ok())
+        {
+            return when.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        }
         self.create_time.to_owned()
     }
 }
@@ -259,5 +268,29 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::*;
+
+    fn with_id(id: &str) -> BattleRecord {
+        let mut record = BattleRecord::default();
+        record.battle_info.battle_id = id.into();
+        record
+    }
+
+    #[test]
+    fn test_occurred_on_from_battle_ids() {
+        assert_eq!(
+            with_id("20260924--67113734").occurred_on(),
+            "2026-09-24T00:00:00Z"
+        );
+        assert_eq!(
+            with_id("25-01-27__20-36-14-492").occurred_on(),
+            "2025-01-27T20:36:14Z",
+            "offline games"
+        );
     }
 }

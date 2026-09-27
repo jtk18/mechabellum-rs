@@ -111,8 +111,8 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 
 /// Bumped when derived tables change; opening an older database rebuilds them from the stored
 /// replays. 2: player_techs. 3: player_cards. 4: specialist names by game version.
-/// 5: starting specialists count as picks.
-const SCHEMA_VERSION: i64 = 5;
+/// 5: starting specialists count as picks. 6: dates of offline games.
+const SCHEMA_VERSION: i64 = 6;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -173,12 +173,37 @@ pub struct StatsFilter {
     pub player_id: Option<String>,
     /// Only count the other sides of this player's matches (their opponents).
     pub opponents_of: Option<String>,
+    /// How `version_trends` groups columns. Other queries ignore it.
+    #[serde(default)]
+    pub period: Period,
 }
 
-/// The player results a stats query counts, as `scope(battle_id, player_id, won, version)`.
+/// Columns of a trend table.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Period {
+    /// One column per game build.
+    #[default]
+    Build,
+    /// One column per calendar month the games were played in.
+    Month,
+}
+
+impl Period {
+    /// SQL expression over `scope` columns naming a result's column, and one to order columns.
+    fn sql(self) -> (&'static str, &'static str) {
+        match self {
+            Period::Build => ("CAST(version AS TEXT)", "MIN(version)"),
+            Period::Month => ("substr(occurred_on, 1, 7)", "MIN(occurred_on)"),
+        }
+    }
+}
+
+/// The player results a stats query counts, as
+/// `scope(battle_id, player_id, won, version, occurred_on)`.
 /// Parameters come from `StatsFilter::params`.
 const SCOPE: &str = "WITH scope AS (
-    SELECT p.battle_id, p.player_id, p.won, m.version FROM players p
+    SELECT p.battle_id, p.player_id, p.won, m.version, m.occurred_on FROM players p
     JOIN matches m ON m.battle_id = p.battle_id
     WHERE (?1 IS NULL OR m.version >= ?1)
       AND (?2 IS NULL OR m.version <= ?2)
@@ -290,7 +315,8 @@ pub struct VersionTrends {
 
 #[derive(Debug, Serialize)]
 pub struct VersionTotals {
-    pub version: u32,
+    /// The column's build number or month (`2026-09`).
+    pub label: String,
     pub matches: u64,
     pub player_results: u64,
 }
@@ -969,36 +995,38 @@ impl Store {
         let scope = SCOPE;
         let args = filter.params();
 
+        let (key, order) = filter.period.sql();
+
         let versions: Vec<VersionTotals> = conn
             .prepare(&format!(
-                "{scope} SELECT version, COUNT(DISTINCT battle_id), COUNT(*) FROM scope
-                 GROUP BY version ORDER BY version"
+                "{scope} SELECT {key}, COUNT(DISTINCT battle_id), COUNT(*) FROM scope
+                 GROUP BY 1 ORDER BY {order}"
             ))?
             .query_map(args, |r| {
                 Ok(VersionTotals {
-                    version: r.get(0)?,
+                    label: r.get(0)?,
                     matches: r.get(1)?,
                     player_results: r.get(2)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
-        let column: BTreeMap<u32, usize> = versions
+        let column: BTreeMap<&str, usize> = versions
             .iter()
             .enumerate()
-            .map(|(i, v)| (v.version, i))
+            .map(|(i, v)| (v.label.as_str(), i))
             .collect();
 
         let trends = |table: &'static str, name: &'static str| -> Result<Vec<Trend>> {
             let mut by_name: BTreeMap<String, Trend> = BTreeMap::new();
             let sql = format!(
-                "{scope} SELECT t.{name}, s.version, COUNT(*), SUM(s.won) FROM {table} t
+                "{scope} SELECT t.{name}, {key}, COUNT(*), SUM(s.won) FROM {table} t
                  JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
-                 GROUP BY t.{name}, s.version"
+                 GROUP BY 1, 2"
             );
             let mut stmt = conn.prepare(&sql)?;
             let mut rows = stmt.query(args)?;
             while let Some(row) = rows.next()? {
-                let (label, version, picks, wins): (String, u32, u64, u64) =
+                let (label, period, picks, wins): (String, String, u64, u64) =
                     (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
                 let trend = by_name.entry(label.clone()).or_insert_with(|| Trend {
                     name: label,
@@ -1006,7 +1034,7 @@ impl Store {
                     cells: (0..versions.len()).map(|_| None).collect(),
                 });
                 trend.picks += picks;
-                if let Some(&i) = column.get(&version) {
+                if let Some(&i) = column.get(period.as_str()) {
                     trend.cells[i] = Some(TrendCell { picks, wins });
                 }
             }

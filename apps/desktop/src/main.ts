@@ -71,7 +71,7 @@ interface TrendCell {
 }
 
 interface VersionTrends {
-  versions: { version: number; matches: number; player_results: number }[];
+  versions: { label: string; matches: number; player_results: number }[];
   units: { name: string; picks: number; cells: (TrendCell | null)[] }[];
   specialists: { name: string; picks: number; cells: (TrendCell | null)[] }[];
 }
@@ -438,11 +438,17 @@ function renderHeatmap(trends: VersionTrends) {
   const grid = $("heatmap");
   grid.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${trends.versions.length}, minmax(18px, 1fr))`;
 
-  const header = [el("div", "corner", "Patch"), ...trends.versions.map((v) => {
-    const col = el("div", "col", String(v.version));
+  const byMonth = $<HTMLSelectElement>("trend-period").value === "month";
+  const columnName = (label: string) => {
+    if (!byMonth) return `Build ${label}`;
+    const [year, month] = label.split("-").map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  };
+  const header = [el("div", "corner", byMonth ? "Month" : "Build"), ...trends.versions.map((v) => {
+    const col = el("div", "col", byMonth ? v.label.replace(/^20(\d\d)-/, "$1/") : v.label);
     col.setAttribute("role", "columnheader");
     col.dataset.tip = JSON.stringify({
-      title: `Version ${v.version}`,
+      title: columnName(v.label),
       lines: [`${v.matches} matches, ${v.player_results} player results`],
     } satisfies Tip);
     return col;
@@ -463,7 +469,7 @@ function renderHeatmap(trends: VersionTrends) {
         node.style.background = trendColor(winRate);
       }
       node.dataset.tip = JSON.stringify({
-        title: `${row.name} · v${version.version}`,
+        title: `${row.name}, ${columnName(version.label)}`,
         lines: [
           `Won ${cell.wins} of ${cell.picks} (${pct(winRate)})`,
           `Fielded in ${pct(cell.picks / version.player_results)} of results`,
@@ -485,7 +491,8 @@ let lastTrends: VersionTrends | null = null;
 async function refreshTrends() {
   // Every patch is shown, so the patch filter doesn't apply here.
   const { min_version: _min, max_version: _max, ...filter } = currentFilter();
-  lastTrends = await invoke<VersionTrends>("version_trends", { filter });
+  const period = $<HTMLSelectElement>("trend-period").value;
+  lastTrends = await invoke<VersionTrends>("version_trends", { filter: { ...filter, period } });
   renderHeatmap(lastTrends);
 }
 
@@ -662,6 +669,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   const redrawHeatmap = () => lastTrends && renderHeatmap(lastTrends);
   $("trend-min").addEventListener("change", redrawHeatmap);
+  $("trend-period").addEventListener("change", () => refreshTrends());
   for (const radio of document.querySelectorAll('input[name="trend-kind"]')) {
     radio.addEventListener("change", redrawHeatmap);
   }

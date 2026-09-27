@@ -4,9 +4,9 @@
 mod store;
 
 pub use store::{
-    Facets, IngestOutcome, MatchRow, Rating, RatingBand, Rejection, Stats, StatsFilter, Store,
-    SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat, VersionTotals,
-    VersionTrends,
+    Facets, IngestOutcome, MatchRow, Period, Rating, RatingBand, Rejection, Stats, StatsFilter,
+    Store, SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat,
+    VersionTotals, VersionTrends,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -478,8 +478,16 @@ mod tests {
         assert!(theirs.player_results + mine.player_results <= stats.player_results);
 
         let trends = store.version_trends(&StatsFilter::default()).unwrap();
-        let versions: Vec<u32> = trends.versions.iter().map(|v| v.version).collect();
-        assert_eq!(versions, vec![1425, 2324]);
+        let versions: Vec<&str> = trends.versions.iter().map(|v| v.label.as_str()).collect();
+        assert_eq!(versions, vec!["1425", "2324"]);
+        let months = store
+            .version_trends(&StatsFilter {
+                period: Period::Month,
+                ..Default::default()
+            })
+            .unwrap();
+        let labels: Vec<&str> = months.versions.iter().map(|v| v.label.as_str()).collect();
+        assert_eq!(labels, vec!["2024-11", "2026-09"]);
         for trend in trends.units.iter().chain(&trends.specialists) {
             assert_eq!(trend.cells.len(), 2);
             let total: u64 = trend.cells.iter().flatten().map(|c| c.picks).sum();

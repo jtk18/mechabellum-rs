@@ -35,7 +35,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 ## Stats
 
 5. ~~Win rate by opponent MMR band~~ Done: a Stats panel, opponent minus your MMR in five bands (1v1).
-6. **Group builds into seasons or patches** in the heatmap. Many builds have under 10 matches.
+6. ~~Group builds~~ Done: the heatmap groups by month (default) or build. Replays carry no season, and published season dates are incomplete, so seasons are left out for now. Offline games now get their date from the battle ID.
 7. **Tech icons in stats tables by (unit, tech ID)** instead of tech name. The same name can
    have different icons per unit.
 8. **Remaining art:** Star Expedition supply and equipment specialists (Supply Crate, Equipment

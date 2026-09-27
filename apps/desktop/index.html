@@ -69,12 +69,18 @@
         </section>
         <section class="panel wide">
           <div class="panel-head">
-            <h2>Win rate by patch <small>all patches, other filters apply</small></h2>
+            <h2>Win rate over time <small>all patches, other filters apply</small></h2>
             <div class="panel-controls">
               <div class="segmented" role="radiogroup" aria-label="Show">
                 <label><input type="radio" name="trend-kind" value="units" checked />Units</label>
                 <label><input type="radio" name="trend-kind" value="specialists" />Specialists</label>
               </div>
+              <label>Columns
+                <select id="trend-period">
+                  <option value="build">Game build</option>
+                  <option value="month" selected>Month</option>
+                </select>
+              </label>
               <label>Min games
                 <select id="trend-min">
                   <option value="3">3</option>
@@ -86,7 +92,7 @@
             </div>
           </div>
           <div class="heatmap-scroll">
-            <div class="heatmap" id="heatmap" role="table" aria-label="Win rate by patch"></div>
+            <div class="heatmap" id="heatmap" role="table" aria-label="Win rate over time"></div>
           </div>
           <div class="legend" aria-hidden="true">
             <span>≤25%</span>
