@@ -1,24 +1,55 @@
 //! Game art, extracted on this machine from the player's own Mechabellum install. Nothing here
 //! is shipped with the app or kept in the repository.
 //!
-//! Sprites come out of the game's Unity files with AssetStudioMod's command-line tool (MIT,
-//! github.com/aelurum/AssetStudio), downloaded from its official release on first use. The
-//! background is the "clean" key art from the official press kit.
+//! Sprites are read straight out of the game's Unity files by the `unity-sprites` crate (pure
+//! Rust, no .NET, nothing downloaded or run). The background is the "clean" key art from the
+//! official press kit.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use mechabellum::{GameNames, NameKind};
 use serde::{Deserialize, Serialize};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-const TOOL_VERSION: &str = "v0.19.0";
+use std::path::Path;
 /// Official press kit: Mechabellum_Keyart_16x9_Clean.png
 const KEY_ART_URL: &str = "https://drive.usercontent.google.com/download?id=11k5SALLz_OV_59W86rjYG9RjuGN1QomM&export=download&confirm=t";
-/// Only the sprites the app uses.
-const SPRITE_FILTER: &str = "^(Mech_Default_[0-9]+_1|Mech_Portrait_[0-9]+|Mech_Portrait_Research_Center_[0-9A-Z]+|Mech_Portrait_Tower|UT_[A-Za-z0-9_]+|O_[A-Za-z0-9_]+|RC_[A-Za-z0-9_]+|TD_[A-Za-z0-9_]+_SBUI|E_[A-Za-z0-9_]+_SBUI|Icon_officers)$";
+/// Only the sprites the app uses:
+/// `Mech_Default_{n}_1`, `Mech_Portrait_{n}`, `Mech_Portrait_Research_Center_{X}`,
+/// `Mech_Portrait_Tower`, `UT_*`, `O_*`, `RC_*`, `TD_*_SBUI`, `E_*_SBUI`, `Icon_officers`.
+fn wanted(name: &str) -> bool {
+    let word = |s: &str| !s.is_empty() && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_');
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit());
+    if name == "Mech_Portrait_Tower" || name == "Icon_officers" {
+        return true;
+    }
+    if let Some(rest) = name.strip_prefix("Mech_Default_") {
+        return rest.strip_suffix("_1").is_some_and(digits);
+    }
+    if let Some(rest) = name.strip_prefix("Mech_Portrait_Research_Center_") {
+        return !rest.is_empty()
+            && rest
+                .bytes()
+                .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
+    }
+    if let Some(rest) = name.strip_prefix("Mech_Portrait_") {
+        return digits(rest);
+    }
+    for prefix in ["UT_", "O_", "RC_"] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            return word(rest);
+        }
+    }
+    for prefix in ["TD_", "E_"] {
+        if let Some(rest) = name
+            .strip_prefix(prefix)
+            .and_then(|r| r.strip_suffix("_SBUI"))
+        {
+            return word(rest);
+        }
+    }
+    false
+}
 /// Bump when the manifest's contents change, so older extractions are redone.
 const MANIFEST_FORMAT: u32 = 6;
 
@@ -53,112 +84,6 @@ impl ArtManifest {
                 .ok()?;
         (manifest.format == MANIFEST_FORMAT).then_some(manifest)
     }
-}
-
-/// The folder holding the game's Unity data files (`sharedassets0.assets`, `level0`).
-fn unity_data_dir(game_dir: &Path) -> Option<PathBuf> {
-    fn search(dir: &Path, depth: u32) -> Option<PathBuf> {
-        if dir.join("sharedassets0.assets").is_file() {
-            return Some(dir.to_path_buf());
-        }
-        if depth == 0 {
-            return None;
-        }
-        std::fs::read_dir(dir)
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .find_map(|p| search(&p, depth - 1))
-    }
-    search(game_dir, 4)
-}
-
-/// Which extractor build to use. On Windows it's the .NET Framework 4.7.2 build, which every
-/// Windows 10 and 11 install already has; elsewhere it needs the .NET 9 runtime.
-fn tool_asset_name() -> Result<&'static str> {
-    Ok(if cfg!(windows) {
-        "AssetStudioModCLI_net472_win32_64"
-    } else if cfg!(target_os = "macos") {
-        "AssetStudioModCLI_net9_mac64"
-    } else if cfg!(target_os = "linux") {
-        "AssetStudioModCLI_net9_linux64"
-    } else {
-        bail!("no extractor build for this platform")
-    })
-}
-
-fn find_tool(dir: &Path) -> Option<PathBuf> {
-    let exe = if cfg!(windows) {
-        "AssetStudioModCLI.exe"
-    } else {
-        "AssetStudioModCLI"
-    };
-    walk(dir, 3)
-        .into_iter()
-        .find(|p| p.file_name().is_some_and(|n| n == exe))
-}
-
-fn walk(dir: &Path, depth: u32) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for path in entries.flatten().map(|e| e.path()) {
-        if path.is_dir() && depth > 0 {
-            out.extend(walk(&path, depth - 1));
-        } else {
-            out.push(path);
-        }
-    }
-    out
-}
-
-/// The extractor's macOS and Linux builds run on the shared .NET 9 runtime.
-fn check_dotnet() -> Result<()> {
-    if cfg!(windows) {
-        return Ok(());
-    }
-    let output = Command::new("dotnet")
-        .arg("--list-runtimes")
-        .output()
-        .map_err(|_| anyhow!("Extracting game art needs the .NET 9 runtime. Install it from https://dotnet.microsoft.com/download/dotnet/9.0 and try again."))?;
-    let runtimes = String::from_utf8_lossy(&output.stdout);
-    if !runtimes
-        .lines()
-        .any(|l| l.starts_with("Microsoft.NETCore.App 9."))
-    {
-        bail!("Extracting game art needs the .NET 9 runtime. Install it from https://dotnet.microsoft.com/download/dotnet/9.0 and try again.");
-    }
-    Ok(())
-}
-
-fn ensure_tool(tools_dir: &Path) -> Result<PathBuf> {
-    let name = tool_asset_name()?;
-    let dir = tools_dir.join(format!("{name}-{TOOL_VERSION}"));
-    if let Some(exe) = find_tool(&dir) {
-        return Ok(exe);
-    }
-    let url = format!(
-        "https://github.com/aelurum/AssetStudio/releases/download/{TOOL_VERSION}/{name}.zip"
-    );
-    log::info!("downloading {url}");
-    let mut bytes = Vec::new();
-    ureq::get(&url)
-        .call()
-        .with_context(|| format!("downloading {url}"))?
-        .into_reader()
-        .read_to_end(&mut bytes)?;
-    zip::ZipArchive::new(std::io::Cursor::new(bytes))?
-        .extract(&dir)
-        .context("unpacking the extractor")?;
-    let exe = find_tool(&dir).ok_or_else(|| anyhow!("extractor not found in {name}.zip"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(exe)
 }
 
 /// Tech ID -> icon sprite name, read from the game's first scene. Each tech's config record
@@ -269,37 +194,38 @@ fn background(art_dir: &Path) -> Result<String> {
 
 /// Extract everything into `art_dir` and write its manifest. `progress` receives short status
 /// lines for the UI.
-pub fn extract(
-    game_dir: &Path,
-    art_dir: &Path,
-    tools_dir: &Path,
-    progress: &dyn Fn(&str),
-) -> Result<ArtManifest> {
-    let data = unity_data_dir(game_dir).ok_or_else(|| {
+pub fn extract(game_dir: &Path, art_dir: &Path, progress: &dyn Fn(&str)) -> Result<ArtManifest> {
+    let data = mechabellum::install::unity_data_dir(game_dir).ok_or_else(|| {
         anyhow!(
             "Couldn't find the game's data files under {}",
             game_dir.display()
         )
     })?;
-    check_dotnet()?;
-    progress("Getting the extractor");
-    let tool = ensure_tool(tools_dir)?;
-
     progress("Extracting unit, tech, and specialist art");
     std::fs::create_dir_all(art_dir)?;
-    let status = Command::new(&tool)
-        .arg(data.join("sharedassets0.assets"))
-        .args(["-m", "export", "-t", "sprite", "-g", "none", "-r"])
-        .args(["--filter-by-name", SPRITE_FILTER, "--filter-with-regex"])
-        .args(["--log-level", "error", "-o"])
-        .arg(art_dir)
-        .output()
-        .context("running the extractor")?;
-    if !status.status.success() {
-        bail!(
-            "the extractor failed: {}",
-            String::from_utf8_lossy(&status.stderr)
-        );
+    let mut assets = unity_sprites::Assets::open(&data.join("sharedassets0.assets"))
+        .context("reading sharedassets0.assets")?;
+    let mut written = BTreeSet::new();
+    for sprite in assets.sprites(wanted)? {
+        // Names repeat occasionally; the first sprite of a name wins.
+        if !written.insert(sprite.name.clone()) {
+            continue;
+        }
+        let image = match assets.export(&sprite) {
+            Ok(image) => image,
+            Err(e) => {
+                log::warn!("art: {}: {e}", sprite.name);
+                continue;
+            }
+        };
+        image::save_buffer(
+            art_dir.join(format!("{}.png", sprite.name)),
+            &image.rgba,
+            image.width,
+            image.height,
+            image::ColorType::Rgba8,
+        )
+        .with_context(|| format!("writing {}.png", sprite.name))?;
     }
 
     progress("Matching art to units and techs");
@@ -377,6 +303,38 @@ pub fn extract(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_wanted_matches_the_old_extractor_filter() {
+        for name in [
+            "Mech_Default_10_1",
+            "Mech_Portrait_101",
+            "Mech_Portrait_Research_Center_1A",
+            "Mech_Portrait_Tower",
+            "UT_Rage",
+            "O_004_SBUI",
+            "O_M_10_SBUI",
+            "RC_AttackNoArrow_n",
+            "TD_Something_SBUI",
+            "E_Shield_SBUI",
+            "Icon_officers",
+        ] {
+            assert!(wanted(name), "{name}");
+        }
+        for name in [
+            "Mech_Default_1_1_1_1",
+            "Mech_Default_10_2",
+            "Mech_Portrait_1_a",
+            "Mech_Portrait_Research_Center_1a",
+            "TD_Something",
+            "E_Shield",
+            "UT_",
+            "UT_Bad-Name",
+            "Icon_officers_2",
+        ] {
+            assert!(!wanted(name), "{name}");
+        }
+    }
 
     #[test]
     fn test_specialist_cards_from_records() {

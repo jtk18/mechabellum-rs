@@ -60,7 +60,6 @@ struct AppState {
     http_url: Mutex<Option<String>>,
     last_error: Arc<Mutex<Option<String>>>,
     art_dir: PathBuf,
-    tools_dir: PathBuf,
     syncer: sync::Syncer,
     /// Wakes the sync worker (new matches, new settings).
     sync_wake: Mutex<std::sync::mpsc::Sender<()>>,
@@ -219,18 +218,20 @@ fn game_dir(state: &AppState) -> Option<PathBuf> {
         .as_ref()
         .and_then(|dir| Some(dir.parent()?.parent()?.to_path_buf()));
     from_replays
-        .filter(|d| d.join("ProjectDatas").is_dir())
-        .or_else(|| Some(steam::find_replay_dir()?.parent()?.parent()?.to_path_buf()))
+        .filter(|d| steam::unity_data_dir(d).is_some())
+        .or_else(steam::find_game_dir)
 }
 
 /// Extract game art in the background, telling the UI as it goes.
 fn start_art_extraction(app: &AppHandle, state: &AppState) {
     let Some(game) = game_dir(state) else {
-        *state.art_status.lock().unwrap() =
-            Some("Game art needs the Mechabellum install; choose the replay folder first.".into());
+        *state.art_status.lock().unwrap() = Some(
+            "Game art needs the Mechabellum install, which wasn't found in any Steam library."
+                .into(),
+        );
         return;
     };
-    let (art_dir, tools_dir) = (state.art_dir.clone(), state.tools_dir.clone());
+    let art_dir = state.art_dir.clone();
     let (art_slot, status) = (state.art.clone(), state.art_status.clone());
     let app = app.clone();
     std::thread::spawn(move || {
@@ -238,7 +239,7 @@ fn start_art_extraction(app: &AppHandle, state: &AppState) {
             *status.lock().unwrap() = Some(message.to_owned());
             let _ = app.emit("art-status", message);
         };
-        match art::extract(&game, &art_dir, &tools_dir, &report) {
+        match art::extract(&game, &art_dir, &report) {
             Ok(manifest) => {
                 log::info!(
                     "art: {} units, {} techs, {} specialists",
@@ -601,7 +602,6 @@ pub fn run() {
                 backfill: Arc::new(Mutex::new(Backfill::default())),
                 http_url: Mutex::new(None),
                 last_error: Arc::new(Mutex::new(None)),
-                tools_dir: data_dir.join("tools"),
                 art_dir,
                 art: Arc::new(Mutex::new(manifest.clone())),
                 art_status: Arc::new(Mutex::new(None)),

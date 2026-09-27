@@ -198,11 +198,16 @@ impl GameNames {
         names
     }
 
-    /// Extract from an install directory, e.g.
-    /// `C:\Program Files (x86)\Steam\steamapps\common\Mechabellum`.
-    /// The version is read from `ProjectDatas/GameData.grdb` when present.
+    /// Extract from an install directory (`steamapps/common/Mechabellum`). The version is read
+    /// from `ProjectDatas/GameData.grdb` when present.
     pub fn extract_from_install(game_dir: &Path) -> std::io::Result<GameNames> {
-        let assets = std::fs::read(game_dir.join("Mechabellum_Data").join("resources.assets"))?;
+        let data = crate::install::unity_data_dir(game_dir).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("no Unity data folder under {}", game_dir.display()),
+            )
+        })?;
+        let assets = std::fs::read(data.join("resources.assets"))?;
         let version = std::fs::read_to_string(game_dir.join("ProjectDatas").join("GameData.grdb"))
             .ok()
             .and_then(|s| {

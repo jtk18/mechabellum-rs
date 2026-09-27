@@ -38,11 +38,9 @@ pub enum Command {
     CheckBoard { file: PathBuf },
     /// Extract the ID -> name table from a Mechabellum install
     GenNames {
-        /// Game install directory (contains Mechabellum_Data and ProjectDatas)
-        #[arg(
-            long,
-            default_value = r"C:\Program Files (x86)\Steam\steamapps\common\Mechabellum"
-        )]
+        /// Game install directory (steamapps/common/Mechabellum). Defaults to the Steam install
+        /// on this machine.
+        #[arg(long, default_value_os_t = mechabellum::install::default_game_dir())]
         game_dir: PathBuf,
         /// Where to write the table
         #[arg(short, long, default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/data/names.json"))]

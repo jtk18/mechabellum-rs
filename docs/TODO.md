@@ -54,10 +54,11 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Platform and distribution
 
-12. **Art extraction without .NET.** Windows: done, using AssetStudio's .NET Framework 4.7.2
-    build (built into Windows 10/11); identical output. macOS/Linux still need .NET 9. A native
-    Rust reader would need hard-coded Sprite/Texture2D layouts: the game's assets carry no type
-    trees (Unity 2022.3.62f3, SerializedFile 22), and some sprites are polygon-packed.
+12. ~~Art extraction without .NET~~ Done: the `unity-sprites` crate (pure Rust, its own repo,
+    jtk18/unity-sprites) reads Sprite/Texture2D/SpriteAtlas with hard-coded 2022.3 layouts and
+    decodes DXT1/DXT5/RGBA. Nothing is downloaded or run. Checked on macOS: 422 sprites, 37 units,
+    765 techs, 218 specialists. Not yet compared pixel-for-pixel against an AssetStudio
+    extraction.
 13. **CI:** a GitHub Actions matrix (Windows, macOS, Ubuntu) to build and test the workspace and
     the Tauri app.
 14. ~~Start on login, single instance~~ Done (Settings tab; a second launch focuses the first).

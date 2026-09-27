@@ -231,9 +231,12 @@ fn place(
     }
 
     // Techs are clicked by position on each unit's card, in loadout order.
-    let replays = std::path::Path::new(
-        r"C:\Program Files (x86)\Steam\steamapps\common\Mechabellum\ProjectDatas\Replay",
-    );
+    let replays = mechabellum::install::find_replay_dir().unwrap_or_else(|| {
+        mechabellum::install::default_game_dir()
+            .join("ProjectDatas")
+            .join("Replay")
+    });
+    let replays = replays.as_path();
     let wants_techs = board
         .sides
         .iter()
