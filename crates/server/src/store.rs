@@ -165,7 +165,11 @@ impl Store {
     fn init(conn: Connection) -> Result<Self> {
         // Wait for another process's write lock instead of failing with SQLITE_BUSY.
         conn.busy_timeout(std::time::Duration::from_secs(10))?;
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+        // WAL + synchronous=NORMAL: commits skip an fsync each; a power cut can lose the last few
+        // commits but never corrupts the database.
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
+        )?;
         conn.execute_batch(SCHEMA)?;
         let has_uploader = conn
             .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'uploaded_by'")?

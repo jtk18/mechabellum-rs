@@ -3,11 +3,12 @@
 
 use mechabellum_server::{IngestOutcome, Store};
 use notify::{EventKind, RecursiveMode, Watcher};
+use rayon::prelude::*;
 use serde::Serialize;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -148,15 +149,24 @@ impl ReplayWatcher {
                     })
                     .unwrap_or_default();
                 existing.sort();
+                // Parse on every core; Store::ingest only serializes the database write.
                 let total = existing.len();
-                for (i, path) in existing.iter().enumerate() {
+                let done = AtomicUsize::new(0);
+                existing.par_iter().for_each(|path| {
                     if stopped.load(Ordering::Relaxed) {
                         return;
                     }
                     process_file(&store, path, &sink, true);
-                    if (i + 1) % 25 == 0 || i + 1 == total {
-                        sink(WatchEvent::BackfillProgress { done: i + 1, total });
+                    let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    if finished % 25 == 0 || finished == total {
+                        sink(WatchEvent::BackfillProgress {
+                            done: finished,
+                            total,
+                        });
                     }
+                });
+                if stopped.load(Ordering::Relaxed) {
+                    return;
                 }
                 if total == 0 {
                     sink(WatchEvent::BackfillProgress { done: 0, total: 0 });

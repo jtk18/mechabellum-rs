@@ -2,8 +2,11 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use mechabellum_server::{router, IngestOutcome, Store, UploadAuth};
 
+use rayon::prelude::*;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Accepts Mechabellum replays and serves aggregate stats
@@ -95,26 +98,38 @@ async fn main() -> Result<()> {
             axum::serve(listener, router(store, auth)).await?;
         }
         Command::Import { dir } => {
-            let (mut added, mut duplicate, mut failed) = (0, 0, 0);
-            for entry in std::fs::read_dir(&dir)? {
-                let path = entry?.path();
-                let is_replay = path.extension().is_some_and(|e| e == "grbr" || e == "xml");
-                if !is_replay {
-                    continue;
-                }
-                match std::fs::read(&path)
-                    .map_err(Into::into)
-                    .and_then(|bytes| store.ingest(&bytes, &path, Some("import")))
-                {
-                    Ok(IngestOutcome::Added { .. }) => added += 1,
-                    Ok(IngestOutcome::Duplicate { .. }) => duplicate += 1,
-                    Err(e) => {
-                        failed += 1;
-                        log::warn!("{}: {e:#}", path.display());
-                    }
-                }
-            }
-            println!("added {added}, already present {duplicate}, failed {failed}");
+            let paths: Vec<PathBuf> = std::fs::read_dir(&dir)?
+                .map(|entry| entry.map(|e| e.path()))
+                .collect::<std::io::Result<_>>()?;
+            let (added, duplicate, failed) = (
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+            );
+            // Parse on every core; Store::ingest only serializes the database write.
+            paths
+                .par_iter()
+                .filter(|p| p.extension().is_some_and(|e| e == "grbr" || e == "xml"))
+                .for_each(|path| {
+                    let counter = match std::fs::read(path)
+                        .map_err(Into::into)
+                        .and_then(|bytes| store.ingest(&bytes, path, Some("import")))
+                    {
+                        Ok(IngestOutcome::Added { .. }) => &added,
+                        Ok(IngestOutcome::Duplicate { .. }) => &duplicate,
+                        Err(e) => {
+                            log::warn!("{}: {e:#}", path.display());
+                            &failed
+                        }
+                    };
+                    counter.fetch_add(1, Ordering::Relaxed);
+                });
+            println!(
+                "added {}, already present {}, failed {}",
+                added.into_inner(),
+                duplicate.into_inner(),
+                failed.into_inner()
+            );
         }
         Command::Reindex => println!("reindexed {} replays", store.reindex()?),
         Command::Keys { command } => match command {
