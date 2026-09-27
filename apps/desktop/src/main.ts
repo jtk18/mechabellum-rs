@@ -241,23 +241,64 @@ function techRows(unit: UnitTechStats) {
   return block;
 }
 
+type SortKey = "name" | "pick" | "win" | "games";
+/** Each table's sort: column and direction. Clicking a header sorts by it; again reverses. */
+const usageSort: Record<"unit" | "specialist", { key: SortKey; desc: boolean }> = {
+  unit: { key: "pick", desc: true },
+  specialist: { key: "pick", desc: true },
+};
+
+function sortUsage(rows: UsageStat[], key: SortKey, desc: boolean): UsageStat[] {
+  const dir = desc ? -1 : 1;
+  const value = (s: UsageStat) =>
+    key === "win" ? s.win_rate : key === "pick" ? s.pick_rate : key === "games" ? s.picks : 0;
+  return [...rows].sort((a, b) => {
+    if (key === "name") return dir * a.name.localeCompare(b.name);
+    // By win rate, a handful of games says little: keep those below the rest.
+    if (key === "win") {
+      const small = Number(a.picks < SMALL_SAMPLE) - Number(b.picks < SMALL_SAMPLE);
+      if (small !== 0) return small;
+    }
+    return dir * (value(a) - value(b)) || b.picks - a.picks || a.name.localeCompare(b.name);
+  });
+}
+
 function renderUsage(
   container: HTMLElement,
-  rows: UsageStat[],
+  unsorted: UsageStat[],
   results: number,
   kind: "unit" | "specialist",
   techs?: Map<string, UnitTechStats>,
 ) {
   const icon = (name: string) =>
     nameIcon(kind === "unit" ? art.unitIconByName(name) : art.specialistByName(name));
-  const heads = [
-    ["", "Name"],
-    ["", "Pick rate"],
-    ["", "Win rate"],
-    ["num", "Games"],
-  ].map(([cls, text]) => {
-    const head = el("div", `head ${cls}`, text);
+  const sort = usageSort[kind];
+  const rows = sortUsage(unsorted, sort.key, sort.desc);
+  const heads = (
+    [
+      ["", "Name", "name"],
+      ["", "Pick rate", "pick"],
+      ["", "Win rate", "win"],
+      ["num", "Games", "games"],
+    ] as [string, string, SortKey][]
+  ).map(([cls, text, key]) => {
+    const head = el("div", `head ${cls}`);
     head.setAttribute("role", "columnheader");
+    const active = sort.key === key;
+    head.setAttribute("aria-sort", active ? (sort.desc ? "descending" : "ascending") : "none");
+    const button = el("button", `sort${active ? " active" : ""}`, text) as HTMLButtonElement;
+    button.type = "button";
+    button.title =
+      key === "win"
+        ? `Sort by win rate (fewer than ${SMALL_SAMPLE} games go last)`
+        : `Sort by ${text.toLowerCase()}`;
+    if (active) button.append(el("span", "sort-arrow", sort.desc ? " ▾" : " ▴"));
+    button.addEventListener("click", () => {
+      // Names read best A to Z first; numbers highest first.
+      usageSort[kind] = active ? { key, desc: !sort.desc } : { key, desc: key !== "name" };
+      renderUsage(container, unsorted, results, kind, techs);
+    });
+    head.append(button);
     return head;
   });
   const body = rows.map((stat) => {
@@ -275,7 +316,7 @@ function renderUsage(
       toggle.addEventListener("click", () => {
         if (open) expandedUnits.delete(stat.name);
         else expandedUnits.add(stat.name);
-        renderUsage(container, rows, results, kind, techs);
+        renderUsage(container, unsorted, results, kind, techs);
       });
       name.append(toggle);
     } else {
