@@ -77,8 +77,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 ## Tester track
 
 21. **Read unlocked techs** per unit from `ProjectDatas/GameData.grdb` instead of OCR.
-22. **Automate Testing Grounds** setup from replay army snapshots (the drill-down already has
-    every unit's position, level, and techs).
+22. **Automate Testing Grounds** setup from board code. Done so far: the board code format
+    (docs/board-code.md; `mechabellum::board`), "Copy board code" on the match board, and
+    `replay-parse board` / `check-board`. Next: map board squares to screen positions in Testing
+    Grounds, then place units, set levels and techs (needs the game running).
 
 ## Housekeeping
 

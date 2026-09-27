@@ -328,6 +328,31 @@ async fn version_trends(
         .map_err(|e| format!("{e:#}"))
 }
 
+/// A round of a stored match as board code (docs/board-code.md). `round_index` is 0-based.
+#[tauri::command]
+async fn board_code(
+    state: State<'_, AppState>,
+    battle_id: String,
+    round_index: usize,
+) -> Result<String, String> {
+    let store = state.store.clone();
+    let detail = tauri::async_runtime::spawn_blocking(move || store.match_detail(&battle_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?
+        .ok_or("That match isn't stored.")?;
+    mechabellum::board::Board::from_round(&detail, round_index)
+        .map(|board| board.to_string())
+        .ok_or_else(|| "That round isn't in the replay.".into())
+}
+
+/// Put text on the clipboard. Done here rather than in the page, which may not have focus.
+#[tauri::command]
+fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
 /// Each player's rating at the start of a match, when the game log had it.
 #[tauri::command]
 async fn match_ratings(
@@ -512,6 +537,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
@@ -630,6 +656,8 @@ pub fn run() {
             autostart_enabled,
             set_autostart,
             match_ratings,
+            board_code,
+            copy_text,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

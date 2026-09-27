@@ -1471,3 +1471,11 @@ h1 {
   gap: 12px;
   align-content: start;
 }
+
+.round-bar > #copy-board {
+  width: auto;
+  padding: 4px 10px;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}

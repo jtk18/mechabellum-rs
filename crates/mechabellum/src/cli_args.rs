@@ -26,6 +26,16 @@ pub enum Command {
         /// Folder of .grbr/.xml replays (read only)
         dir: PathBuf,
     },
+    /// Print a round of a replay as board code (see docs/board-code.md)
+    Board {
+        /// A .grbr or .xml replay
+        replay: PathBuf,
+        /// 1-based round; the last round by default
+        #[arg(short, long)]
+        round: Option<usize>,
+    },
+    /// Check board code for mistakes, reading it from a file or "-" for stdin
+    CheckBoard { file: PathBuf },
     /// Extract the ID -> name table from a Mechabellum install
     GenNames {
         /// Game install directory (contains Mechabellum_Data and ProjectDatas)

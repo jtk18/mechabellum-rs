@@ -42,6 +42,45 @@ fn main() {
         return;
     }
 
+    if let Some(Command::Board { replay, round }) = &args.command {
+        let record = BattleRecord::new_from_file(replay, false).expect("Unable to read replay");
+        let detail = record.match_detail();
+        let index = match round {
+            Some(r) => r.checked_sub(1).expect("rounds start at 1"),
+            None => detail.rounds.len().saturating_sub(1),
+        };
+        match board::Board::from_round(&detail, index) {
+            Some(board) => println!("{board}"),
+            None => {
+                eprintln!("The replay has {} rounds.", detail.rounds.len());
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    if let Some(Command::CheckBoard { file }) = &args.command {
+        let text = if file.as_os_str() == "-" {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                .expect("Unable to read stdin");
+            text
+        } else {
+            fs::read_to_string(file).expect("Unable to read file")
+        };
+        match board::Board::parse(&text) {
+            Ok(board) => {
+                let units: usize = board.sides.iter().map(|s| s.units.len()).sum();
+                println!("OK: {} sides, {units} units", board.sides.len());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
     if let Some(Command::GenNames { game_dir, output }) = args.command {
         let names =
             GameNames::extract_from_install(&game_dir).expect("Unable to read game install");

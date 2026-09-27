@@ -396,6 +396,19 @@ function wire(onBack: () => void) {
   $("match-back").addEventListener("click", onBack);
   $("round-prev").addEventListener("click", () => step(-1));
   $("round-next").addEventListener("click", () => step(1));
+  const copy = $<HTMLButtonElement>("copy-board");
+  copy.addEventListener("click", async () => {
+    if (!detail) return;
+    try {
+      const code = await invoke<string>("board_code", { battleId: detail.battle_id, roundIndex });
+      await invoke("copy_text", { text: code });
+      copy.textContent = "Copied";
+    } catch (e) {
+      copy.textContent = "Couldn't copy";
+      copy.title = String(e);
+    }
+    window.setTimeout(() => (copy.textContent = "Copy board code"), 2000);
+  });
   $<HTMLInputElement>("round-input").addEventListener("input", (e) => {
     roundIndex = Number((e.target as HTMLInputElement).value);
     render();
