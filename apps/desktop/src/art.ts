@@ -13,10 +13,19 @@ interface ArtManifest {
   background: string | null;
 }
 
+/** Extraction progress, from the `art-progress` event or `art_info` while it runs. */
+export interface ArtProgress {
+  fraction: number;
+  step: number;
+  steps: string[];
+  detail: string;
+}
+
 interface ArtInfo {
   dir: string;
   manifest: ArtManifest | null;
   status: string | null;
+  progress: ArtProgress | null;
   units_by_name: Record<string, string>;
   techs_by_name: Record<string, string>;
   specialists_by_name: Record<string, string>;
@@ -63,15 +72,20 @@ export const art = {
   specialistByName: (name: string) => url(byKey.specialists.get(key(name))),
 };
 
-/** Load the manifest, and call `onChange` whenever extraction finishes or reports progress. */
-export async function loadArt(onChange: () => void) {
-  info = await invoke<ArtInfo>("art_info");
-  index();
+/** Load the manifest, and call `onChange` whenever extraction finishes or reports progress.
+ * `onProgress` gets each progress update while extraction runs, and null when it stops. */
+export async function loadArt(onChange: () => void, onProgress: (p: ArtProgress | null) => void) {
+  await listen<ArtProgress>("art-progress", (event) => onProgress(event.payload));
   await listen<string>("art-status", async () => {
     info = await invoke<ArtInfo>("art_info");
     index();
+    onProgress(info.progress);
     onChange();
   });
+  // Extraction may have started before this page loaded.
+  info = await invoke<ArtInfo>("art_info");
+  index();
+  onProgress(info.progress);
   onChange();
 }
 

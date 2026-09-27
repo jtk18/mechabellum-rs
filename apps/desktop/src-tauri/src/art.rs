@@ -9,11 +9,43 @@ use anyhow::{anyhow, Context, Result};
 use mechabellum::{GameNames, NameKind};
 use serde::{Deserialize, Serialize};
 
+use rayon::prelude::*;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 /// Official press kit: Mechabellum_Keyart_16x9_Clean.png
 const KEY_ART_URL: &str = "https://drive.usercontent.google.com/download?id=11k5SALLz_OV_59W86rjYG9RjuGN1QomM&export=download&confirm=t";
+/// The steps of an extraction, in order, as the splash screen lists them.
+pub const STEPS: [&str; 4] = [
+    "Find the game's data files",
+    "Extract unit, tech, and specialist art",
+    "Match art to units, techs, and specialists",
+    "Download the key art background",
+];
+
+/// Where an extraction is: overall fraction done, the step it's on (index into [`STEPS`]),
+/// and a line about what that step is doing right now.
+#[derive(Debug, Clone, Serialize)]
+pub struct Progress {
+    pub fraction: f32,
+    pub step: usize,
+    pub steps: [&'static str; 4],
+    pub detail: String,
+}
+
+impl Progress {
+    fn new(fraction: f32, step: usize, detail: impl Into<String>) -> Progress {
+        Progress {
+            fraction,
+            step,
+            steps: STEPS,
+            detail: detail.into(),
+        }
+    }
+}
+
 /// Only the sprites the app uses:
 /// `Mech_Default_{n}_1`, `Mech_Portrait_{n}`, `Mech_Portrait_Research_Center_{X}`,
 /// `Mech_Portrait_Tower`, `UT_*`, `O_*`, `RC_*`, `TD_*_SBUI`, `E_*_SBUI`, `Icon_officers`.
@@ -142,16 +174,14 @@ fn cards_by_record(
     max_gap: usize,
 ) -> BTreeMap<u64, String> {
     let mut map = BTreeMap::new();
-    let mut i = max_gap + 4;
-    while i + 3 < level0.len() {
-        let rest = &level0[i..];
-        let next = prefixes
+    // One pass over the bytes. (Searching ahead for each prefix after every hit rescanned the
+    // file up to the next rare prefix each time: 12 s in a debug build.)
+    let starts = (max_gap + 4..level0.len()).filter(|&p| {
+        prefixes
             .iter()
-            .filter_map(|p| rest.windows(p.len()).position(|w| w == *p))
-            .min();
-        let Some(pos) = next else { break };
-        let start = i + pos;
-        i = start + 2;
+            .any(|prefix| level0[p..].starts_with(prefix))
+    });
+    for start in starts {
         let len = i32::from_le_bytes(level0[start - 4..start].try_into().unwrap());
         if !(5..=64).contains(&len) {
             continue;
@@ -192,43 +222,90 @@ fn background(art_dir: &Path) -> Result<String> {
     Ok(file.into())
 }
 
-/// Extract everything into `art_dir` and write its manifest. `progress` receives short status
-/// lines for the UI.
-pub fn extract(game_dir: &Path, art_dir: &Path, progress: &dyn Fn(&str)) -> Result<ArtManifest> {
+/// Extract everything into `art_dir` and write its manifest. `progress` hears about each step
+/// and, during sprite extraction, each image; it's called from several threads.
+pub fn extract(
+    game_dir: &Path,
+    art_dir: &Path,
+    progress: &(dyn Fn(Progress) + Sync),
+) -> Result<ArtManifest> {
+    progress(Progress::new(
+        0.0,
+        0,
+        format!("Looking in {}", game_dir.display()),
+    ));
     let data = mechabellum::install::unity_data_dir(game_dir).ok_or_else(|| {
         anyhow!(
             "Couldn't find the game's data files under {}",
             game_dir.display()
         )
     })?;
-    progress("Extracting unit, tech, and specialist art");
+    progress(Progress::new(0.02, 0, "Reading sharedassets0.assets"));
     std::fs::create_dir_all(art_dir)?;
-    let mut assets = unity_sprites::Assets::open(&data.join("sharedassets0.assets"))
+    let assets = unity_sprites::Assets::open(&data.join("sharedassets0.assets"))
         .context("reading sharedassets0.assets")?;
-    let mut written = BTreeSet::new();
+
+    // Names repeat occasionally; the first sprite of a name wins.
+    let mut seen = BTreeSet::new();
+    let mut by_texture: BTreeMap<i64, Vec<unity_sprites::Sprite>> = BTreeMap::new();
     for sprite in assets.sprites(wanted)? {
-        // Names repeat occasionally; the first sprite of a name wins.
-        if !written.insert(sprite.name.clone()) {
+        if !seen.insert(sprite.name.clone()) {
             continue;
         }
-        let image = match assets.export(&sprite) {
-            Ok(image) => image,
-            Err(e) => {
-                log::warn!("art: {}: {e}", sprite.name);
-                continue;
-            }
-        };
-        image::save_buffer(
-            art_dir.join(format!("{}.png", sprite.name)),
-            &image.rgba,
-            image.width,
-            image.height,
-            image::ColorType::Rgba8,
-        )
-        .with_context(|| format!("writing {}.png", sprite.name))?;
+        match assets.texture_id(&sprite) {
+            Ok(id) => by_texture.entry(id).or_default().push(sprite),
+            Err(e) => log::warn!("art: {}: {e}", sprite.name),
+        }
     }
+    // One task per texture: decode it once, cut its sprites. Big atlases go first so the
+    // long tasks start early.
+    let mut groups: Vec<_> = by_texture.into_iter().collect();
+    groups.sort_by_key(|(_, sprites)| std::cmp::Reverse(sprites.len()));
+    let total: usize = groups.iter().map(|(_, s)| s.len()).sum();
+    let done = AtomicUsize::new(0);
+    progress(Progress::new(
+        0.05,
+        1,
+        format!("{total} images from {} textures", groups.len()),
+    ));
+    groups
+        .par_iter()
+        .try_for_each(|(texture_id, sprites)| -> Result<()> {
+            let texture = match assets.decode_texture(*texture_id) {
+                Ok(texture) => texture,
+                Err(e) => {
+                    log::warn!("art: texture {texture_id}: {e}");
+                    done.fetch_add(sprites.len(), Ordering::Relaxed);
+                    return Ok(());
+                }
+            };
+            for sprite in sprites {
+                match assets.cut(sprite, &texture) {
+                    Ok(image) => image::save_buffer(
+                        art_dir.join(format!("{}.png", sprite.name)),
+                        &image.rgba,
+                        image.width,
+                        image.height,
+                        image::ColorType::Rgba8,
+                    )
+                    .with_context(|| format!("writing {}.png", sprite.name))?,
+                    Err(e) => log::warn!("art: {}: {e}", sprite.name),
+                }
+                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                progress(Progress::new(
+                    0.05 + 0.8 * n as f32 / total.max(1) as f32,
+                    1,
+                    format!("{n} of {total} images · {}", sprite.name),
+                ));
+            }
+            Ok(())
+        })?;
 
-    progress("Matching art to units and techs");
+    progress(Progress::new(
+        0.86,
+        2,
+        "Reading unit and card records from level0",
+    ));
     let exists = |file: &str| art_dir.join(file).is_file();
     let names = GameNames::bundled();
     let mut manifest = ArtManifest {
@@ -284,7 +361,11 @@ pub fn extract(game_dir: &Path, art_dir: &Path, progress: &dyn Fn(&str)) -> Resu
     manifest.research_center = exists("Mech_Portrait_Research_Center_1A.png")
         .then(|| "Mech_Portrait_Research_Center_1A.png".into());
 
-    progress("Downloading the key art background");
+    progress(Progress::new(
+        0.9,
+        3,
+        "Official press kit art, resized to 1920 px",
+    ));
     manifest.background = match background(art_dir) {
         Ok(file) => Some(file),
         Err(e) => {

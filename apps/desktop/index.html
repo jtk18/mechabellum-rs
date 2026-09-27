@@ -11,6 +11,19 @@
   <body>
     <div class="backdrop" id="backdrop" aria-hidden="true"></div>
 
+    <div class="splash" id="art-splash" role="dialog" aria-modal="true" aria-labelledby="splash-title" hidden>
+      <div class="splash-card">
+        <h2 id="splash-title">Preparing game art</h2>
+        <p class="splash-lede">Reading unit, tech, and specialist art from your Mechabellum install. This only happens once.</p>
+        <div class="splash-bar" id="splash-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="splash-fill" id="splash-fill"></div>
+        </div>
+        <div class="splash-percent" id="splash-percent">0%</div>
+        <ol class="splash-steps" id="splash-steps"></ol>
+        <p class="splash-detail" id="splash-detail" aria-live="polite"></p>
+      </div>
+    </div>
+
     <header class="topbar">
       <h1>Mechabellum Stats</h1>
       <nav class="tabs" aria-label="Views">

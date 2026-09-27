@@ -967,6 +967,96 @@ h1 {
   font-size: 12px;
 }
 
+/* First-run splash while game art is extracted */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(7 9 11 / 0.82);
+  backdrop-filter: blur(10px) saturate(1.1);
+}
+.splash-card {
+  width: min(520px, 100%);
+  padding: 28px 28px 22px;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+.splash-card h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.splash-lede {
+  margin: 0 0 20px;
+  color: var(--text-secondary);
+}
+.splash-bar {
+  height: 8px;
+  background: var(--track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.splash-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 120ms linear;
+}
+.splash-percent {
+  margin-top: 6px;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.splash-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.splash-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--text-muted);
+}
+.splash-steps li::before {
+  content: "○";
+  width: 1em;
+  text-align: center;
+}
+.splash-steps li[data-state="active"] {
+  color: var(--text-primary);
+}
+.splash-steps li[data-state="active"]::before {
+  content: "●";
+  color: var(--accent);
+}
+.splash-steps li[data-state="done"] {
+  color: var(--text-secondary);
+}
+.splash-steps li[data-state="done"]::before {
+  content: "✓";
+  color: var(--accent);
+}
+.splash-detail {
+  margin: 14px 0 0;
+  min-height: 1.45em;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Small art beside names */
 .name {
   display: flex;

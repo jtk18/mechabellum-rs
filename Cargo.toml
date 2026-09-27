@@ -1,3 +1,22 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "apps/desktop/src-tauri"]
+
+# Art extraction decodes and re-encodes hundreds of images; unoptimized it takes a minute
+# instead of a second. Optimize just those crates in dev builds.
+[profile.dev.package.unity-sprites]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
+[profile.dev.package.adler2]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3

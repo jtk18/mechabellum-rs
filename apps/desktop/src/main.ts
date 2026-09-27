@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { art, artImage, loadArt } from "./art";
+import { art, artImage, loadArt, type ArtProgress } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
 import { renderLoadout } from "./loadout";
@@ -667,6 +667,26 @@ function applyArt() {
   redrawMatch();
 }
 
+/** The first-run splash: a progress bar, the steps with the current one marked, and a line
+ * about what's happening now. Hidden when extraction isn't running. */
+function showArtProgress(progress: ArtProgress | null) {
+  const splash = $("art-splash");
+  splash.hidden = progress === null;
+  if (!progress) return;
+  const percent = Math.round(Math.min(1, Math.max(0, progress.fraction)) * 100);
+  $("splash-fill").style.width = `${percent}%`;
+  $("splash-bar").setAttribute("aria-valuenow", String(percent));
+  $("splash-percent").textContent = `${percent}%`;
+  const list = $("splash-steps");
+  if (list.children.length !== progress.steps.length) {
+    list.replaceChildren(...progress.steps.map((step) => el("li", "", step)));
+  }
+  [...list.children].forEach((item, i) => {
+    (item as HTMLElement).dataset.state = i < progress.step ? "done" : i === progress.step ? "active" : "";
+  });
+  $("splash-detail").textContent = progress.detail;
+}
+
 function setupTooltip() {
   const tip = $("tooltip");
   document.addEventListener("mousemove", (event) => {
@@ -726,7 +746,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     tab.addEventListener("click", () => showView(tab.dataset.view as View));
   }
   $("match-search").addEventListener("input", () => renderMatchList());
-  loadArt(applyArt);
+  loadArt(applyArt, showArtProgress);
 
   $("choose-dir").addEventListener("click", async () => {
     const dir = await open({ directory: true, multiple: false, title: "Mechabellum replay folder" });

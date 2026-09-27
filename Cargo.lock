@@ -1045,7 +1045,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 2.0.98",
 ]
 
 [[package]]
@@ -5900,7 +5900,7 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 [[package]]
 name = "unity-sprites"
 version = "0.1.0"
-source = "git+ssh://git@github.com/jtk18/unity-sprites.git#5baf4b14870d945606ab8984cb5076c929e4e0b9"
+source = "git+ssh://git@github.com/jtk18/unity-sprites.git#e83f539b32239ad511878394cff0b3f9628f1104"
 dependencies = [
  "thiserror 2.0.21",
 ]

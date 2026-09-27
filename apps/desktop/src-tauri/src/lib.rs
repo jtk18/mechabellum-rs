@@ -66,6 +66,8 @@ struct AppState {
     art: Arc<Mutex<Option<art::ArtManifest>>>,
     /// What art extraction is doing, or why it failed.
     art_status: Arc<Mutex<Option<String>>>,
+    /// Extraction progress while it runs, for the splash screen.
+    art_progress: Arc<Mutex<Option<art::Progress>>>,
 }
 
 #[derive(Serialize)]
@@ -73,6 +75,8 @@ struct ArtInfo {
     dir: PathBuf,
     manifest: Option<art::ArtManifest>,
     status: Option<String>,
+    /// Set while extraction runs.
+    progress: Option<art::Progress>,
     /// Display name -> image file, for views that only know names (the stats tables).
     units_by_name: std::collections::BTreeMap<String, String>,
     techs_by_name: std::collections::BTreeMap<String, String>,
@@ -80,13 +84,19 @@ struct ArtInfo {
 }
 
 impl ArtInfo {
-    fn new(dir: PathBuf, manifest: Option<art::ArtManifest>, status: Option<String>) -> Self {
+    fn new(
+        dir: PathBuf,
+        manifest: Option<art::ArtManifest>,
+        status: Option<String>,
+        progress: Option<art::Progress>,
+    ) -> Self {
         use mechabellum::{GameNames, NameKind};
         let names = GameNames::bundled();
         let mut info = ArtInfo {
             dir,
             manifest: None,
             status,
+            progress,
             units_by_name: Default::default(),
             techs_by_name: Default::default(),
             specialists_by_name: Default::default(),
@@ -233,13 +243,49 @@ fn start_art_extraction(app: &AppHandle, state: &AppState) {
     };
     let art_dir = state.art_dir.clone();
     let (art_slot, status) = (state.art.clone(), state.art_status.clone());
+    let progress_slot = state.art_progress.clone();
     let app = app.clone();
     std::thread::spawn(move || {
         let report = |message: &str| {
             *status.lock().unwrap() = Some(message.to_owned());
             let _ = app.emit("art-status", message);
         };
-        match art::extract(&game, &art_dir, &report) {
+        // Sprite extraction reports every image from several threads; pass on a step change
+        // or each half percent, not all of them.
+        let step_started = Mutex::new((0, std::time::Instant::now()));
+        let progress = |p: art::Progress| {
+            {
+                let mut started = step_started.lock().unwrap();
+                if p.step != started.0 {
+                    log::info!(
+                        "art: {} took {:.1?}",
+                        art::STEPS[started.0],
+                        started.1.elapsed()
+                    );
+                    *started = (p.step, std::time::Instant::now());
+                }
+            }
+            let mut slot = progress_slot.lock().unwrap();
+            let due = slot.as_ref().is_none_or(|last| {
+                p.step != last.step || p.fraction - last.fraction >= 0.005 || p.fraction >= 1.0
+            });
+            if due {
+                let _ = app.emit("art-progress", &p);
+                *slot = Some(p);
+            }
+        };
+        report("Extracting game art");
+        let result = art::extract(&game, &art_dir, &progress);
+        {
+            let started = step_started.lock().unwrap();
+            log::info!(
+                "art: {} took {:.1?}",
+                art::STEPS[started.0],
+                started.1.elapsed()
+            );
+        }
+        *progress_slot.lock().unwrap() = None;
+        match result {
             Ok(manifest) => {
                 log::info!(
                     "art: {} units, {} techs, {} specialists",
@@ -446,6 +492,7 @@ fn art_info(state: State<'_, AppState>) -> ArtInfo {
         state.art_dir.clone(),
         state.art.lock().unwrap().clone(),
         state.art_status.lock().unwrap().clone(),
+        state.art_progress.lock().unwrap().clone(),
     )
 }
 
@@ -605,6 +652,7 @@ pub fn run() {
                 art_dir,
                 art: Arc::new(Mutex::new(manifest.clone())),
                 art_status: Arc::new(Mutex::new(None)),
+                art_progress: Arc::new(Mutex::new(None)),
                 syncer,
                 sync_wake: Mutex::new(sync_wake),
             });
