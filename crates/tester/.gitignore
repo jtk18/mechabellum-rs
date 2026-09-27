@@ -1,0 +1,27 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config and runtime files
+game_data.json
+player_stats.json
+temp_region_*.png
+
+# Logs
+*.log
+
+# Windows
+*.exe
+*.pdb

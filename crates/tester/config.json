@@ -1,0 +1,233 @@
+{
+  "steam_app_id": "669330",
+  "window_title": "Mechabellum",
+  "buttons": {
+    "marksman": {
+      "x": 1503,
+      "y": 594,
+      "width": 158,
+      "height": 36,
+      "description": "Button at (1503, 594)"
+    },
+    "fang": {
+      "x": 743,
+      "y": 587,
+      "width": 82,
+      "height": 43,
+      "description": "Button at (743, 587)"
+    },
+    "mustang": {
+      "x": 1716,
+      "y": 585,
+      "width": 131,
+      "height": 47,
+      "description": "Button at (1716, 585)"
+    },
+    "arclight": {
+      "x": 1323,
+      "y": 591,
+      "width": 123,
+      "height": 41,
+      "description": "Button at (1323, 591)"
+    },
+    "phantom_ray": {
+      "x": 492,
+      "y": 1025,
+      "width": 186,
+      "height": 45,
+      "description": "Button at (492, 1025)"
+    },
+    "sledgehammer": {
+      "x": 1893,
+      "y": 582,
+      "width": 180,
+      "height": 50,
+      "description": "Button at (1893, 582)"
+    },
+    "farseer": {
+      "x": 1125,
+      "y": 1026,
+      "width": 119,
+      "height": 42,
+      "description": "Button at (1125, 1026)"
+    },
+    "unit_modification": {
+      "x": 1187,
+      "y": 41,
+      "width": 301,
+      "height": 54,
+      "description": "Button at (1187, 41)"
+    },
+    "void_eye": {
+      "x": 1115,
+      "y": 587,
+      "width": 136,
+      "height": 45,
+      "description": "Button at (1115, 587)"
+    },
+    "solo_button": {
+      "x": 794,
+      "y": 44,
+      "width": 84,
+      "height": 48,
+      "description": "Solo button"
+    },
+    "crawler": {
+      "x": 525,
+      "y": 588,
+      "width": 125,
+      "height": 45,
+      "description": "Button at (525, 588)"
+    },
+    "melting_point": {
+      "x": 1485,
+      "y": 1020,
+      "width": 188,
+      "height": 50,
+      "description": "Button at (1485, 1020)"
+    },
+    "bar": {
+      "x": 482,
+      "y": 1149,
+      "width": 1162,
+      "height": 44,
+      "description": "Button at (482, 1149)"
+    },
+    "sandworm": {
+      "x": 1902,
+      "y": 1026,
+      "width": 156,
+      "height": 47,
+      "description": "Button at (1902, 1026)"
+    },
+    "stormcaller": {
+      "x": 2093,
+      "y": 585,
+      "width": 175,
+      "height": 51,
+      "description": "Button at (2093, 585)"
+    },
+    "scorpion": {
+      "x": 915,
+      "y": 1026,
+      "width": 138,
+      "height": 41,
+      "description": "Button at (915, 1026)"
+    },
+    "wraith": {
+      "x": 728,
+      "y": 1028,
+      "width": 117,
+      "height": 34,
+      "description": "Button at (728, 1028)"
+    },
+    "raiden": {
+      "x": 2121,
+      "y": 1025,
+      "width": 122,
+      "height": 43,
+      "description": "Button at (2121, 1025)"
+    },
+    "fortress": {
+      "x": 1709,
+      "y": 1028,
+      "width": 141,
+      "height": 43,
+      "description": "Button at (1709, 1028)"
+    }
+  },
+  "text_regions": {
+    "unit_mod_splash": {
+      "x": 467,
+      "y": 615,
+      "width": 114,
+      "height": 46,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_hp": {
+      "x": 455,
+      "y": 463,
+      "width": 140,
+      "height": 50,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_range": {
+      "x": 486,
+      "y": 709,
+      "width": 136,
+      "height": 54,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_speed": {
+      "x": 497,
+      "y": 515,
+      "width": 95,
+      "height": 46,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "version_info": {
+      "x": 11,
+      "y": 123,
+      "width": 195,
+      "height": 36,
+      "expected_text": null,
+      "extract_pattern": "Version (.*)"
+    },
+    "unit_mod_unit_count": {
+      "x": 468,
+      "y": 824,
+      "width": 110,
+      "height": 55,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_cost": {
+      "x": 476,
+      "y": 407,
+      "width": 105,
+      "height": 53,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_atk": {
+      "x": 425,
+      "y": 558,
+      "width": 176,
+      "height": 54,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "player_name": {
+      "x": 396,
+      "y": 1410,
+      "width": 353,
+      "height": 51,
+      "expected_text": null,
+      "extract_pattern": "(.*)"
+    },
+    "unit_mod_interval": {
+      "x": 458,
+      "y": 661,
+      "width": 137,
+      "height": 52,
+      "expected_text": null,
+      "extract_pattern": null
+    },
+    "unit_mod_targets": {
+      "x": 480,
+      "y": 760,
+      "width": 182,
+      "height": 54,
+      "expected_text": null,
+      "extract_pattern": null
+    }
+  },
+  "resource_files": [
+    "game_data.json",
+    "player_stats.json"
+  ]
+}
