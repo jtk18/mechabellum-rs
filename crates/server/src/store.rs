@@ -130,6 +130,36 @@ pub struct UsageStat {
     pub win_rate: f64,
 }
 
+/// Pick and win counts per game version, for spotting balance changes between patches.
+#[derive(Debug, Serialize)]
+pub struct VersionTrends {
+    /// Ascending. Every `cells` list below is aligned with this.
+    pub versions: Vec<VersionTotals>,
+    pub units: Vec<Trend>,
+    pub specialists: Vec<Trend>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VersionTotals {
+    pub version: u32,
+    pub matches: u64,
+    pub player_results: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Trend {
+    pub name: String,
+    pub picks: u64,
+    /// One per version; `None` where it was never fielded.
+    pub cells: Vec<Option<TrendCell>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TrendCell {
+    pub picks: u64,
+    pub wins: u64,
+}
+
 /// What the stored matches can be filtered by, with match counts.
 #[derive(Debug, Serialize)]
 pub struct Facets {
@@ -324,6 +354,79 @@ impl Store {
         Ok(())
     }
 
+    /// Like `stats`, but broken down by game version. The filter's version bounds still apply.
+    pub fn version_trends(&self, filter: &StatsFilter) -> Result<VersionTrends> {
+        let conn = self.conn();
+        let scope = "WITH scope AS (
+                SELECT p.battle_id, p.player_id, p.won, m.version FROM players p
+                JOIN matches m ON m.battle_id = p.battle_id
+                WHERE (?1 IS NULL OR m.version >= ?1)
+                  AND (?2 IS NULL OR m.version <= ?2)
+                  AND (?3 IS NULL OR m.match_mode = ?3)
+                  AND (?4 IS NULL OR m.game_mode = ?4)
+                  AND (?5 IS NULL OR p.player_id = ?5))";
+        let args = params![
+            filter.min_version,
+            filter.max_version,
+            filter.match_mode,
+            filter.game_mode,
+            filter.player_id
+        ];
+
+        let versions: Vec<VersionTotals> = conn
+            .prepare(&format!(
+                "{scope} SELECT version, COUNT(DISTINCT battle_id), COUNT(*) FROM scope
+                 GROUP BY version ORDER BY version"
+            ))?
+            .query_map(args, |r| {
+                Ok(VersionTotals {
+                    version: r.get(0)?,
+                    matches: r.get(1)?,
+                    player_results: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        let column: BTreeMap<u32, usize> = versions
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (v.version, i))
+            .collect();
+
+        let trends = |table: &str, name: &str| -> Result<Vec<Trend>> {
+            let mut by_name: BTreeMap<String, Trend> = BTreeMap::new();
+            let sql = format!(
+                "{scope} SELECT t.{name}, s.version, COUNT(*), SUM(s.won) FROM {table} t
+                 JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
+                 GROUP BY t.{name}, s.version"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let mut rows = stmt.query(args)?;
+            while let Some(row) = rows.next()? {
+                let (label, version, picks, wins): (String, u32, u64, u64) =
+                    (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
+                let trend = by_name.entry(label.clone()).or_insert_with(|| Trend {
+                    name: label,
+                    picks: 0,
+                    cells: (0..versions.len()).map(|_| None).collect(),
+                });
+                trend.picks += picks;
+                if let Some(&i) = column.get(&version) {
+                    trend.cells[i] = Some(TrendCell { picks, wins });
+                }
+            }
+            let mut out: Vec<Trend> = by_name.into_values().collect();
+            out.sort_by(|a, b| b.picks.cmp(&a.picks).then_with(|| a.name.cmp(&b.name)));
+            Ok(out)
+        };
+        let units = trends("player_units", "unit")?;
+        let specialists = trends("player_specialists", "specialist")?;
+        Ok(VersionTrends {
+            versions,
+            units,
+            specialists,
+        })
+    }
+
     pub fn facets(&self) -> Result<Facets> {
         let conn = self.conn();
         let versions = conn
@@ -341,9 +444,12 @@ impl Store {
             .collect::<rusqlite::Result<_>>()?;
         let main_player = conn
             .query_row(
-                "SELECT player_id, (SELECT name FROM players q WHERE q.player_id = p.player_id
-                                    ORDER BY q.battle_id DESC LIMIT 1)
-                 FROM players p GROUP BY player_id ORDER BY COUNT(*) DESC LIMIT 1",
+                // Name from their most recent match: accounts can be renamed.
+                "SELECT p.player_id,
+                        (SELECT q.name FROM players q JOIN matches m ON m.battle_id = q.battle_id
+                         WHERE q.player_id = p.player_id
+                         ORDER BY m.occurred_on DESC, m.version DESC LIMIT 1)
+                 FROM players p GROUP BY p.player_id ORDER BY COUNT(*) DESC LIMIT 1",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

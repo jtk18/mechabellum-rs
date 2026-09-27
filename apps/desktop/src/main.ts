@@ -44,6 +44,24 @@ interface MatchRow {
   losers: string[];
 }
 
+interface TrendCell {
+  picks: number;
+  wins: number;
+}
+
+interface VersionTrends {
+  versions: { version: number; matches: number; player_results: number }[];
+  units: { name: string; picks: number; cells: (TrendCell | null)[] }[];
+  specialists: { name: string; picks: number; cells: (TrendCell | null)[] }[];
+}
+
+/** Tooltip content attached to a hoverable element as JSON in data-tip. */
+interface Tip {
+  title: string;
+  lines: string[];
+  note?: string;
+}
+
 interface StatsFilter {
   min_version?: number;
   max_version?: number;
@@ -159,7 +177,7 @@ function winBar(rate: number) {
   return bar;
 }
 
-function renderUsage(container: HTMLElement, rows: UsageStat[], results: number, noun: string) {
+function renderUsage(container: HTMLElement, rows: UsageStat[], results: number) {
   const heads = [
     ["", "Name"],
     ["", "Pick rate"],
@@ -180,7 +198,18 @@ function renderUsage(container: HTMLElement, rows: UsageStat[], results: number,
       el("div", "games", String(stat.picks)),
     );
     for (const cell of row.children) cell.setAttribute("role", "cell");
-    row.dataset.tip = JSON.stringify({ ...stat, results, noun });
+    const tip: Tip = {
+      title: stat.name,
+      lines: [
+        `Fielded in ${stat.picks} of ${results} results (${pct(stat.pick_rate)})`,
+        `Won ${stat.wins} of ${stat.picks} (${pct(stat.win_rate)})`,
+      ],
+      note:
+        stat.picks < SMALL_SAMPLE
+          ? `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.`
+          : undefined,
+    };
+    row.dataset.tip = JSON.stringify(tip);
     return row;
   });
   container.replaceChildren(...heads, ...body);
@@ -214,14 +243,88 @@ function renderMatches(matches: MatchRow[]) {
   }
 }
 
+/** Win rates this far from 50% get the strongest color. */
+const TREND_SPAN = 0.25;
+/** Equal color steps per arm of the diverging scale. */
+const TREND_STEPS = 4;
+
+function trendColor(winRate: number) {
+  const delta = Math.max(-TREND_SPAN, Math.min(TREND_SPAN, winRate - 0.5));
+  const step = Math.round((Math.abs(delta) / TREND_SPAN) * TREND_STEPS);
+  if (step === 0) return "var(--track)";
+  const pole = delta > 0 ? "var(--win)" : "var(--loss)";
+  return `color-mix(in oklab, ${pole} ${(step / TREND_STEPS) * 100}%, var(--track))`;
+}
+
+function renderHeatmap(trends: VersionTrends) {
+  const kind = document.querySelector<HTMLInputElement>('input[name="trend-kind"]:checked')!.value as
+    | "units"
+    | "specialists";
+  const minGames = Number($<HTMLSelectElement>("trend-min").value);
+  const rows = trends[kind];
+  const grid = $("heatmap");
+  grid.style.gridTemplateColumns = `minmax(110px, max-content) repeat(${trends.versions.length}, minmax(18px, 1fr))`;
+
+  const header = [el("div", "corner", "Patch"), ...trends.versions.map((v) => {
+    const col = el("div", "col", String(v.version));
+    col.setAttribute("role", "columnheader");
+    col.dataset.tip = JSON.stringify({
+      title: `Version ${v.version}`,
+      lines: [`${v.matches} matches, ${v.player_results} player results`],
+    } satisfies Tip);
+    return col;
+  })];
+  const body = rows.flatMap((row) => {
+    const name = el("div", "rowname", row.name);
+    name.setAttribute("role", "rowheader");
+    const cells = row.cells.map((cell, i) => {
+      const version = trends.versions[i];
+      if (!cell) {
+        return el("div", "cell none");
+      }
+      const winRate = cell.wins / cell.picks;
+      const thin = cell.picks < minGames;
+      const node = el("div", thin ? "cell thin" : "cell");
+      node.setAttribute("role", "cell");
+      if (!thin) {
+        node.style.background = trendColor(winRate);
+      }
+      node.dataset.tip = JSON.stringify({
+        title: `${row.name} · v${version.version}`,
+        lines: [
+          `Won ${cell.wins} of ${cell.picks} (${pct(winRate)})`,
+          `Fielded in ${pct(cell.picks / version.player_results)} of results`,
+        ],
+        note: thin ? `Fewer than ${minGames} games: not colored.` : undefined,
+      } satisfies Tip);
+      return node;
+    });
+    return [name, ...cells];
+  });
+  grid.replaceChildren(...header, ...body);
+  if (rows.length === 0) {
+    grid.append(el("div", "empty", "No games match these filters yet."));
+  }
+}
+
+let lastTrends: VersionTrends | null = null;
+
+async function refreshTrends() {
+  // Every patch is shown, so the patch filter doesn't apply here.
+  const { min_version: _min, max_version: _max, ...filter } = currentFilter();
+  lastTrends = await invoke<VersionTrends>("version_trends", { filter });
+  renderHeatmap(lastTrends);
+}
+
 async function refreshStats() {
   renderedMatches = (await invoke<Status>("status")).matches;
   const stats = await invoke<Stats>("stats", { filter: currentFilter() });
-  renderUsage($("units"), stats.units, stats.player_results, "unit");
-  renderUsage($("specialists"), stats.specialists, stats.player_results, "specialist");
+  renderUsage($("units"), stats.units, stats.player_results);
+  renderUsage($("specialists"), stats.specialists, stats.player_results);
   $("summary").textContent =
     `${stats.matches} matches · ${stats.player_results} player results`;
   renderMatches(await invoke<MatchRow[]>("recent_matches", { limit: 15 }));
+  await refreshTrends();
 }
 
 async function refreshStatus(): Promise<Status> {
@@ -269,19 +372,15 @@ function scheduleRefresh(delay = 800) {
 function setupTooltip() {
   const tip = $("tooltip");
   document.addEventListener("mousemove", (event) => {
-    const row = (event.target as HTMLElement).closest<HTMLElement>(".row");
-    if (!row?.dataset.tip) {
+    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+    if (!target?.dataset.tip) {
       tip.hidden = true;
       return;
     }
-    const s = JSON.parse(row.dataset.tip) as UsageStat & { results: number; noun: string };
-    tip.replaceChildren(
-      el("strong", "", s.name),
-      el("div", "", `Fielded in ${s.picks} of ${s.results} results (${pct(s.pick_rate)})`),
-      el("div", "", `Won ${s.wins} of ${s.picks} (${pct(s.win_rate)})`),
-    );
-    if (s.picks < SMALL_SAMPLE) {
-      tip.append(el("div", "muted", `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.`));
+    const content = JSON.parse(target.dataset.tip) as Tip;
+    tip.replaceChildren(el("strong", "", content.title), ...content.lines.map((l) => el("div", "", l)));
+    if (content.note) {
+      tip.append(el("div", "muted", content.note));
     }
     tip.hidden = false;
     const x = Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
@@ -312,6 +411,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   for (const id of ["filter-version", "filter-mode", "filter-mine"]) {
     $(id).addEventListener("change", () => refreshStats());
+  }
+  const redrawHeatmap = () => lastTrends && renderHeatmap(lastTrends);
+  $("trend-min").addEventListener("change", redrawHeatmap);
+  for (const radio of document.querySelectorAll('input[name="trend-kind"]')) {
+    radio.addEventListener("change", redrawHeatmap);
   }
 
   await listen<WatchEvent>("replay-event", (event) => {

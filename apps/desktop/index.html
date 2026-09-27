@@ -51,6 +51,34 @@
         <div class="usage" id="specialists" role="table" aria-label="Specialist pick and win rates"></div>
       </section>
       <section class="panel wide">
+        <div class="panel-head">
+          <h2>Win rate by patch <small>all patches, other filters apply</small></h2>
+          <div class="panel-controls">
+            <div class="segmented" role="radiogroup" aria-label="Show">
+              <label><input type="radio" name="trend-kind" value="units" checked />Units</label>
+              <label><input type="radio" name="trend-kind" value="specialists" />Specialists</label>
+            </div>
+            <label>Min games
+              <select id="trend-min">
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="heatmap-scroll">
+          <div class="heatmap" id="heatmap" role="table" aria-label="Win rate by patch"></div>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span>≤25%</span>
+          <span class="legend-ramp"></span>
+          <span>≥75% win rate</span>
+          <span class="legend-swatch thin"></span><span>fewer than min games</span>
+        </div>
+      </section>
+      <section class="panel wide">
         <h2>Recent matches</h2>
         <ol class="matches" id="matches"></ol>
       </section>

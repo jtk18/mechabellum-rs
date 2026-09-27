@@ -3,7 +3,10 @@
 
 mod store;
 
-pub use store::{Facets, IngestOutcome, MatchRow, Stats, StatsFilter, Store, UploadKey, UsageStat};
+pub use store::{
+    Facets, IngestOutcome, MatchRow, Stats, StatsFilter, Store, Trend, TrendCell, UploadKey,
+    UsageStat, VersionTotals, VersionTrends,
+};
 
 use axum::{
     body::Bytes,
@@ -47,6 +50,7 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
         .route("/health", get(|| async { "ok" }))
         .route("/api/replays", get(list_replays).post(upload_replay))
         .route("/api/stats", get(stats))
+        .route("/api/stats/versions", get(version_trends))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_BYTES))
         .with_state(state)
 }
@@ -168,6 +172,14 @@ async fn stats(
     Ok(Json(blocking(move || store.stats(&filter)).await?))
 }
 
+async fn version_trends(
+    State(state): State<AppState>,
+    Query(filter): Query<StatsFilter>,
+) -> Result<Json<VersionTrends>, ApiError> {
+    let store = state.store.clone();
+    Ok(Json(blocking(move || store.version_trends(&filter)).await?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +235,23 @@ mod tests {
             })
             .unwrap();
         assert_eq!(newer.matches, 1);
+
+        let trends = store.version_trends(&StatsFilter::default()).unwrap();
+        let versions: Vec<u32> = trends.versions.iter().map(|v| v.version).collect();
+        assert_eq!(versions, vec![1425, 2324]);
+        for trend in trends.units.iter().chain(&trends.specialists) {
+            assert_eq!(trend.cells.len(), 2);
+            let total: u64 = trend.cells.iter().flatten().map(|c| c.picks).sum();
+            assert_eq!(total, trend.picks, "{}", trend.name);
+        }
+        // Per-version cells add up to the overall stats.
+        let overall = &stats.units[0];
+        let trend = trends
+            .units
+            .iter()
+            .find(|t| t.name == overall.name)
+            .unwrap();
+        assert_eq!(trend.picks, overall.picks);
 
         assert_eq!(store.reindex().unwrap(), 2);
         assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 2);

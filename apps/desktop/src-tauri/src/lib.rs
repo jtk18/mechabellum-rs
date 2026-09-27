@@ -4,7 +4,7 @@
 mod steam;
 mod watcher;
 
-use mechabellum_server::{Facets, MatchRow, Stats, StatsFilter, Store, UploadAuth};
+use mechabellum_server::{Facets, MatchRow, Stats, StatsFilter, Store, UploadAuth, VersionTrends};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -181,6 +181,18 @@ async fn recent_matches(state: State<'_, AppState>, limit: u32) -> Result<Vec<Ma
 }
 
 #[tauri::command]
+async fn version_trends(
+    state: State<'_, AppState>,
+    filter: StatsFilter,
+) -> Result<VersionTrends, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.version_trends(&filter))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
 async fn facets(state: State<'_, AppState>) -> Result<Facets, String> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.facets())
@@ -279,6 +291,7 @@ pub fn run() {
             stats,
             recent_matches,
             facets,
+            version_trends,
             set_replay_dir
         ])
         .run(tauri::generate_context!())
