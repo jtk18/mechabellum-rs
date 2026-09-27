@@ -1,6 +1,7 @@
 mod anonymize;
 mod battle_record;
 mod detail;
+mod final_round;
 mod game_data;
 mod items;
 mod map;

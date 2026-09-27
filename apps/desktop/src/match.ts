@@ -50,6 +50,8 @@ interface SideLayout {
   cards_chosen: CardRef[];
   command_center: Structure;
   research_center: Structure;
+  /** Units rebuilt from the round's actions (the last round has no snapshot after it). */
+  rebuilt: boolean;
 }
 
 interface MatchDetail {
@@ -370,10 +372,12 @@ function renderRoundBar() {
   $("round-results").replaceChildren(
     ...round.sides.map((side, s) => {
       const chip = el("span", `result-chip ${sideClass(s)}`);
-      chip.append(el("span", "swatch"), document.createTextNode(`${m.players[s].name}: ${side ? `${side.result === "Win" ? "won" : "lost"}, ${side.hp.toLocaleString()} HP` : "no record"}`));
+      const result = side?.result === "Win" ? "won" : side?.result === "Deuce" ? "drew" : "lost";
+      chip.append(el("span", "swatch"), document.createTextNode(`${m.players[s].name}: ${side ? `${result}, ${side.hp.toLocaleString()} HP going in` : "no record"}`));
       return chip;
     }),
   );
+  $("board-note-rebuilt").hidden = !round.sides.some((side) => side?.rebuilt);
 }
 
 function render() {

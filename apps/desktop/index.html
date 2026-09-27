@@ -156,6 +156,10 @@
         <div class="board-wrap">
           <svg id="board" class="board" role="img" aria-labelledby="match-title"></svg>
           <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
+          <p class="board-note" id="board-note-rebuilt" hidden>
+            The replay saves no snapshot after the last round, so this board is rebuilt by
+            replaying that round's buys, moves, upgrades and sells. It can be off by a unit.
+          </p>
         </div>
         <aside class="unit-panel" id="unit-panel" aria-live="polite"></aside>
       </div>

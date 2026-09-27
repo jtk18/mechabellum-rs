@@ -5,7 +5,10 @@
 //! (it matches that fight's report position for position), along with that fight's result and
 //! the techs researched by then.
 
-use super::battle_record::{ActiveTechnologiesUnitData, PlayerRecord, UnitsNewUnitData};
+use super::battle_record::{
+    ActiveTechnologiesUnitData, PlayerRecord, PlayerRoundRecord, UnitsNewUnitData,
+};
+use super::final_round::replay_deployment;
 use super::game_data::{footprint, xp_to_next_level};
 use super::names::{resolve, GameNames, NameKind};
 use super::{BattleRecord, Item, Unit};
@@ -87,9 +90,9 @@ pub struct Structure {
 
 #[derive(Debug, Serialize)]
 pub struct SideLayout {
-    /// "Win" or "Lose" for this round's fight, as recorded.
+    /// "Win", "Lose" or "Deuce" for this round's fight. For the last round, the match result.
     pub result: String,
-    /// Reactor core HP after the fight.
+    /// Reactor core HP going into the fight.
     pub hp: i32,
     pub units: Vec<PlacedUnit>,
     /// Techs researched by this round, per unit type.
@@ -101,6 +104,9 @@ pub struct SideLayout {
     pub cards_chosen: Vec<CardRef>,
     pub command_center: Structure,
     pub research_center: Structure,
+    /// The units were rebuilt by replaying the round's actions (the last round, which has no
+    /// snapshot after it) rather than read from a snapshot.
+    pub rebuilt: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -327,16 +333,52 @@ impl BattleRecord {
             })
             .collect();
 
+        // Record n holds the army as round n's deployment began. So the army that fought round
+        // n is in record n + 1, and the last round's is rebuilt from its record and actions.
         for (i, player) in players.iter().enumerate() {
-            for record in &player.player_round_records.player_round_record {
-                let Ok(recorded) = record.round.trim().parse::<u32>() else {
+            let records: BTreeMap<u32, &PlayerRoundRecord> = player
+                .player_round_records
+                .player_round_record
+                .iter()
+                .filter_map(|r| Some((r.round.trim().parse().ok()?, r)))
+                .collect();
+            let Some(&last) = records.keys().next_back() else {
+                continue;
+            };
+            let won = player
+                .player_round_records
+                .player_round_record
+                .last()
+                .map(|r| r.player_data.pre_round_fight_result == "Win");
+            for fight in 1..=last {
+                let Some(&entering) = records.get(&fight) else {
                     continue;
                 };
-                let data = &record.player_data;
-                if recorded == 0 || data.units.new_unit_data.is_empty() {
+                let (after, units, result, rebuilt) = match records.get(&(fight + 1)) {
+                    Some(&next) => (
+                        next,
+                        next.player_data.units.new_unit_data.clone(),
+                        next.player_data.pre_round_fight_result.clone(),
+                        false,
+                    ),
+                    None => (
+                        entering,
+                        replay_deployment(
+                            &entering.player_data,
+                            &entering.action_records.match_action_data,
+                        ),
+                        match won {
+                            Some(true) => "Win".into(),
+                            Some(false) => "Lose".into(),
+                            None => String::new(),
+                        },
+                        true,
+                    ),
+                };
+                if units.is_empty() {
                     continue;
                 }
-                let fight = recorded - 1;
+                let data = &after.player_data;
                 let levels: Vec<i32> = data
                     .tower_strengthen_levels
                     .int
@@ -376,14 +418,15 @@ impl BattleRecord {
                             .map(|id| named(NameKind::Blueprint, id))
                             .collect(),
                     },
-                    result: data.pre_round_fight_result.clone(),
-                    hp: data.reactor_core.trim().parse().unwrap_or(0),
-                    units: data
-                        .units
-                        .new_unit_data
-                        .iter()
-                        .filter_map(placed_unit)
-                        .collect(),
+                    result,
+                    // Going into the fight.
+                    hp: entering
+                        .player_data
+                        .reactor_core
+                        .trim()
+                        .parse()
+                        .unwrap_or(0),
+                    units: units.iter().filter_map(placed_unit).collect(),
                     enabled_techs: enabled_techs(&data.active_technologies.unit_data),
                     specialists: data
                         .officers
@@ -391,9 +434,10 @@ impl BattleRecord {
                         .iter()
                         .map(|id| super::specialist::specialist_name(id, version))
                         .collect(),
+                    rebuilt,
                 };
                 let slot = rounds
-                    .entry(recorded - 1)
+                    .entry(fight - 1)
                     .or_insert_with(|| (0..players.len()).map(|_| None).collect());
                 slot[i] = Some(side);
             }
@@ -445,10 +489,19 @@ mod tests {
         assert!(detail.map_name.is_some());
         assert!(detail.players.iter().all(|p| !p.loadout.is_empty()));
 
-        // Round records 2..=9 become fights 1..=8, each with both sides.
+        // This fixture has no record 1, so fights 2..=9 (round indices 1..=8), each with both
+        // sides. Fight n shows record n + 1's army: fight 2 is record 3 (10 units for side 0).
         let rounds: Vec<u32> = detail.rounds.iter().map(|r| r.round).collect();
         assert_eq!(rounds, (1..=8).collect::<Vec<_>>());
+        let first = detail.rounds[0].sides[0].as_ref().unwrap();
+        assert_eq!(first.units.len(), 10);
+        assert!(!first.rebuilt);
+        // The last fight has no record after it; its armies are rebuilt from record 9's
+        // snapshot (23 and 25 units) and that round's actions.
         let last = detail.rounds.last().unwrap();
+        assert!(last.sides.iter().flatten().all(|s| s.rebuilt));
+        assert!(last.sides[0].as_ref().unwrap().units.len() >= 23);
+        assert!(last.sides[1].as_ref().unwrap().units.len() >= 25);
         let (a, b) = (
             last.sides[0].as_ref().unwrap(),
             last.sides[1].as_ref().unwrap(),

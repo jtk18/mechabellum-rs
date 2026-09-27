@@ -219,7 +219,7 @@ pub struct Units {
     pub new_unit_data: Vec<UnitsNewUnitData>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct UnitsNewUnitData {
     #[serde(rename = "$text")]
@@ -247,7 +247,7 @@ pub struct UnitsNewUnitData {
     pub sell_supply: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct PlayerDataUnitsNewUnitDataPosition {
     #[serde(rename = "$text")]
@@ -446,6 +446,12 @@ pub struct MatchActionData {
     pub extra_position: Option<ExtraPosition>,
     #[serde(rename = "Position")]
     pub position: Option<PlayerRoundRecordActionRecordsMatchActionDataPosition>,
+    /// Where a bought unit was placed (`PAD_BuyUnit`, newer replays; older ones place it by a
+    /// later move).
+    #[serde(rename = "position")]
+    pub buy_position: Option<PlayerRoundRecordActionRecordsMatchActionDataPosition>,
+    #[serde(rename = "EquipmentID")]
+    pub equipment_id: Option<String>,
     #[serde(rename = "ContraptionID")]
     pub contraption_id: Option<String>,
     #[serde(rename = "UnitIndex")]
@@ -787,13 +793,13 @@ pub struct BattleInfo {
     pub survive_mode_difficulty: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct UnitEquipments {
     pub equipment: Vec<UnitEquipment>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct UnitEquipment {
     pub data: String,
