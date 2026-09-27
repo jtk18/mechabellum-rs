@@ -16,7 +16,7 @@
       <nav class="tabs" aria-label="Views">
         <button type="button" class="tab" data-view="stats" aria-current="page">Stats</button>
         <button type="button" class="tab" data-view="matches">Matches</button>
-        <button type="button" class="tab" data-view="sharing">Sharing</button>
+        <button type="button" class="tab" data-view="sharing">Settings</button>
       </nav>
       <div class="status" id="status" aria-live="polite"></div>
     </header>
@@ -173,6 +173,7 @@
         </form>
       </div>
 
+      <div class="sharing-side">
       <div class="panel sharing-panel">
         <h2>Progress</h2>
         <div class="sync-progress" id="sync-progress">
@@ -184,6 +185,16 @@
           <summary id="sync-rejected-summary"></summary>
           <ol id="sync-rejected-list"></ol>
         </details>
+      </div>
+
+      <div class="panel sharing-panel">
+        <h2>This app</h2>
+        <label class="switch">
+          <input type="checkbox" id="autostart" />
+          <span>Start when I sign in, in the tray</span>
+        </label>
+        <p class="panel-note">It keeps collecting replays and ratings while the window is closed.</p>
+      </div>
       </div>
     </section>
 

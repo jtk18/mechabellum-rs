@@ -465,6 +465,28 @@ fn set_replay_dir(
     Ok(())
 }
 
+/// Passed when the app starts with the computer: stay in the tray instead of opening a window.
+const STARTED_HIDDEN: &str = "--hidden";
+
+/// Whether the app starts when the user signs in.
+#[tauri::command]
+fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if enabled {
+        launcher.enable()
+    } else {
+        launcher.disable()
+    }
+    .map_err(|e| e.to_string())
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -476,6 +498,14 @@ fn show_main_window(app: &AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must come first: a second launch just brings the running app forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app)
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![STARTED_HIDDEN]),
+        ))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -567,6 +597,12 @@ pub fn run() {
                 tray = tray.icon(icon.clone());
             }
             tray.build(app)?;
+
+            // The window starts hidden (see tauri.conf.json) so a start with the computer can
+            // stay in the tray.
+            if !std::env::args().any(|a| a == STARTED_HIDDEN) {
+                show_main_window(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -591,6 +627,8 @@ pub fn run() {
             sync_now,
             sync_status,
             sync_rejections,
+            autostart_enabled,
+            set_autostart,
             match_ratings,
             set_replay_dir
         ])

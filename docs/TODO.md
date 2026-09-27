@@ -41,8 +41,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 8. ~~Remaining art~~ Done: Star Expedition cards (`TD_*`), "Mass-produced" cards (item art
    `E_*_S2`), and 73 of 79 equipment icons (`E_*`, on the board's unit card and card rows). Still
    unknown: card ID 40001 (no name in the game's tables).
-9. **Verify `towerStrengthenLevels`** order: index 0 is assumed to be the Command Center and
-   index 1 the Research Center.
+9. **Verify `towerStrengthenLevels`** order (needs the game): index 0 is assumed to be the Command
+   Center and index 1 the Research Center. Upgrades are `PAD_StrengthenTower` with `Index` 0 or 1.
+   Replay data can't tell them apart: both indices correlate equally with CC skills and RC
+   blueprints, so they may be two identical towers. Check in game: upgrade one, note the index.
 
 ## Board
 
@@ -56,7 +58,8 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     distributing, so players don't need .NET.
 13. **CI:** a GitHub Actions matrix (Windows, macOS, Ubuntu) to build and test the workspace and
     the Tauri app.
-14. **Tauri bundles and installers**, start on login (optional), and single instance.
+14. ~~Start on login, single instance~~ Done (Settings tab; a second launch focuses the first).
+    Still to do: bundles and installers (signing, updater).
 15. **Verify macOS and Linux (Proton and native)** replay and log folder detection with real
     installs.
 16. **Verify the Docker build** on the Ubuntu server.

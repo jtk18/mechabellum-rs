@@ -133,6 +133,17 @@ export async function setupSharing() {
     note.textContent = "";
   });
 
+  const autostart = $<HTMLInputElement>("autostart");
+  autostart.checked = await invoke<boolean>("autostart_enabled").catch(() => false);
+  autostart.addEventListener("change", async () => {
+    try {
+      await invoke("set_autostart", { enabled: autostart.checked });
+    } catch (e) {
+      autostart.checked = !autostart.checked;
+      note.textContent = `Couldn't change starting with the computer: ${e}`;
+    }
+  });
+
   await listen<SyncStatus>("sync-status", (event) => renderStatus(event.payload));
   await refreshStatus();
 }
