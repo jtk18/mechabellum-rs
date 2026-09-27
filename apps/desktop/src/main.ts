@@ -72,6 +72,8 @@ const modeLabel = (matchMode: string, gameMode: string) =>
   `${MATCH_MODES[matchMode] ?? matchMode} · ${gameMode.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
 
 let facets: Facets | null = null;
+/** Stored match count the panels were last drawn from. */
+let renderedMatches = -1;
 
 function currentFilter(): StatsFilter {
   const filter: StatsFilter = {};
@@ -213,6 +215,7 @@ function renderMatches(matches: MatchRow[]) {
 }
 
 async function refreshStats() {
+  renderedMatches = (await invoke<Status>("status")).matches;
   const stats = await invoke<Stats>("stats", { filter: currentFilter() });
   renderUsage($("units"), stats.units, stats.player_results, "unit");
   renderUsage($("specialists"), stats.specialists, stats.player_results, "specialist");
@@ -240,6 +243,12 @@ async function refreshStatus(): Promise<Status> {
   statusEl.title = [status.http_url && `API: ${status.http_url}`, `Database: ${status.db_path}`]
     .filter(Boolean)
     .join("\n");
+
+  // Events can be missed (a fast backfill may finish before this page is listening), so also
+  // redraw whenever the stored data has changed since the last draw.
+  if (renderedMatches >= 0 && status.matches !== renderedMatches) {
+    scheduleRefresh(0);
+  }
 
   const error = $("error");
   error.hidden = !status.last_error;
@@ -318,6 +327,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshStatus();
   await refreshFacets();
   await refreshStats();
-  // Keep the status line fresh while a large backfill runs.
-  window.setInterval(refreshStatus, 3000);
+  // Keep the status line fresh, and catch up on any change an event didn't announce.
+  window.setInterval(refreshStatus, 2000);
 });

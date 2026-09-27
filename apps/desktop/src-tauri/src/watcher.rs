@@ -151,6 +151,7 @@ impl ReplayWatcher {
                 existing.sort();
                 // Parse on every core; Store::ingest only serializes the database write.
                 let total = existing.len();
+                let started = Instant::now();
                 let done = AtomicUsize::new(0);
                 existing.par_iter().for_each(|path| {
                     if stopped.load(Ordering::Relaxed) {
@@ -168,6 +169,10 @@ impl ReplayWatcher {
                 if stopped.load(Ordering::Relaxed) {
                     return;
                 }
+                log::info!(
+                    "backfill: {total} replay files checked in {:.2?}",
+                    started.elapsed()
+                );
                 if total == 0 {
                     sink(WatchEvent::BackfillProgress { done: 0, total: 0 });
                 }
