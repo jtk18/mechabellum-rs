@@ -30,7 +30,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
    Centurion games, and tournament replays you watched were offered (now skipped). The
    second-key name fill is covered by `test_shared_uploads`, not re-run end to end.
 3. ~~Check tonight's games~~ Done.
-4. **Show MMR** in the match list and on the board (both players' elo at match start).
+4. ~~Show MMR~~ Done: badges in the match list, and in the board title.
 
 ## Stats
 

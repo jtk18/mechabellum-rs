@@ -1423,3 +1423,13 @@ h1 {
   color: var(--text-secondary);
   text-align: right;
 }
+
+.elo {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--track);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

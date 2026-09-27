@@ -312,6 +312,9 @@ pub struct MatchRow {
     pub map: String,
     pub winners: Vec<String>,
     pub losers: Vec<String>,
+    /// Each winner's MMR at match start, in the same order, when the game log had it.
+    pub winner_elos: Vec<Option<i64>>,
+    pub loser_elos: Vec<Option<i64>>,
 }
 
 impl Store {
@@ -1081,20 +1084,30 @@ impl Store {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
-                    COALESCE((SELECT group_concat(name, char(31)) FROM players p
+                    COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, ''), char(31))
+                              FROM players p LEFT JOIN player_ratings r
+                                ON r.battle_id = p.battle_id AND r.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
-                    COALESCE((SELECT group_concat(name, char(31)) FROM players p
+                    COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, ''), char(31))
+                              FROM players p LEFT JOIN player_ratings r
+                                ON r.battle_id = p.battle_id AND r.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 0), '')
              FROM matches m ORDER BY m.occurred_on DESC LIMIT ?1",
         )?;
-        let split = |s: String| -> Vec<String> {
+        // "name\x1eelo" entries joined by \x1f; the elo part is empty when unknown.
+        let split = |s: String| -> (Vec<String>, Vec<Option<i64>>) {
             s.split('\u{1f}')
-                .filter(|n| !n.is_empty())
-                .map(str::to_owned)
-                .collect()
+                .filter(|entry| !entry.is_empty())
+                .map(|entry| {
+                    let (name, elo) = entry.split_once('\u{1e}').unwrap_or((entry, ""));
+                    (name.to_owned(), elo.parse().ok())
+                })
+                .unzip()
         };
         let rows = stmt
             .query_map([limit], |r| {
+                let (winners, winner_elos) = split(r.get(7)?);
+                let (losers, loser_elos) = split(r.get(8)?);
                 Ok(MatchRow {
                     battle_id: r.get(0)?,
                     version: r.get(1)?,
@@ -1107,8 +1120,10 @@ impl Store {
                         mechabellum::resolve_name(mechabellum::NameKind::Map, &id)
                             .map_or(id, str::to_owned)
                     },
-                    winners: split(r.get(7)?),
-                    losers: split(r.get(8)?),
+                    winners,
+                    losers,
+                    winner_elos,
+                    loser_elos,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

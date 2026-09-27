@@ -328,6 +328,19 @@ async fn version_trends(
         .map_err(|e| format!("{e:#}"))
 }
 
+/// Each player's rating at the start of a match, when the game log had it.
+#[tauri::command]
+async fn match_ratings(
+    state: State<'_, AppState>,
+    battle_id: String,
+) -> Result<Vec<mechabellum_server::Rating>, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.ratings(&battle_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn sync_settings(state: State<'_, AppState>) -> sync::SyncSettings {
     state.settings.lock().unwrap().sync.clone()
@@ -578,6 +591,7 @@ pub fn run() {
             sync_now,
             sync_status,
             sync_rejections,
+            match_ratings,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

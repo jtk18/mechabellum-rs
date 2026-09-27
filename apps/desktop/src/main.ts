@@ -51,6 +51,8 @@ interface MatchRow {
   map: string;
   winners: string[];
   losers: string[];
+  winner_elos: (number | null)[];
+  loser_elos: (number | null)[];
 }
 
 interface TrendCell {
@@ -324,10 +326,25 @@ function renderMatchList() {
       const iLost = me !== null && m.losers.includes(me);
       const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
       const players = el("span", "players");
+      const side = (names: string[], elos: (number | null)[], cls: string, none: string) => {
+        const span = el("span", cls);
+        if (names.length === 0) span.textContent = none;
+        names.forEach((name, i) => {
+          if (i > 0) span.append(", ");
+          span.append(name);
+          const elo = elos[i];
+          if (elo != null) {
+            const badge = el("span", "elo", String(elo));
+            badge.title = "MMR at match start";
+            span.append(badge);
+          }
+        });
+        return span;
+      };
       players.append(
-        el("span", "winner", m.winners.join(", ") || "Nobody"),
+        side(m.winners, m.winner_elos, "winner", "Nobody"),
         el("span", "vs", " beat "),
-        el("span", "", m.losers.join(", ") || "nobody"),
+        side(m.losers, m.loser_elos, "", "nobody"),
       );
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;

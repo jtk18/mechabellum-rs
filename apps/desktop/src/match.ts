@@ -414,7 +414,12 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   setupFrame(m);
 
   const [near, ...others] = [m.players[bottom], ...m.players.filter((_, i) => i !== bottom)];
-  $("match-title").textContent = `${near.name} vs ${others.map((p) => p.name).join(", ")}`;
+  const ratings = await invoke<{ player_id: string; elo: number | null }[]>("match_ratings", { battleId }).catch(() => []);
+  const titled = (p: { id: string; name: string }) => {
+    const elo = ratings.find((r) => r.player_id === p.id)?.elo;
+    return elo == null ? p.name : `${p.name} (${elo} MMR)`;
+  };
+  $("match-title").textContent = `${titled(near)} vs ${others.map(titled).join(", ")}`;
   const outcome = near.won === null ? "" : near.won ? `${near.name} won. ` : `${near.name} lost. `;
   $("match-meta").textContent = `${outcome}${m.map_name ?? `Map ${m.map_id}`}, ${modeLabel(m.match_mode, m.game_mode)}, version ${m.version}`;
 
