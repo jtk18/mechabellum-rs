@@ -54,7 +54,9 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
         auth: Arc::new(auth),
     };
     Router::new()
+        .route("/", get(website))
         .route("/health", get(|| async { "ok" }))
+        .route("/api/facets", get(facets))
         .route("/api/replays", get(list_replays).post(upload_replay))
         .route("/api/stats", get(stats))
         .route("/api/stats/versions", get(version_trends))
@@ -276,6 +278,38 @@ async fn list_replays(
     let limit = query.limit.unwrap_or(50).min(500);
     let store = state.store.clone();
     Ok(Json(blocking(move || store.recent_matches(limit)).await?))
+}
+
+/// The public stats page (crates/server/web/index.html), built into the binary.
+async fn website() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../web/index.html"))
+}
+
+/// Patches and modes that have matches, for filters. Unlike `Store::facets`, it doesn't name any
+/// player.
+#[derive(serde::Serialize)]
+struct PublicFacets {
+    versions: Vec<(u32, u64)>,
+    modes: Vec<(String, String, u64)>,
+    corroborated: u64,
+    disputed: u64,
+}
+
+async fn facets(State(state): State<AppState>) -> Result<Json<PublicFacets>, ApiError> {
+    let store = state.store.clone();
+    Ok(Json(
+        blocking(move || {
+            let f = store.facets()?;
+            let (corroborated, disputed) = store.corroboration()?;
+            Ok(PublicFacets {
+                versions: f.versions,
+                modes: f.modes,
+                corroborated,
+                disputed,
+            })
+        })
+        .await?,
+    ))
 }
 
 async fn stats(
@@ -855,6 +889,39 @@ mod tests {
         // Reads stay open.
         let stats = Request::get("/api/stats").body(Body::empty()).unwrap();
         assert_eq!(status(&app, stats).await, StatusCode::OK);
+    }
+
+    /// The public page loads, and its filter data doesn't name any player.
+    #[tokio::test]
+    async fn test_website_and_public_facets() {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        store.ingest(&fixture(NEW), Path::new("a"), None).unwrap();
+        let app = router(store, UploadAuth::Open);
+
+        let page = app
+            .clone()
+            .oneshot(Request::get("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let html = axum::body::to_bytes(page.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(String::from_utf8_lossy(&html).contains("Community Stats"));
+
+        let facets = app
+            .oneshot(Request::get("/api/facets").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(facets.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(facets.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("2324"));
+        for private in ["main_player", "jtk18", "Bolsano", JTK18] {
+            assert!(!text.contains(private), "{private} in {text}");
+        }
     }
 
     #[tokio::test]
