@@ -3,6 +3,12 @@ use super::{Skills, Specialist, Unit, UnitInstance};
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerName(String);
 
+impl PlayerName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<String> for PlayerName {
     fn from(name: String) -> Self {
         PlayerName(name)
@@ -11,6 +17,8 @@ impl From<String> for PlayerName {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerSummary {
+    /// Account ID, stable across name changes.
+    pub id: String,
     pub name: PlayerName,
     pub last_round_hp: i32,
     pub score: usize,

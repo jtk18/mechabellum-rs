@@ -1,0 +1,348 @@
+//! SQLite storage: one row per match and per player, plus the compressed original replay so
+//! everything derived can be rebuilt when the parser improves (`Store::reindex`).
+
+use anyhow::{Context, Result};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use mechabellum::{BattleRecord, PlayerSummary};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use std::collections::BTreeMap;
+use std::io::{Read, Write};
+use std::path::Path;
+use std::sync::Mutex;
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS matches (
+    battle_id   TEXT PRIMARY KEY,
+    version     INTEGER NOT NULL,
+    match_mode  TEXT NOT NULL,
+    game_mode   TEXT NOT NULL,
+    map_id      TEXT NOT NULL,
+    rounds      INTEGER NOT NULL,
+    occurred_on TEXT NOT NULL,
+    ingested_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE TABLE IF NOT EXISTS players (
+    battle_id TEXT NOT NULL REFERENCES matches(battle_id) ON DELETE CASCADE,
+    player_id TEXT NOT NULL,
+    name      TEXT NOT NULL,
+    won       INTEGER NOT NULL,
+    final_hp  INTEGER NOT NULL,
+    score     INTEGER NOT NULL,
+    PRIMARY KEY (battle_id, player_id)
+);
+CREATE TABLE IF NOT EXISTS player_units (
+    battle_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    unit      TEXT NOT NULL,
+    count     INTEGER NOT NULL,
+    PRIMARY KEY (battle_id, player_id, unit),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS player_specialists (
+    battle_id  TEXT NOT NULL,
+    player_id  TEXT NOT NULL,
+    specialist TEXT NOT NULL,
+    PRIMARY KEY (battle_id, player_id, specialist),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS replay_blobs (
+    battle_id TEXT PRIMARY KEY,
+    xml_gz    BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS matches_version ON matches(version);
+";
+
+pub struct Store {
+    conn: Mutex<Connection>,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum IngestOutcome {
+    Added { battle_id: String },
+    Duplicate { battle_id: String },
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct StatsFilter {
+    pub min_version: Option<u32>,
+    pub max_version: Option<u32>,
+    /// e.g. `VS_1_1`, `VS_2_2`, `VS_4_Scuffle`
+    pub match_mode: Option<String>,
+    /// e.g. `Normal`, `Competition`, `AsyncBattle`
+    pub game_mode: Option<String>,
+    /// Only count this player's side (account ID).
+    pub player_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Stats {
+    pub matches: u64,
+    pub player_results: u64,
+    /// Units in the final-round army, per player result.
+    pub units: Vec<UsageStat>,
+    pub specialists: Vec<UsageStat>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UsageStat {
+    pub name: String,
+    /// Player results that fielded it.
+    pub picks: u64,
+    pub wins: u64,
+    pub pick_rate: f64,
+    pub win_rate: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MatchRow {
+    pub battle_id: String,
+    pub version: u32,
+    pub match_mode: String,
+    pub game_mode: String,
+    pub rounds: u32,
+    pub occurred_on: String,
+    pub winners: Vec<String>,
+    pub losers: Vec<String>,
+}
+
+impl Store {
+    pub fn open(path: &Path) -> Result<Self> {
+        Self::init(Connection::open(path).with_context(|| format!("opening {}", path.display()))?)
+    }
+
+    pub fn open_in_memory() -> Result<Self> {
+        Self::init(Connection::open_in_memory()?)
+    }
+
+    fn init(conn: Connection) -> Result<Self> {
+        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch(SCHEMA)?;
+        Ok(Store {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    /// Parse and store one replay (`.grbr` bytes or extracted XML).
+    pub fn ingest(&self, bytes: &[u8], source: &Path) -> Result<IngestOutcome> {
+        let document = BattleRecord::extract_document(bytes)
+            .with_context(|| format!("{}: no battle record found", source.display()))?;
+        let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
+        let battle_id = match record.battle_info.battle_id.trim() {
+            "" | "0" => format!("sha256:{:x}", Sha256::digest(document.as_bytes())),
+            id => id.to_owned(),
+        };
+
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let exists: Option<i64> = tx
+            .query_row(
+                "SELECT 1 FROM matches WHERE battle_id = ?1",
+                [&battle_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if exists.is_some() {
+            return Ok(IngestOutcome::Duplicate { battle_id });
+        }
+        insert_record(&tx, &battle_id, &record)?;
+
+        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+        gz.write_all(document.as_bytes())?;
+        tx.execute(
+            "INSERT INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
+            params![battle_id, gz.finish()?],
+        )?;
+        tx.commit()?;
+        Ok(IngestOutcome::Added { battle_id })
+    }
+
+    /// Rebuild every derived row from the stored replays. Run after upgrading the parser.
+    pub fn reindex(&self) -> Result<usize> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let blobs: Vec<(String, Vec<u8>)> = tx
+            .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        tx.execute("DELETE FROM matches", [])?;
+        for (battle_id, gz) in &blobs {
+            let mut xml = String::new();
+            GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
+            let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
+            insert_record(&tx, battle_id, &record)?;
+        }
+        tx.commit()?;
+        Ok(blobs.len())
+    }
+
+    pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on,
+                    COALESCE((SELECT group_concat(name, char(31)) FROM players p
+                              WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
+                    COALESCE((SELECT group_concat(name, char(31)) FROM players p
+                              WHERE p.battle_id = m.battle_id AND p.won = 0), '')
+             FROM matches m ORDER BY m.occurred_on DESC LIMIT ?1",
+        )?;
+        let split = |s: String| -> Vec<String> {
+            s.split('\u{1f}')
+                .filter(|n| !n.is_empty())
+                .map(str::to_owned)
+                .collect()
+        };
+        let rows = stmt
+            .query_map([limit], |r| {
+                Ok(MatchRow {
+                    battle_id: r.get(0)?,
+                    version: r.get(1)?,
+                    match_mode: r.get(2)?,
+                    game_mode: r.get(3)?,
+                    rounds: r.get(4)?,
+                    occurred_on: r.get(5)?,
+                    winners: split(r.get(6)?),
+                    losers: split(r.get(7)?),
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    pub fn stats(&self, filter: &StatsFilter) -> Result<Stats> {
+        let conn = self.conn.lock().unwrap();
+        // Filtered player results. Every stat below is computed over this set.
+        let scope = "WITH scope AS (
+                SELECT p.battle_id, p.player_id, p.won FROM players p
+                JOIN matches m ON m.battle_id = p.battle_id
+                WHERE (?1 IS NULL OR m.version >= ?1)
+                  AND (?2 IS NULL OR m.version <= ?2)
+                  AND (?3 IS NULL OR m.match_mode = ?3)
+                  AND (?4 IS NULL OR m.game_mode = ?4)
+                  AND (?5 IS NULL OR p.player_id = ?5))";
+        let args = params![
+            filter.min_version,
+            filter.max_version,
+            filter.match_mode,
+            filter.game_mode,
+            filter.player_id
+        ];
+
+        let (matches, player_results): (u64, u64) = conn.query_row(
+            &format!("{scope} SELECT COUNT(DISTINCT battle_id), COUNT(*) FROM scope"),
+            args,
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+
+        let usage = |table: &str, column: &str| -> Result<Vec<UsageStat>> {
+            let sql = format!(
+                "{scope} SELECT t.{column}, COUNT(*), SUM(s.won) FROM {table} t
+                 JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
+                 GROUP BY t.{column} ORDER BY COUNT(*) DESC, t.{column}"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(args, |r| {
+                    let picks: u64 = r.get(1)?;
+                    let wins: u64 = r.get(2)?;
+                    Ok(UsageStat {
+                        name: r.get(0)?,
+                        picks,
+                        wins,
+                        pick_rate: ratio(picks, player_results),
+                        win_rate: ratio(wins, picks),
+                    })
+                })?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        };
+
+        Ok(Stats {
+            matches,
+            player_results,
+            units: usage("player_units", "unit")?,
+            specialists: usage("player_specialists", "specialist")?,
+        })
+    }
+}
+
+fn ratio(n: u64, d: u64) -> f64 {
+    if d == 0 {
+        0.0
+    } else {
+        n as f64 / d as f64
+    }
+}
+
+fn insert_record(tx: &rusqlite::Transaction, battle_id: &str, record: &BattleRecord) -> Result<()> {
+    let overview = record.get_battle_overview()?;
+    tx.execute(
+        "INSERT INTO matches (battle_id, version, match_mode, game_mode, map_id, rounds, occurred_on)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            battle_id,
+            overview.version,
+            record.battle_info.match_mode,
+            record.battle_info.game_mode,
+            overview.map_id,
+            overview.rounds as i64,
+            overview.occurred_on,
+        ],
+    )?;
+    let sides = overview
+        .winners
+        .iter()
+        .map(|p| (p, true))
+        .chain(overview.losers.iter().map(|p| (p, false)));
+    for (player, won) in sides {
+        insert_player(tx, battle_id, player, won)?;
+    }
+    Ok(())
+}
+
+fn insert_player(
+    tx: &rusqlite::Transaction,
+    battle_id: &str,
+    player: &PlayerSummary,
+    won: bool,
+) -> Result<()> {
+    // Bots and some special modes have no account ID; fall back to the name.
+    let player_id = match player.id.trim() {
+        "" | "0" => player.name.as_str(),
+        id => id,
+    };
+    tx.execute(
+        "INSERT OR IGNORE INTO players (battle_id, player_id, name, won, final_hp, score)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            battle_id,
+            player_id,
+            player.name.as_str(),
+            won,
+            player.last_round_hp,
+            player.score as i64
+        ],
+    )?;
+
+    let mut units: BTreeMap<String, i64> = BTreeMap::new();
+    for unit in &player.last_round_units {
+        *units.entry(unit.unit_type.display_name()).or_default() += 1;
+    }
+    for (unit, count) in units {
+        tx.execute(
+            "INSERT INTO player_units (battle_id, player_id, unit, count) VALUES (?1, ?2, ?3, ?4)",
+            params![battle_id, player_id, unit, count],
+        )?;
+    }
+    for specialist in &player.specialist_cards {
+        tx.execute(
+            "INSERT OR IGNORE INTO player_specialists (battle_id, player_id, specialist)
+             VALUES (?1, ?2, ?3)",
+            params![battle_id, player_id, specialist.display_name()],
+        )?;
+    }
+    Ok(())
+}

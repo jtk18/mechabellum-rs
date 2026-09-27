@@ -1,3 +1,7 @@
 *.mbpe
 .DS_Store
 /target
+*.db
+*.db-shm
+*.db-wal
+.env

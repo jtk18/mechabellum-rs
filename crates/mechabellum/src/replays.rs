@@ -63,39 +63,51 @@ impl BattleRecord {
         let bytes = fs::read(path)
             .map_err(|err| ParseError::UnableToRead(path.into(), err.to_string().into()))?;
 
-        for chunk in bytes.utf8_chunks() {
-            if let Some(start_position) = chunk.valid().find("<?xml") {
-                let end = if let Some(end_position) = chunk.valid().find("</BattleRecord>") {
-                    end_position + "</BattleRecord>".len()
-                } else {
-                    continue;
-                };
-                let embedded_document = &chunk.valid()[start_position..end];
-                let mut record: BattleRecord = from_str(embedded_document).map_err(|e| {
-                    ParseError::UnableToParse(
-                        path.into(),
-                        embedded_document.to_owned().into(),
-                        e.to_string().into(),
-                    )
+        let embedded_document = Self::extract_document(&bytes)
+            .ok_or_else(|| ParseError::NoBattleRecord(path.into()))?;
+        let mut record = Self::parse_document(embedded_document, path)?;
+        record.create_time = creation_time;
+
+        if save_embedded_delete_original && path.extension() == Some(&OsStr::new("grbr")) {
+            let mk_file = path.with_extension("xml");
+            fs::File::create(&mk_file)
+                .and_then(|mut f| write!(f, "{}\n", embedded_document))
+                .and_then(|_| fs::remove_file(path))
+                .map_err(|e| {
+                    ParseError::UnableToRemoveOriginal(path.into(), e.to_string().into())
                 })?;
-
-                record.create_time = creation_time;
-
-                if save_embedded_delete_original && path.extension() == Some(&OsStr::new("grbr")) {
-                    let mk_file = path.with_extension("xml");
-                    fs::File::create(&mk_file)
-                        .and_then(|mut f| write!(f, "{}\n", embedded_document))
-                        .and_then(|_| fs::remove_file(path))
-                        .map_err(|e| {
-                            ParseError::UnableToRemoveOriginal(path.into(), e.to_string().into())
-                        })?;
-                }
-
-                return Ok(record);
-            }
         }
 
-        Err(ParseError::NoBattleRecord(path.into()))
+        Ok(record)
+    }
+
+    /// Parse a replay held in memory: a `.grbr` or an already extracted `.xml`. `source` only
+    /// labels errors. `create_time` is left as recorded in the replay; see
+    /// `BattleOverview::occurred_on` for a usable timestamp.
+    pub fn from_bytes(bytes: &[u8], source: &Path) -> Result<Self, ParseError> {
+        let document = Self::extract_document(bytes)
+            .ok_or_else(|| ParseError::NoBattleRecord(source.into()))?;
+        Self::parse_document(document, source)
+    }
+
+    /// Find the embedded `<?xml ...>...</BattleRecord>` document inside a replay file.
+    pub fn extract_document(bytes: &[u8]) -> Option<&str> {
+        bytes.utf8_chunks().find_map(|chunk| {
+            let valid = chunk.valid();
+            let start = valid.find("<?xml")?;
+            let end = valid.find("</BattleRecord>")? + "</BattleRecord>".len();
+            valid.get(start..end)
+        })
+    }
+
+    fn parse_document(document: &str, source: &Path) -> Result<Self, ParseError> {
+        from_str(document).map_err(|e| {
+            ParseError::UnableToParse(
+                source.into(),
+                document.to_owned().into(),
+                e.to_string().into(),
+            )
+        })
     }
 }
 

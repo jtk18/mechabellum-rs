@@ -1,0 +1,17 @@
+# Upstream deployment. Put the upload token in a .env file next to this one:
+#   MECHABELLUM_UPLOAD_TOKEN=<long random string>
+# Bound to localhost only; the Pingora proxy terminates TLS and forwards to it.
+services:
+  server:
+    build: .
+    image: mechabellum-server
+    restart: unless-stopped
+    environment:
+      MECHABELLUM_UPLOAD_TOKEN: ${MECHABELLUM_UPLOAD_TOKEN:?set MECHABELLUM_UPLOAD_TOKEN in .env}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - mechabellum-data:/data
+
+volumes:
+  mechabellum-data:

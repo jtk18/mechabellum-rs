@@ -8,6 +8,13 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct BattleOverview {
+    /// Unique per match, e.g. `20260924--67113734`.
+    pub battle_id: String,
+    /// Game version (build number) the replay was recorded with, e.g. 2324.
+    pub version: u32,
+    pub map_id: String,
+    /// RFC 3339. Uses the recorded start time when present (newer versions), else the date in the
+    /// battle ID, else the file creation time.
     pub occurred_on: String,
     pub mode: GameMode,
     pub rounds: usize,
@@ -35,8 +42,9 @@ impl BattleRecord {
                 .reactor_core
                 .parse()
                 .unwrap_or(0);
-            let last_round_snapshot = &self.match_datas.match_snapshot_data
-                [self.match_datas.match_snapshot_data.len() - 1];
+            let Some(last_round_snapshot) = self.match_datas.match_snapshot_data.last() else {
+                continue;
+            };
             let last_round_result = rounds[rounds.len() - 1]
                 .player_data
                 .pre_round_fight_result
@@ -72,13 +80,14 @@ impl BattleRecord {
                 need_last_round_set = false;
             }
 
-            if let Some(last_fight_result) = last_round_snapshot.last_fight_result.as_ref() {
-                let score: usize = last_fight_result.reports.fight_report[i]
-                    .score
-                    .parse()
-                    .unwrap_or(0);
+            if let Some(report) = last_round_snapshot
+                .last_fight_result
+                .as_ref()
+                .and_then(|result| result.reports.fight_report.get(i))
+            {
+                let score: usize = report.score.parse().unwrap_or(0);
 
-                let last_round_units: Vec<UnitInstance> = last_fight_result.reports.fight_report[i]
+                let last_round_units: Vec<UnitInstance> = report
                     .unit_datas
                     .new_unit_data
                     .iter()
@@ -97,6 +106,7 @@ impl BattleRecord {
                     })
                     .collect();
                 let summary = PlayerSummary {
+                    id: player.id.clone(),
                     name,
                     last_round_hp,
                     score,
@@ -114,12 +124,43 @@ impl BattleRecord {
         }
 
         Ok(BattleOverview {
-            occurred_on: self.create_time.to_owned(),
+            battle_id: self.battle_info.battle_id.clone(),
+            version: self.version.trim().parse().unwrap_or(0),
+            map_id: self.battle_info.map_id.clone(),
+            occurred_on: self.occurred_on(),
             mode: self.into(),
             rounds: last_round,
             winners,
             losers,
         })
+    }
+}
+
+impl BattleRecord {
+    fn occurred_on(&self) -> String {
+        use chrono::{DateTime, NaiveDate, SecondsFormat};
+
+        if let Some(start) = self
+            .battle_info
+            .start_time
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .filter(|t| *t > 0)
+            .and_then(|t| DateTime::from_timestamp(t, 0))
+        {
+            return start.to_rfc3339_opts(SecondsFormat::Secs, true);
+        }
+        // BattleID looks like 20260924--67113734
+        if let Some(date) = self
+            .battle_info
+            .battle_id
+            .get(..8)
+            .and_then(|d| NaiveDate::parse_from_str(d, "%Y%m%d").ok())
+        {
+            return date.format("%Y-%m-%dT00:00:00Z").to_string();
+        }
+        self.create_time.to_owned()
     }
 }
 

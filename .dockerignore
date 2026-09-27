@@ -1,0 +1,7 @@
+target
+.git
+apps/desktop/node_modules
+apps/desktop/src-tauri/target
+*.db
+*.db-*
+.env

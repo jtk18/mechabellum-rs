@@ -1,0 +1,31 @@
+[package]
+name = "mechabellum-server"
+version = "0.1.0"
+edition = "2021"
+description = "Accepts Mechabellum replays and serves aggregate stats"
+license = "MIT"
+
+[lib]
+name = "mechabellum_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mechabellum-server"
+path = "src/main.rs"
+
+[dependencies]
+mechabellum = { path = "../mechabellum" }
+anyhow = "1.0"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+env_logger = "0.11"
+flate2 = "1"
+log = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
