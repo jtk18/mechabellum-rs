@@ -101,7 +101,23 @@ How it works:
 Gotchas: a cursor resting at a screen edge scrolls the camera, so the cursor parks over the
 supplies counter. Stacked units on the pad are picked up together. Right-clicking cancels a carry.
 
-Still to do: techs (Adjust Unit Tech), items, rotation (R or F while carrying?), other maps (each
+Findings for what's next:
+- **Rotation:** not found yet. Holding the left button, the middle button, or T while a unit is
+  selected switches its *formation* (per the on-screen hint), not its facing. The card's
+  bottom-right icon opens a follow camera (right-click exits; switching sides twice resets the
+  view). To try next: R or F while carrying (the hint lists Q/E/R/F for camera rotation, so
+  probably not), and the unit card's other buttons.
+- **Techs:** two different things. **Adjust Unit Tech** (in the tools, under the Squad list)
+  opens a grid of every unit with its tech icons: gold means available, a left click toggles,
+  a right click "carries/removes", then Confirm. That's the Unit Modification loadout. Techs
+  *researched* on a unit are bought from its card: the row of 4 priced buttons (e.g. 100, 250,
+  250, 150 for a Crawler) under its stats. Setting a board code's `techs` means clicking those
+  by position, which needs each unit's loadout order (from GameData.grdb or the replay's
+  `unitDatas`).
+- **Hovering** a unit in the Squad list shows its equipped techs and stats.
+- Clicking a stack on the pad picks up the older unit. Keep the pad clear between spawns.
+
+Still to do: techs (above), items, rotation, other maps (each
 needs its 6 calibration points, gathered with `grounds drop x,y ...` and read back from the replay),
 and a Command Center anchor per map.
 
