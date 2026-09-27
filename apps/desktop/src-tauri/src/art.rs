@@ -74,9 +74,11 @@ fn unity_data_dir(game_dir: &Path) -> Option<PathBuf> {
     search(game_dir, 4)
 }
 
+/// Which extractor build to use. On Windows it's the .NET Framework 4.7.2 build, which every
+/// Windows 10 and 11 install already has; elsewhere it needs the .NET 9 runtime.
 fn tool_asset_name() -> Result<&'static str> {
     Ok(if cfg!(windows) {
-        "AssetStudioModCLI_net9_win64"
+        "AssetStudioModCLI_net472_win32_64"
     } else if cfg!(target_os = "macos") {
         "AssetStudioModCLI_net9_mac64"
     } else if cfg!(target_os = "linux") {
@@ -112,8 +114,11 @@ fn walk(dir: &Path, depth: u32) -> Vec<PathBuf> {
     out
 }
 
-/// The extractor's small builds run on the shared .NET 9 runtime.
+/// The extractor's macOS and Linux builds run on the shared .NET 9 runtime.
 fn check_dotnet() -> Result<()> {
+    if cfg!(windows) {
+        return Ok(());
+    }
     let output = Command::new("dotnet")
         .arg("--list-runtimes")
         .output()
@@ -129,11 +134,11 @@ fn check_dotnet() -> Result<()> {
 }
 
 fn ensure_tool(tools_dir: &Path) -> Result<PathBuf> {
-    let dir = tools_dir.join(format!("AssetStudioModCLI-{TOOL_VERSION}"));
+    let name = tool_asset_name()?;
+    let dir = tools_dir.join(format!("{name}-{TOOL_VERSION}"));
     if let Some(exe) = find_tool(&dir) {
         return Ok(exe);
     }
-    let name = tool_asset_name()?;
     let url = format!(
         "https://github.com/aelurum/AssetStudio/releases/download/{TOOL_VERSION}/{name}.zip"
     );

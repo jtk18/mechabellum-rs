@@ -54,8 +54,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Platform and distribution
 
-12. **Replace the AssetStudio CLI** (needs .NET 9) with native Rust extraction before
-    distributing, so players don't need .NET.
+12. **Art extraction without .NET.** Windows: done, using AssetStudio's .NET Framework 4.7.2
+    build (built into Windows 10/11); identical output. macOS/Linux still need .NET 9. A native
+    Rust reader would need hard-coded Sprite/Texture2D layouts: the game's assets carry no type
+    trees (Unity 2022.3.62f3, SerializedFile 22), and some sprites are polygon-packed.
 13. **CI:** a GitHub Actions matrix (Windows, macOS, Ubuntu) to build and test the workspace and
     the Tauri app.
 14. ~~Start on login, single instance~~ Done (Settings tab; a second launch focuses the first).
