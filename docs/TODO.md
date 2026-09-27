@@ -22,18 +22,14 @@ Web API key), 22 (drives the live game), 23 (deleting GitHub branches).
 Done: server side (validation, key binding to one account, name hiding, `/missing`, ratings,
 purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, off by default).
 
-1. **Sync settings UI** in the desktop app: server URL, upload key, on/off switch, progress
-   ("Shared 340 of 1,053"), rejected matches with reasons, and a "Sync now" button. Commands
-   exist: `sync_settings`, `set_sync_settings`, `sync_now`, `sync_status`, plus `sync-status`
-   events.
-2. **End-to-end test of sync** against a local upstream server (`serve --require-auth` on
-   another port, `keys add`). Check that:
-   - all online matches arrive and the 10 offline bot games come back rejected
-   - opponent names are hidden server-side, and ratings are attached
-   - a restart resumes without resending
-   - a second key for the opponent fills in their name
-3. **Check tonight's games** (see item 0 first): new replays ingest and validate, and
-   `Player.log` ratings land in `player_ratings` for them.
+1. ~~Sync settings UI~~ Done: a Sharing tab with server, key, on/off, progress, refused
+   matches with reasons, and "Share now" (which also retries refused matches).
+2. ~~End-to-end test of sync~~ Done against a local server: 1,018 of 1,025 own matches shared,
+   the 7 refused are offline bot games; names hidden; ratings attached; nothing resent after a
+   restart. Found and fixed on the way: the XP table (see ORIENTATION) rejected tonight's
+   Centurion games, and tournament replays you watched were offered (now skipped). The
+   second-key name fill is covered by `test_shared_uploads`, not re-run end to end.
+3. ~~Check tonight's games~~ Done.
 4. **Show MMR** in the match list and on the board (both players' elo at match start).
 
 ## Stats

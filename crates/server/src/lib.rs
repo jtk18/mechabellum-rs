@@ -4,8 +4,8 @@
 mod store;
 
 pub use store::{
-    Facets, IngestOutcome, MatchRow, Rating, Rejection, Stats, StatsFilter, Store, TechStat, Trend,
-    TrendCell, UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
+    Facets, IngestOutcome, MatchRow, Rating, Rejection, Stats, StatsFilter, Store, SyncRejection,
+    TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -332,6 +332,50 @@ mod tests {
             .conn()
             .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
+    }
+
+    /// Text from replays and requests only ever reaches SQLite as bound parameters, so SQL in a
+    /// player name, battle ID, or filter is stored or matched literally, never run.
+    #[test]
+    fn test_sql_in_replays_is_just_text() {
+        let store = Store::open_in_memory().unwrap();
+        let evil_name = "Robert'); DROP TABLE matches; --";
+        let evil_id = "20260924--1' OR '1'='1";
+        let document = String::from_utf8(fixture(NEW))
+            .unwrap()
+            .replacen(
+                "<name>Bolsano</name>",
+                &format!("<name>{evil_name}</name>"),
+                1,
+            )
+            .replace("20260924--67113734", evil_id);
+        let outcome = store
+            .ingest(document.as_bytes(), Path::new("evil.xml"), None)
+            .unwrap();
+        assert!(matches!(outcome, IngestOutcome::Added { ref battle_id } if battle_id == evil_id));
+
+        // Every table is still there, and the text was stored as written.
+        for table in ["matches", "players", "player_units", "replay_blobs"] {
+            assert!(count(&store, table) > 0, "{table}");
+        }
+        assert_eq!(name_of(&store, BOLSANO), evil_name);
+        let detail = store
+            .match_detail(evil_id)
+            .unwrap()
+            .expect("found by its literal ID");
+        assert!(detail.players.iter().any(|p| p.name == evil_name));
+
+        // Hostile filters match nothing instead of everything.
+        let filtered = store
+            .stats(&StatsFilter {
+                player_id: Some("x' OR '1'='1".into()),
+                match_mode: Some("'; DELETE FROM players; --".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(filtered.matches, 0);
+        assert!(store.match_detail("' OR '1'='1").unwrap().is_none());
+        assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 1);
     }
 
     #[test]

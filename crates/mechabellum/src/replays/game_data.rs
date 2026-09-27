@@ -70,48 +70,91 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     })
 }
 
-/// XP a unit needs at level 0 to reach level 1.
+/// Newest version whose XP caps were checked against replays. Balance patches change caps, so
+/// newer versions shouldn't be judged by this table until it's re-measured.
+pub const XP_TABLE_VERIFIED_THROUGH: u32 = 2324;
+
+/// XP a unit needs at level 0 to reach level 1, measured from 2.0 replays (versions 2259 and
+/// 2324): units with a full bar sit exactly at `base * multiplier`. Star Expedition copies
+/// (5001-5032, 5201-5203) level at their own, mostly lower, rates.
 fn base_xp(unit_id: u32) -> Option<u32> {
-    Some(match base_id(unit_id) {
-        1 => 2000,
+    Some(match unit_id {
+        1 => 1600,
         2 => 650,
-        3 => 2500,
-        4 => 1750,
-        5 => 1650,
-        6 => 1350,
+        3 => 2200,
+        4 => 1400,
+        5 => 1150,
+        6 => 900,
         7 => 1200,
         8 => 1000,
         9 => 600,
         10 => 450,
         11 => 1750,
-        12 => 1650,
+        12 => 1100,
         13 => 1300,
         14 => 560,
         15 => 750,
-        16 => 1950,
-        17 => 4000,
+        16 => 1300,
+        17 => 3200,
         18 => 2250,
         19 => 1500,
         20 => 1400,
         21 => 1300,
         22 => 1950,
-        23 => 2500,
+        23 => 2000,
         24 => 1500,
-        25 => 1500,
+        25 => 1000,
         26 => 1800,
-        27 => 3000,
+        27 => 2400,
         28 => 750,
-        29 => 6000,
+        29 => 4800,
         30 => 650,
         31 => 750,
-        32 => 1500,
-        2002 => 4000,
+        32 => 2250,
+
+        5001 => 2000,
+        5002 => 450,
+        5003 => 2500,
+        5004 => 1750,
+        5005 => 1650,
+        5006 => 1350,
+        5007 => 900,
+        5008 => 1000,
+        5009 => 450,
+        5010 => 350,
+        5011 => 1750,
+        5012 => 1650,
+        5013 => 1000,
+        5015 => 500,
+        5016 => 1950,
+        5017 => 4000,
+        5019 => 1500,
+        5020 => 900,
+        5021 => 900,
+        5022 => 1500,
+        5023 => 2500,
+        5024 => 1000,
+        5025 => 1500,
+        5026 => 1800,
+        5027 => 3000,
+        5028 => 400,
+        5029 => 6000,
+        5030 => 400,
+        5031 => 400,
+        5032 => 1500,
+        5202 => 4000,
+        5203 => 1200,
         _ => return None,
     })
 }
 
 /// XP needed to leave `level` (0-based, as stored in replays). `None` when unknown.
 pub fn xp_to_next_level(unit_id: u32, level: u32) -> Option<u32> {
+    // Units whose caps don't follow the shared multipliers. The Vulcan's later levels fit a
+    // base of 2420, but its first level-up comes sooner.
+    if unit_id == 3 {
+        return [2200, 5453, 8620].get(level as usize).copied();
+    }
     let multiplier = LEVEL_MULTIPLIERS.get(level as usize)?;
     Some((base_xp(unit_id)? as f64 * multiplier).round() as u32)
 }
@@ -128,7 +171,17 @@ mod tests {
         assert_eq!(xp_to_next_level(2, 2), Some(2315));
         assert_eq!(xp_to_next_level(30, 3), Some(2919));
         assert_eq!(xp_to_next_level(21, 1), Some(2929));
-        assert_eq!(xp_to_next_level(5021, 1), Some(2929), "AsyncBattle copy");
+        assert_eq!(
+            xp_to_next_level(5021, 0),
+            Some(900),
+            "Star Expedition copy levels faster"
+        );
+        assert_eq!(xp_to_next_level(32, 0), Some(2250), "Centurion, 2324");
+        assert_eq!(xp_to_next_level(32, 1), Some(5070));
+        assert_eq!(xp_to_next_level(32, 2), Some(8014));
+        assert_eq!(xp_to_next_level(1, 0), Some(1600));
+        assert_eq!(xp_to_next_level(3, 0), Some(2200), "Vulcan");
+        assert_eq!(xp_to_next_level(3, 1), Some(5453));
         assert_eq!(xp_to_next_level(2, 4), None, "not measured");
         assert_eq!(xp_to_next_level(999, 0), None);
     }

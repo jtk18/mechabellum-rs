@@ -291,6 +291,15 @@ pub struct Facets {
     pub main_player: Option<(String, String)>,
 }
 
+/// A match a sharing server wouldn't take.
+#[derive(Debug, Serialize)]
+pub struct SyncRejection {
+    pub battle_id: String,
+    pub reason: String,
+    pub occurred_on: String,
+    pub version: u32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct MatchRow {
     pub battle_id: String,
@@ -635,6 +644,52 @@ impl Store {
         Ok(())
     }
 
+    /// Matches `server` refused, newest first, with the reason it gave.
+    pub fn sync_rejections(&self, server: &str) -> Result<Vec<SyncRejection>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT s.battle_id, s.rejected, m.occurred_on, m.version FROM synced_matches s
+             JOIN matches m ON m.battle_id = s.battle_id
+             WHERE s.server = ?1 AND s.rejected IS NOT NULL
+             ORDER BY m.occurred_on DESC",
+        )?;
+        let rows = stmt
+            .query_map([server], |r| {
+                Ok(SyncRejection {
+                    battle_id: r.get(0)?,
+                    reason: r.get(1)?,
+                    occurred_on: r.get(2)?,
+                    version: r.get(3)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// Forget which matches `server` refused, so they're offered again (after an update that
+    /// fixes why they were refused, for example).
+    pub fn clear_sync_rejections(&self, server: &str) -> Result<usize> {
+        Ok(self.conn().execute(
+            "DELETE FROM synced_matches WHERE server = ?1 AND rejected IS NOT NULL",
+            [server],
+        )?)
+    }
+
+    /// Battle IDs of the matches `player_id` played in, newest first.
+    pub fn battle_ids_for(&self, player_id: &str) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT m.battle_id FROM matches m
+             WHERE EXISTS (SELECT 1 FROM players p
+                           WHERE p.battle_id = m.battle_id AND p.player_id = ?1)
+             ORDER BY m.occurred_on DESC",
+        )?;
+        let ids = stmt
+            .query_map([player_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
     /// Every stored battle ID, newest first.
     pub fn battle_ids(&self) -> Result<Vec<String>> {
         let conn = self.conn();
@@ -877,7 +932,7 @@ impl Store {
             .map(|(i, v)| (v.version, i))
             .collect();
 
-        let trends = |table: &str, name: &str| -> Result<Vec<Trend>> {
+        let trends = |table: &'static str, name: &'static str| -> Result<Vec<Trend>> {
             let mut by_name: BTreeMap<String, Trend> = BTreeMap::new();
             let sql = format!(
                 "{scope} SELECT t.{name}, s.version, COUNT(*), SUM(s.won) FROM {table} t
@@ -1072,7 +1127,7 @@ impl Store {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
 
-        let usage = |table: &str, column: &str| -> Result<Vec<UsageStat>> {
+        let usage = |table: &'static str, column: &'static str| -> Result<Vec<UsageStat>> {
             let sql = format!(
                 "{scope} SELECT t.{column}, COUNT(*), SUM(s.won) FROM {table} t
                  JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id

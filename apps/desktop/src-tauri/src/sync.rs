@@ -31,7 +31,8 @@ pub struct SyncStatus {
     pub running: bool,
     /// Matches this server already has, including ones sent now.
     pub shared: usize,
-    /// Matches you have locally.
+    /// Your matches stored locally. Replays of other people's games (tournaments you watched)
+    /// aren't yours to share and aren't counted.
     pub total: usize,
     /// Matches the server won't take (offline games, for example), with why.
     pub rejected: usize,
@@ -50,7 +51,8 @@ pub struct Syncer {
     pub status: Arc<Mutex<SyncStatus>>,
 }
 
-fn base(server: &str) -> String {
+/// A server address in the form sync records use: trimmed, no trailing slash.
+pub fn base(server: &str) -> String {
     server.trim().trim_end_matches('/').to_owned()
 }
 
@@ -127,7 +129,7 @@ fn sync_once(
         .map(|(id, _)| id)
         .ok_or_else(|| anyhow::anyhow!("no matches yet, so it isn't clear which player you are"))?;
 
-    let all = store.battle_ids()?;
+    let all = store.battle_ids_for(&me)?;
     let done = store.synced(&server)?;
     let todo: Vec<String> = all
         .iter()
@@ -137,11 +139,16 @@ fn sync_once(
     {
         let mut s = status.lock().unwrap();
         s.total = all.len();
+        let ours: std::collections::HashSet<&String> = all.iter().collect();
+        let mine = |id: &String| ours.contains(id);
         s.shared = done
             .iter()
-            .filter(|(_, rejected)| rejected.is_none())
+            .filter(|(id, rejected)| rejected.is_none() && mine(id))
             .count();
-        s.rejected = done.len() - s.shared;
+        s.rejected = done
+            .iter()
+            .filter(|(id, rejected)| rejected.is_some() && mine(id))
+            .count();
     }
     progress();
 

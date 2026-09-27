@@ -16,6 +16,7 @@
       <nav class="tabs" aria-label="Views">
         <button type="button" class="tab" data-view="stats" aria-current="page">Stats</button>
         <button type="button" class="tab" data-view="matches">Matches</button>
+        <button type="button" class="tab" data-view="sharing">Sharing</button>
       </nav>
       <div class="status" id="status" aria-live="polite"></div>
     </header>
@@ -128,6 +129,50 @@
           <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
         </div>
         <aside class="unit-panel" id="unit-panel" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <section id="view-sharing" class="sharing-view" hidden aria-labelledby="sharing-title">
+      <div class="panel sharing-panel">
+        <h2 id="sharing-title">Share your matches</h2>
+        <p class="sharing-intro">
+          Send your replays to a community stats server. Other players' names are removed before
+          anything leaves this computer; their ratings and armies are kept. Offline games against
+          bots aren't accepted.
+        </p>
+        <form id="sharing-form" class="sharing-form">
+          <label class="switch">
+            <input type="checkbox" id="sync-enabled" />
+            <span>Share new and past matches automatically</span>
+          </label>
+          <label class="field">
+            <span>Server address</span>
+            <input type="url" id="sync-server" placeholder="https://stats.example.com" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="field">
+            <span>Upload key</span>
+            <input type="password" id="sync-key" autocomplete="off" spellcheck="false" />
+            <small>Given to you by the server's operator. It's tied to your Mechabellum account.</small>
+          </label>
+          <div class="sharing-actions">
+            <button type="submit" id="sync-save">Save</button>
+            <button type="button" id="sync-now" class="quiet">Share now</button>
+            <span class="sharing-saved" id="sync-saved" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel sharing-panel">
+        <h2>Progress</h2>
+        <div class="sync-progress" id="sync-progress">
+          <div class="sync-bar" aria-hidden="true"><span id="sync-bar-fill"></span></div>
+          <p id="sync-line" aria-live="polite">Sharing is off.</p>
+        </div>
+        <p class="error" id="sync-error" hidden></p>
+        <details class="sync-rejected" id="sync-rejected" hidden>
+          <summary id="sync-rejected-summary"></summary>
+          <ol id="sync-rejected-list"></ol>
+        </details>
       </div>
     </section>
 

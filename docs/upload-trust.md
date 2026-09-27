@@ -84,3 +84,20 @@ names, and binding uses IDs.
 2. **With the public website**: Steam sign-in with account-age and playtime gates, corroboration
    flags and the corroborated-only view, per-uploader caps.
 3. **Once there's volume**: robust aggregation and outlier review.
+
+## Hostile content (injection)
+
+Replays, ratings, filters, and any future shared format (such as the board markup for Testing
+Grounds) are untrusted text. Rules, each backed by a test:
+
+- **SQL:** values only ever reach SQLite as bound parameters (`?1`, `params![]`). The few
+  queries assembled with `format!` splice in compile-time table and column names only
+  (`&'static str`), never data. `test_sql_in_replays_is_just_text` stores a player named
+  `Robert'); DROP TABLE matches; --` and a quoted battle ID, and checks both come back verbatim
+  and that hostile filters match nothing.
+- **XML:** the parser does not expand external or nested entities, so a replay can't read local
+  files or balloon in memory (`test_entities_are_not_expanded`). Upload bodies are capped in
+  size before parsing.
+- **HTML:** the app and website insert replay text with `textContent`, never `innerHTML`.
+- **New formats** are parsed into typed values with limits (lengths, counts, known IDs) before
+  anything else touches them.

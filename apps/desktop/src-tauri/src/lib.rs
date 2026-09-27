@@ -347,13 +347,39 @@ fn set_sync_settings(state: State<'_, AppState>, sync: sync::SyncSettings) -> Re
 }
 
 #[tauri::command]
-fn sync_now(state: State<'_, AppState>) {
+fn sync_now(state: State<'_, AppState>) -> Result<(), String> {
+    // A manual run also retries matches the server refused before; an update may have fixed
+    // the reason.
+    let server = sync::base(&state.settings.lock().unwrap().sync.server);
+    if !server.is_empty() {
+        state
+            .store
+            .clear_sync_rejections(&server)
+            .map_err(|e| e.to_string())?;
+    }
     let _ = state.sync_wake.lock().unwrap().send(());
+    Ok(())
 }
 
 #[tauri::command]
 fn sync_status(state: State<'_, AppState>) -> sync::SyncStatus {
     state.syncer.status.lock().unwrap().clone()
+}
+
+/// Matches the configured server refused, with its reasons.
+#[tauri::command]
+async fn sync_rejections(
+    state: State<'_, AppState>,
+) -> Result<Vec<mechabellum_server::SyncRejection>, String> {
+    let server = sync::base(&state.settings.lock().unwrap().sync.server);
+    if server.is_empty() {
+        return Ok(Vec::new());
+    }
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.sync_rejections(&server))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -551,6 +577,7 @@ pub fn run() {
             set_sync_settings,
             sync_now,
             sync_status,
+            sync_rejections,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

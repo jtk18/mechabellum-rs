@@ -124,3 +124,40 @@ impl BattleRecord {
 }
 
 // tested in src/replays/overview.rs
+
+#[cfg(test)]
+mod hostile_input_tests {
+    use super::*;
+
+    /// Entity declarations in an uploaded replay must never read local files (XXE) or expand
+    /// without bound ("billion laughs").
+    #[test]
+    fn test_entities_are_not_expanded() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = dir.path().join("secret.txt");
+        std::fs::write(&secret, "TOP-SECRET").unwrap();
+        let url = format!(
+            "file:///{}",
+            secret.display().to_string().replace('\\', "/")
+        );
+        let xxe = format!(
+            r#"<?xml version="1.0"?><!DOCTYPE BattleRecord [<!ENTITY x SYSTEM "{url}">]><BattleRecord><Version>&x;</Version></BattleRecord>"#
+        );
+        if let Ok(record) = BattleRecord::from_bytes(xxe.as_bytes(), Path::new("xxe")) {
+            assert!(!record.version.contains("TOP-SECRET"));
+        }
+
+        let mut laughs =
+            String::from(r#"<?xml version="1.0"?><!DOCTYPE BattleRecord [<!ENTITY l0 "lol">"#);
+        for i in 1..10 {
+            let prev = i - 1;
+            laughs.push_str(&format!(r#"<!ENTITY l{i} "&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};&l{prev};">"#));
+        }
+        laughs.push_str("]><BattleRecord><Version>&l9;</Version></BattleRecord>");
+        let started = std::time::Instant::now();
+        if let Ok(record) = BattleRecord::from_bytes(laughs.as_bytes(), Path::new("laughs")) {
+            assert!(record.version.len() < 1000);
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+}

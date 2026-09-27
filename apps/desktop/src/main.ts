@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { art, artImage, loadArt } from "./art";
 import { openMatch, redrawMatch } from "./match";
+import { setupSharing } from "./sharing";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -477,7 +478,7 @@ async function refreshStatus(): Promise<Status> {
   return status;
 }
 
-type View = "stats" | "matches" | "match";
+type View = "stats" | "matches" | "match" | "sharing";
 
 function showView(view: View) {
   if (view === "matches" && !matchListLoaded) {
@@ -487,6 +488,7 @@ function showView(view: View) {
   $("view-stats").hidden = view !== "stats";
   $("view-matches").hidden = view !== "matches";
   $("view-match").hidden = view !== "match";
+  $("view-sharing").hidden = view !== "sharing";
   for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
     const current = tab.dataset.view === view || (view === "match" && tab.dataset.view === "matches");
     if (current) tab.setAttribute("aria-current", "page");
@@ -612,6 +614,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshStatus();
   await refreshFacets();
   await refreshStats();
+  await setupSharing();
   // Keep the status line fresh, and catch up on any change an event didn't announce.
   window.setInterval(refreshStatus, 2000);
   // A window hidden in the tray may not run timers; catch up as soon as it's shown.

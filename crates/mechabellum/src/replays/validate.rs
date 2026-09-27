@@ -2,7 +2,7 @@
 //! replays always pass them, and a hand-edited one usually breaks at least one. See
 //! docs/upload-trust.md.
 
-use super::game_data::xp_to_next_level;
+use super::game_data::{xp_to_next_level, XP_TABLE_VERIFIED_THROUGH};
 use super::names::{GameNames, NameKind};
 use super::{BattleRecord, Unit};
 
@@ -17,7 +17,9 @@ pub struct Problem {
     pub detail: String,
 }
 
-/// XP thresholds were measured on 2.0 replays; older versions may have used others.
+/// XP thresholds were measured on 2.0 replays; older versions may have used others. Versions
+/// after `XP_TABLE_VERIFIED_THROUGH` skip the check: a balance patch can raise a unit's caps, and
+/// real replays must never be rejected for that.
 const XP_CHECKS_FROM: u32 = 2259;
 
 fn problem(code: &'static str, detail: impl Into<String>) -> Problem {
@@ -169,7 +171,7 @@ impl BattleRecord {
                             format!("{} fields unknown unit {}", player.name, unit.id),
                         ));
                     }
-                    if version >= XP_CHECKS_FROM {
+                    if (XP_CHECKS_FROM..=XP_TABLE_VERIFIED_THROUGH).contains(&version) {
                         let unit_id: u32 = unit.id.trim().parse().unwrap_or(0);
                         let level: u32 = unit.level.trim().parse().unwrap_or(0);
                         let exp: u32 = unit.exp.trim().parse().unwrap_or(0);
