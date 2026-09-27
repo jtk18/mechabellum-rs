@@ -138,13 +138,20 @@ function drawBoard() {
   const farBottom = Math.max(
     ...sides.flatMap((s, i) => (i === bottom || !s ? [] : s.units.map((u) => toBoard(u.x, u.y)[1] + size(u)[1] / 2))),
   );
-  const mid = Number.isFinite(nearTop) && Number.isFinite(farBottom) ? (nearTop + farBottom) / 2 : (minY + maxY) / 2;
+  // When the armies overlap (forward flank deployments, units deep on the other side) no
+  // straight line separates them, so draw no halves rather than misleading ones.
+  const separated = Number.isFinite(nearTop) && Number.isFinite(farBottom) && farBottom <= nearTop;
+  const mid = (nearTop + farBottom) / 2;
 
   const layers: SVGElement[] = [
     svg("rect", { class: "surface", x: minX, y: minY, width: maxX - minX, height: maxY - minY }),
-    svg("rect", { class: "zone side-far", x: minX, y: minY, width: maxX - minX, height: Math.max(0, mid - minY) }),
-    svg("rect", { class: "zone side-near", x: minX, y: mid, width: maxX - minX, height: Math.max(0, maxY - mid) }),
   ];
+  if (separated) {
+    layers.push(
+      svg("rect", { class: "zone side-far", x: minX, y: minY, width: maxX - minX, height: Math.max(0, mid - minY) }),
+      svg("rect", { class: "zone side-near", x: minX, y: mid, width: maxX - minX, height: Math.max(0, maxY - mid) }),
+    );
+  }
   const grid = svg("g", { class: "grid" });
   for (let x = minX; x <= maxX; x += SQUARE) {
     grid.append(svg("line", { x1: x, y1: minY, x2: x, y2: maxY, class: x % 50 === 0 ? "major" : "" }));
@@ -152,7 +159,8 @@ function drawBoard() {
   for (let y = minY; y <= maxY; y += SQUARE) {
     grid.append(svg("line", { x1: minX, y1: y, x2: maxX, y2: y, class: y % 50 === 0 ? "major" : "" }));
   }
-  layers.push(grid, svg("line", { class: "midline", x1: minX, y1: mid, x2: maxX, y2: mid }));
+  layers.push(grid);
+  if (separated) layers.push(svg("line", { class: "midline", x1: minX, y1: mid, x2: maxX, y2: mid }));
 
   const units = svg("g", { class: "units" });
   sides.forEach((side, s) => {
@@ -183,7 +191,7 @@ function drawBoard() {
       for (let l = 0; l < Math.min(u.level, 5); l++) {
         g.append(svg("rect", { class: "pip", x: bx - w / 2 + 2 + l * 2.6, y: by - h / 2 + 2, width: 1.8, height: 1.8 }));
       }
-      const tip: Tip = { title: u.name, lines: [`Level ${u.level + 1}, ${detail!.players[s].name}`] };
+      const tip: Tip = { title: u.name, lines: [`Level ${u.level + 1}`, `Owned by ${detail!.players[s].name}`] };
       g.dataset.tip = JSON.stringify(tip);
       const choose = () => {
         selected = { side: s, index: u.index };
@@ -266,7 +274,7 @@ function renderUnitPanel() {
   const card = el("section", `unit-card ${sideClass(s)}`);
   const portrait = artImage(art.unitPortrait(unit.unit_id), "portrait", unit.name);
   if (portrait) card.append(portrait);
-  card.append(el("h3", "", unit.name), el("p", "muted", `${player.name}, unit #${unit.index + 1}`));
+  card.append(el("h3", "", unit.name), el("p", "muted", `Owned by ${player.name}, unit #${unit.index + 1}`));
 
   const level = el("div", "level");
   level.append(el("span", "level-number", `Level ${unit.level + 1}`));
