@@ -230,7 +230,8 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
         index: data.index.trim().parse().unwrap_or(0),
         level,
         exp: data.exp.trim().parse().unwrap_or(0),
-        xp_to_next: xp_to_next_level(unit_id, level),
+        // Star Expedition copies level at their own rates, so look up the raw ID.
+        xp_to_next: xp_to_next_level(data.id.trim().parse().unwrap_or(unit_id), level),
         x: data.position.x.trim().parse().unwrap_or(0),
         y: data.position.y.trim().parse().unwrap_or(0),
         rotated: data.is_rotate.trim().eq_ignore_ascii_case("true"),

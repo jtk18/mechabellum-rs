@@ -83,4 +83,5 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 ## Housekeeping
 
 23. Delete the merged `version-compat` and `workspace` branches, locally and on GitHub.
-24. Fix the older clippy warnings in the parser (`len() == 0`, `write!` with `\n`).
+24. ~~Clippy warnings~~ Done; CI now denies new ones. The old tester crate is excluded until it's
+    reworked.
