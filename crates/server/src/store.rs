@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS player_techs (
     player_id TEXT NOT NULL,
     unit      TEXT NOT NULL,
     tech      TEXT NOT NULL,
+    -- The game's ID for the tech, for its icon. Names repeat across units; IDs don't.
+    tech_id   TEXT,
     PRIMARY KEY (battle_id, player_id, unit, tech),
     FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
 );
@@ -111,8 +113,8 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 
 /// Bumped when derived tables change; opening an older database rebuilds them from the stored
 /// replays. 2: player_techs. 3: player_cards. 4: specialist names by game version.
-/// 5: starting specialists count as picks. 6: dates of offline games.
-const SCHEMA_VERSION: i64 = 6;
+/// 5: starting specialists count as picks. 6: dates of offline games. 7: tech IDs.
+const SCHEMA_VERSION: i64 = 7;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -349,6 +351,8 @@ pub struct UnitTechStats {
 #[derive(Debug, Serialize)]
 pub struct TechStat {
     pub tech: String,
+    /// The game's ID for this tech on this unit, when known (for its icon).
+    pub tech_id: Option<String>,
     /// Results that fielded the unit with this tech researched.
     pub picks: u64,
     pub wins: u64,
@@ -425,6 +429,12 @@ impl Store {
             .exists([])?;
         if !keys_bound {
             conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN player_id TEXT")?;
+        }
+        let techs_have_ids = conn
+            .prepare("SELECT 1 FROM pragma_table_info('player_techs') WHERE name = 'tech_id'")?
+            .exists([])?;
+        if !techs_have_ids {
+            conn.execute_batch("ALTER TABLE player_techs ADD COLUMN tech_id TEXT")?;
         }
         let store = Store {
             conn: Mutex::new(conn),
@@ -940,20 +950,26 @@ impl Store {
             .collect::<rusqlite::Result<_>>()?;
 
         let mut stmt = conn.prepare(&format!(
-            "{scope} SELECT t.unit, t.tech, COUNT(*), SUM(s.won) FROM player_techs t
+            "{scope} SELECT t.unit, t.tech, COUNT(*), SUM(s.won), MAX(t.tech_id) FROM player_techs t
              JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
              GROUP BY t.unit, t.tech"
         ))?;
         let mut rows = stmt.query(args)?;
         while let Some(row) = rows.next()? {
-            let (unit, tech, picks, wins): (String, String, u64, u64) =
-                (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
+            let (unit, tech, picks, wins, tech_id): (String, String, u64, u64, Option<String>) = (
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            );
             let Some(u) = units.get_mut(&unit) else {
                 continue;
             };
             let (without_picks, without_wins) = (u.picks - picks, u.wins - wins);
             u.techs.push(TechStat {
                 tech,
+                tech_id,
                 picks,
                 wins,
                 pick_rate: ratio(picks, u.picks),
@@ -1374,9 +1390,9 @@ fn insert_player(
         for tech in &unit.techs {
             let name = tech.name.as_deref().unwrap_or(&tech.id);
             tx.execute(
-                "INSERT OR IGNORE INTO player_techs (battle_id, player_id, unit, tech)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![battle_id, player_id, unit.unit_name, name],
+                "INSERT OR IGNORE INTO player_techs (battle_id, player_id, unit, tech, tech_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![battle_id, player_id, unit.unit_name, name, tech.id],
             )?;
         }
     }

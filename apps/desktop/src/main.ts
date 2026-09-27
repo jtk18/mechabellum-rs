@@ -78,6 +78,7 @@ interface VersionTrends {
 
 interface TechStat {
   tech: string;
+  tech_id: string | null;
   picks: number;
   wins: number;
   pick_rate: number;
@@ -216,7 +217,8 @@ function techRows(unit: UnitTechStats) {
     const winCell = el("div", "tech-win");
     winCell.append(winBar(t.win_rate), el("span", "without", without));
     const techName = el("div", "name");
-    techName.append(nameIcon(art.techIconByName(t.tech)), el("span", "", t.tech));
+    const icon = (t.tech_id && art.techIcon(t.tech_id)) || art.techIconByName(t.tech);
+    techName.append(nameIcon(icon), el("span", "", t.tech));
     row.append(techName, pickBar(t.pick_rate), winCell, el("div", "games", String(t.picks)));
     for (const cell of row.children) cell.setAttribute("role", "cell");
     const tip: Tip = {
