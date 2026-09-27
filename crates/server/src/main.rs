@@ -48,6 +48,8 @@ enum Command {
         /// The key's name
         uploader: String,
     },
+    /// List shared matches whose players' copies disagree
+    Disputes,
     /// Manage upload keys
     Keys {
         #[command(subcommand)]
@@ -143,6 +145,22 @@ async fn main() -> Result<()> {
                 "removed {} matches shared by {uploader}",
                 store.purge_uploader(&uploader)?
             );
+        }
+        Command::Disputes => {
+            let (corroborated, disputed) = store.corroboration()?;
+            println!("{corroborated} corroborated, {disputed} disputed");
+            for d in store.disputes()? {
+                println!("{}", d.battle_id);
+                for c in d.copies {
+                    println!(
+                        "  {} (player {}) at {}: {}",
+                        c.uploaded_by,
+                        c.player_id,
+                        c.at,
+                        &c.fingerprint[..12]
+                    );
+                }
+            }
         }
         Command::Keys { command } => match command {
             KeysCommand::Add { name } => {

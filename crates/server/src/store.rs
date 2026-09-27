@@ -15,6 +15,16 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 const SCHEMA: &str = "
+-- Upstream: each player's copy of a shared match, reduced to a fingerprint of what the game
+-- recorded (armies, HP, results). Copies from two players that agree corroborate the match.
+CREATE TABLE IF NOT EXISTS match_copies (
+    battle_id   TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    player_id   TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (battle_id, uploaded_by)
+);
 CREATE TABLE IF NOT EXISTS matches (
     battle_id   TEXT PRIMARY KEY,
     version     INTEGER NOT NULL,
@@ -178,7 +188,15 @@ pub struct StatsFilter {
     /// How `version_trends` groups columns. Other queries ignore it.
     #[serde(default)]
     pub period: Period,
+    /// Only count matches that two players shared and whose copies agree.
+    #[serde(default)]
+    pub corroborated_only: bool,
 }
+
+/// Matches with copies from at least two players that agree, and none that disagree.
+const CORROBORATED: &str = "
+    SELECT battle_id FROM match_copies GROUP BY battle_id
+    HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2";
 
 /// Columns of a trend table.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -213,10 +231,13 @@ const SCOPE: &str = "WITH scope AS (
       AND (?4 IS NULL OR m.game_mode = ?4)
       AND (?5 IS NULL OR p.player_id = ?5)
       AND (?6 IS NULL OR (p.player_id != ?6 AND EXISTS (
-          SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6))))";
+          SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6)))
+      AND (?7 = 0 OR m.battle_id IN (
+          SELECT battle_id FROM match_copies GROUP BY battle_id
+          HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2)))";
 
 impl StatsFilter {
-    fn params(&self) -> [&dyn rusqlite::ToSql; 6] {
+    fn params(&self) -> [&dyn rusqlite::ToSql; 7] {
         [
             &self.min_version,
             &self.max_version,
@@ -224,6 +245,7 @@ impl StatsFilter {
             &self.game_mode,
             &self.player_id,
             &self.opponents_of,
+            &self.corroborated_only,
         ]
     }
 }
@@ -372,6 +394,49 @@ pub struct Facets {
     pub modes: Vec<(String, String, u64)>,
     /// The account with the most matches: on a desktop install, the owner.
     pub main_player: Option<(String, String)>,
+}
+
+/// A shared match whose copies disagree.
+#[derive(Debug, Serialize)]
+pub struct Dispute {
+    pub battle_id: String,
+    pub copies: Vec<MatchCopy>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MatchCopy {
+    pub uploaded_by: String,
+    pub player_id: String,
+    pub fingerprint: String,
+    pub at: String,
+}
+
+/// What every copy of a match must agree on: each round's armies (unit, position, level, XP,
+/// rotation), HP, and results. Names, and anything only one client records, are left out.
+fn fingerprint(record: &BattleRecord) -> String {
+    use std::fmt::Write;
+    let detail = record.match_detail();
+    let mut facts = format!(
+        "{}|{}|{}\n",
+        detail.battle_id, detail.version, detail.map_id
+    );
+    for round in &detail.rounds {
+        for (side, player) in round.sides.iter().zip(&detail.players) {
+            let Some(side) = side else { continue };
+            let mut units: Vec<_> = side
+                .units
+                .iter()
+                .map(|u| (u.unit_id, u.x, u.y, u.level, u.exp, u.rotated))
+                .collect();
+            units.sort_unstable();
+            let _ = writeln!(
+                facts,
+                "{}|{}|{}|{}|{units:?}",
+                round.round, player.id, side.hp, side.result
+            );
+        }
+    }
+    hex(&Sha256::digest(facts.as_bytes()))
 }
 
 /// A match a sharing server wouldn't take.
@@ -596,6 +661,16 @@ impl Store {
 
         let shared = mechabellum::hide_other_names(document, &player);
         let outcome = self.ingest(shared.as_bytes(), Path::new("<upload>"), Some(key_name))?;
+        let battle_id = match &outcome {
+            IngestOutcome::Added { battle_id } | IngestOutcome::Duplicate { battle_id } => {
+                battle_id
+            }
+        };
+        self.conn().execute(
+            "INSERT OR REPLACE INTO match_copies (battle_id, uploaded_by, player_id, fingerprint)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![battle_id, key_name, player, fingerprint(&record)],
+        )?;
         if let IngestOutcome::Duplicate { battle_id } = &outcome {
             self.conn().execute(
                 "UPDATE players SET name = ?3 WHERE battle_id = ?1 AND player_id = ?2 AND name = ?4",
@@ -826,8 +901,64 @@ impl Store {
             [key_name],
         )?;
         let removed = tx.execute("DELETE FROM matches WHERE uploaded_by = ?1", [key_name])?;
+        // Its copies no longer vouch for anything.
+        tx.execute(
+            "DELETE FROM match_copies WHERE uploaded_by = ?1",
+            [key_name],
+        )?;
         tx.commit()?;
         Ok(removed)
+    }
+
+    /// Matches whose players' copies disagree: someone edited theirs, or the game recorded
+    /// something differently than expected. Each with its copies.
+    pub fn disputes(&self) -> Result<Vec<Dispute>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT battle_id, uploaded_by, player_id, fingerprint, at FROM match_copies
+             WHERE battle_id IN (SELECT battle_id FROM match_copies GROUP BY battle_id
+                                 HAVING COUNT(DISTINCT fingerprint) > 1)
+             ORDER BY battle_id, at",
+        )?;
+        let mut disputes: Vec<Dispute> = Vec::new();
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                MatchCopy {
+                    uploaded_by: r.get(1)?,
+                    player_id: r.get(2)?,
+                    fingerprint: r.get(3)?,
+                    at: r.get(4)?,
+                },
+            ))
+        })?;
+        for row in rows {
+            let (battle_id, copy) = row?;
+            match disputes.last_mut() {
+                Some(d) if d.battle_id == battle_id => d.copies.push(copy),
+                _ => disputes.push(Dispute {
+                    battle_id,
+                    copies: vec![copy],
+                }),
+            }
+        }
+        Ok(disputes)
+    }
+
+    /// How many shared matches are corroborated (two players' copies agree) and disputed.
+    pub fn corroboration(&self) -> Result<(u64, u64)> {
+        let conn = self.conn();
+        let corroborated =
+            conn.query_row(&format!("SELECT COUNT(*) FROM ({CORROBORATED})"), [], |r| {
+                r.get(0)
+            })?;
+        let disputed = conn.query_row(
+            "SELECT COUNT(*) FROM (SELECT battle_id FROM match_copies GROUP BY battle_id
+                                   HAVING COUNT(DISTINCT fingerprint) > 1)",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok((corroborated, disputed))
     }
 
     /// Create an upload key. Returns the key, which is only available now; the database keeps

@@ -68,8 +68,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 17. **Steam sign-in** with account-age and playtime gates, replacing bare upload keys for
     members.
-18. **Corroboration:** when both players share a match, compare hashes of the shared content
-    (excluding names). Add a "corroborated only" view and flag mismatches.
+18. ~~Corroboration~~ Done on the server: each shared copy is fingerprinted from what the game
+    recorded (every round's armies, HP, results; no names), `corroborated_only` in the stats
+    filter, and `mechabellum-server disputes`. Not yet checked: that two real players' copies
+    of one match fingerprint identically (needs both copies; watch `disputes` once people share).
 19. **Per-uploader caps** in aggregates; median-of-means aggregation; outlier review.
 20. **Public website:** stats pages and per-player pages (players shown pseudonymously unless
     they share).

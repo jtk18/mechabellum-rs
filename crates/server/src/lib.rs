@@ -4,9 +4,9 @@
 mod store;
 
 pub use store::{
-    Facets, IngestOutcome, MatchRow, Period, Rating, RatingBand, Rejection, Stats, StatsFilter,
-    Store, SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat,
-    VersionTotals, VersionTrends,
+    Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand, Rejection,
+    Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey,
+    UsageStat, VersionTotals, VersionTrends,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -333,6 +333,66 @@ mod tests {
             .conn()
             .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
+    }
+
+    /// A match both players shared, with copies that agree, is corroborated; a copy that
+    /// disagrees disputes it and takes it out of the corroborated view.
+    #[test]
+    fn test_corroboration() {
+        let store = Store::open_in_memory().unwrap();
+        store.create_key("mine").unwrap();
+        store.create_key("theirs").unwrap();
+        let corroborated_only = StatsFilter {
+            corroborated_only: true,
+            ..Default::default()
+        };
+        let battle = "20260924--67113734";
+
+        store
+            .ingest_shared(&fixture(NEW), "mine", Some(JTK18))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.corroboration().unwrap(),
+            (0, 0),
+            "one copy proves nothing"
+        );
+        assert_eq!(store.stats(&corroborated_only).unwrap().matches, 0);
+
+        // The same copy again from the same player still doesn't count twice.
+        store
+            .ingest_shared(&fixture(NEW), "mine", Some(JTK18))
+            .unwrap()
+            .unwrap();
+        assert_eq!(store.corroboration().unwrap(), (0, 0));
+
+        store
+            .ingest_shared(&fixture(NEW), "theirs", Some(BOLSANO))
+            .unwrap()
+            .unwrap();
+        assert_eq!(store.corroboration().unwrap(), (1, 0));
+        assert_eq!(store.stats(&corroborated_only).unwrap().matches, 1);
+        assert!(store.disputes().unwrap().is_empty());
+
+        // A third copy that disagrees (as if edited) disputes the match.
+        store
+            .conn()
+            .execute(
+                "INSERT INTO match_copies (battle_id, uploaded_by, player_id, fingerprint)
+                 VALUES (?1, 'someone', 'x', 'different')",
+                [battle],
+            )
+            .unwrap();
+        assert_eq!(store.corroboration().unwrap(), (0, 1));
+        assert_eq!(store.stats(&corroborated_only).unwrap().matches, 0);
+        let disputes = store.disputes().unwrap();
+        assert_eq!(disputes.len(), 1);
+        assert_eq!(disputes[0].battle_id, battle);
+        assert_eq!(disputes[0].copies.len(), 3);
+
+        // Purging the odd key restores it.
+        store.purge_uploader("someone").unwrap();
+        assert_eq!(store.corroboration().unwrap(), (1, 0));
     }
 
     #[test]
