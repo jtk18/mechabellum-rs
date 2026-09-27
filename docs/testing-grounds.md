@@ -73,27 +73,37 @@ The presets cover a board code's `hp` per side and `map`.
 
 ## The `grounds` tool (crates/grounds)
 
-`grounds place code.txt` sets up the first side of a board code in a running Testing Grounds
-(Railway Town, south half). It has been verified against the saved replay: units land within
-half a square of their targets, which is the game's own snap.
+`grounds place code.txt` sets up every side of a board code in a running Testing Grounds on
+Railway Town, then leaves you on your own side. Press Start and it's a real fight.
+`grounds plan code.txt` shows the screen targets without touching the game.
+
+Verified 2026-09-27 against the saved replay with a two-sided code (Fortress, Marksman, and a
+level-2 Crawler against Sledgehammer, Fang, and Arclight, placed with anchors). Every unit landed
+where the code said, within the game's half-square snap, at the right level.
 
 How it works:
-1. **Camera:** 15 wheel steps out from the starting view. A projective fit from 5 measured
-   points maps board squares to screen pixels (leave-one-out error is 8 to 90 px, so it needs
-   more points near the edges; see `RAILWAY_TOWN_SOUTH`).
-2. **Spawning:** Testing Grounds Tools, Squad tab, click the unit. That's free, with no
-   per-round limit (the shop allows 2 units per round, and "Cancel the unlock limit" doesn't
-   change that). The list holds 35 units, three per row. Scroll to the top, then 6 wheel
-   steps per row; the last rows are reached by scrolling to the bottom.
-3. **Finding it:** units bought or spawned this round are tinted yellow-green
-   (about RGB 160,180,90). The new unit is the green blob that wasn't there before.
-4. **Moving:** click the unit, click the target, double-click it, then right-click. A target on
-   a building (the Research Center stands at about board 14,-18 on Railway Town) is refused.
-5. **Levels:** select the unit, then Tools, Upgrade, once per level. Not verified yet.
+1. **Camera:** 60 wheel steps out gives the same view every time, from either side (Switch Sides
+   keeps the zoom; zooming fully out resets it). The whole zone is visible. Each half has a
+   projective fit from 6 measured points (`RAILWAY_TOWN_SOUTH` and `RAILWAY_TOWN_NORTH`),
+   with errors of 2 to 10 px.
+2. **Spawning:** Testing Grounds Tools, Squad tab, click the unit. That's free and has no
+   per-round limit (the shop allows 2 per round). The list has 35 units, three per row; scroll to
+   the top, then 6 wheel steps per row. The tool checks that the panel really opened before
+   scrolling, since over the map the wheel zooms instead.
+3. **Finding it:** new units are tinted yellow-green (about RGB 160,180,90) and appear on the
+   helipad (screen 1285,775 in either view). The new unit is the blob there that appeared or grew.
+4. **Moving:** click the unit, click the target, double-click it, then right-click. It checks that
+   the unit left the pad and arrived at the target, and retries up to 3 times. Drops on buildings
+   (the Research Center, about board 14,-18 on the south) or on other units are refused.
+5. **Levels:** select the unit, Tools, Upgrade once per level.
+6. **Sides:** Switch Sides, then the same steps with the north calibration.
 
-Still to do: levels (check), techs (Adjust Unit Tech), items, rotation (R, F keys?), the
-enemy side (Switch Sides, then the north half needs its own calibration), panning for units the
-default view can't reach (the zone's left third), and other maps.
+Gotchas: a cursor resting at a screen edge scrolls the camera, so the cursor parks over the
+supplies counter. Stacked units on the pad are picked up together. Right-clicking cancels a carry.
+
+Still to do: techs (Adjust Unit Tech), items, rotation (R or F while carrying?), other maps (each
+needs its 6 calibration points, gathered with `grounds drop x,y ...` and read back from the replay),
+and a Command Center anchor per map.
 
 ## Plan
 

@@ -88,7 +88,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 21. ~~Read unlocked techs~~ Done: `mechabellum::profile` reads GameData.grdb; the Loadout tab shows
     each unit's unlocked techs with your games and win rate with each.
-22. **Automate Testing Grounds** setup from board code. Done so far: the board code format
+22. **Automate Testing Grounds** from board code. `grounds place` now sets up both sides on Railway Town, verified against the saved replay (docs/testing-grounds.md). Earlier: the board code format
     (docs/board-code.md; `mechabellum::board`), "Copy board code" on the match board, and
     `replay-parse board` / `check-board`. Next: map board squares to screen positions in Testing
     Grounds, then place units, set levels and techs (needs the game running).

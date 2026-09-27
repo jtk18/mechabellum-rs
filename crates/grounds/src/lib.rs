@@ -72,15 +72,27 @@ impl Projection {
     }
 }
 
-/// Calibration for Railway Town, south half, camera zoomed all the way out from where Testing
-/// Grounds starts. Units placed at these screen points were recorded at these board squares in
-/// the saved replay (2026-09-27).
-pub const RAILWAY_TOWN_SOUTH: [(f64, f64, f64, f64); 5] = [
-    (-5.5, -17.0, 512.0, 320.0),
-    (18.5, -21.0, 1024.0, 576.0),
-    (0.5, -17.0, 646.0, 365.0),
-    (23.5, -10.0, 1274.0, 429.0),
-    (-9.5, -25.0, 314.0, 425.0),
+/// Calibration for Railway Town, south half, seen from your own side with the camera zoomed all
+/// the way out (60 wheel steps). Units dropped at these screen points were recorded at these board
+/// squares in the saved replay (2026-09-27); fit error 2 to 10 px. The whole zone is on screen.
+pub const RAILWAY_TOWN_SOUTH: [(f64, f64, f64, f64); 6] = [
+    (5.5, -12.0, 1472.0, 742.0),
+    (22.5, -5.0, 1997.0, 762.0),
+    (22.5, -18.5, 1862.0, 1024.0),
+    (22.0, -24.0, 1792.0, 1126.0),
+    (-5.5, -3.0, 1298.0, 500.0),
+    (-12.5, -28.0, 803.0, 903.0),
+];
+
+/// Calibration for Railway Town, north half, seen from the north side after Switch Sides with
+/// the camera zoomed all the way out (60 wheel steps). Measured 2026-09-27; fit error about 4 px.
+pub const RAILWAY_TOWN_NORTH: [(f64, f64, f64, f64); 6] = [
+    (15.5, 29.0, 715.0, 897.0),
+    (-21.5, 12.0, 1911.0, 898.0),
+    (18.5, 8.0, 917.0, 478.0),
+    (-7.5, 28.0, 1326.0, 1089.0),
+    (0.5, 18.0, 1239.0, 812.0),
+    (0.5, 14.0, 1299.0, 725.0),
 ];
 
 /// Screen areas covered by UI in the Testing Grounds view, where the board can't be clicked:
@@ -206,6 +218,8 @@ pub mod ui {
     pub const UNLOCK_CLOSE: Px = (2362.0, 265.0);
     /// Somewhere harmless to right-click (cancels a carried unit).
     pub const NEUTRAL: Px = (1920.0, 1152.0);
+    /// Where units from the Squad list appear (the helipad), in the zoomed-out view of either side.
+    pub const SPAWN_PAD: Px = (1285.0, 775.0);
 
     /// Shop card slots, filled in this order as unit types are unlocked. The Unlock Unit button
     /// takes the next free slot. Slots 0 and 1 are measured; 2 and 3 are inferred.
@@ -309,6 +323,28 @@ pub fn plan(side: &mechabellum::board::Side, projection: &Projection) -> Vec<Pla
         .collect()
 }
 
+/// Mean RGB over a rectangle of a reference-size image.
+pub fn mean_color(img: &image::RgbImage, (l, t, r, b): (u32, u32, u32, u32)) -> [f64; 3] {
+    let mut sum = [0.0; 3];
+    let mut n = 0.0f64;
+    for y in t..b {
+        for x in l..r {
+            let p = img.get_pixel(x, y).0;
+            for i in 0..3 {
+                sum[i] += f64::from(p[i]);
+            }
+            n += 1.0;
+        }
+    }
+    sum.map(|s| s / n.max(1.0))
+}
+
+/// Whether the right-hand Testing Grounds Tools panel is open: its header is dark navy.
+pub fn tools_open(img: &image::RgbImage) -> bool {
+    let [r, g, b] = mean_color(img, (2200, 318, 2480, 345));
+    b > r + 8.0 && r < 90.0 && g < 90.0
+}
+
 /// Centers of bright green blobs (the game tints units bought this round green) in an RGB
 /// image, in its pixel coordinates, largest first.
 pub fn green_blobs(img: &image::RgbImage) -> Vec<(Px, usize)> {
@@ -373,19 +409,24 @@ mod tests {
         for (x, y, u, v) in RAILWAY_TOWN_SOUTH {
             let (su, sv) = p.to_screen(x, y);
             assert!(
-                (su - u).hypot(sv - v) < 5.0,
+                (su - u).hypot(sv - v) < 12.0,
                 "{x},{y}: {su},{sv} vs {u},{v}"
             );
         }
-        // The zone's right corners, seen on screen near (1510, 365) and (1203, 858).
-        let front_right = p.to_screen(30.0, -1.0);
-        let back_right = p.to_screen(30.0, -31.0);
-        assert!((front_right.0 - 1510.0).hypot(front_right.1 - 365.0) < 60.0);
-        assert!((back_right.0 - 1203.0).hypot(back_right.1 - 858.0) < 60.0);
-        assert!(
-            !clickable(p.to_screen(-30.0, -1.0)),
-            "left corners are off screen"
-        );
+        // The zone's left corners, as seen on screen; the whole zone is in view.
+        for ((x, y), (u, v)) in [
+            ((-30.0, -31.0), (339.0, 806.0)),
+            ((-30.0, -1.0), (717.0, 288.0)),
+        ] {
+            let (su, sv) = p.to_screen(x, y);
+            assert!((su - u).hypot(sv - v) < 40.0, "{x},{y}: {su},{sv}");
+            assert!(clickable((su, sv)));
+        }
+        let north = Projection::fit(&RAILWAY_TOWN_NORTH).unwrap();
+        for (x, y, u, v) in RAILWAY_TOWN_NORTH {
+            let (su, sv) = north.to_screen(x, y);
+            assert!((su - u).hypot(sv - v) < 15.0);
+        }
     }
 
     #[test]

@@ -23,6 +23,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use std::thread::sleep;
 use std::time::Duration;
 
+/// Where the cursor rests between actions, in reference pixels.
+const PARK: Px = (2380.0, 962.0);
+
 pub struct Game {
     hwnd: HWND,
     origin: (i32, i32),
@@ -56,7 +59,7 @@ impl Game {
                 hwnd,
                 origin: (origin.x, origin.y),
                 size,
-                cursor: (size.0 - 2, size.1 - 2),
+                cursor: (size.0 / 2, size.1 / 2),
             })
         }
     }
@@ -139,9 +142,11 @@ impl Game {
         ms(600);
     }
 
-    /// Park the cursor in the bottom-right corner, off the board and UI.
+    /// Park the cursor over the supplies counter: off the board, and away from the screen edges,
+    /// where a resting cursor scrolls the camera.
     pub fn park(&mut self) {
-        self.set_cursor((self.size.0 - 2, self.size.1 - 2));
+        let c = self.to_client(PARK);
+        self.set_cursor(c);
         ms(200);
     }
 
