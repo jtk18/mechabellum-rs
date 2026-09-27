@@ -94,18 +94,29 @@ async fn main() -> Result<()> {
             } else {
                 UploadAuth::Open
             };
-            let listener = tokio::net::TcpListener::bind(bind)
-                .await
-                .with_context(|| format!("binding {bind}"))?;
-            log::info!(
-                "listening on http://{bind} (db {}, uploads {})",
-                args.db.display(),
-                match auth {
-                    UploadAuth::Open => "open",
-                    UploadAuth::Required { .. } => "require a key",
-                }
-            );
-            axum::serve(listener, router(store, auth)).await?;
+            let uploads = match auth {
+                UploadAuth::Open => "open",
+                UploadAuth::Required { .. } => "require a key",
+            };
+            let app = router(store, auth);
+            // Socket activation (systemd, or a host such as uredo): serve the
+            // Unix socket handed over as fd 3 instead of binding `bind`.
+            if let Some(listener) = activated_unix_listener()? {
+                log::info!(
+                    "listening on the activated socket (db {}, uploads {uploads})",
+                    args.db.display()
+                );
+                axum::serve(listener, app).await?;
+            } else {
+                let listener = tokio::net::TcpListener::bind(bind)
+                    .await
+                    .with_context(|| format!("binding {bind}"))?;
+                log::info!(
+                    "listening on http://{bind} (db {}, uploads {uploads})",
+                    args.db.display()
+                );
+                axum::serve(listener, app).await?;
+            }
         }
         Command::Import { dir } => {
             let paths: Vec<PathBuf> = std::fs::read_dir(&dir)?
@@ -205,4 +216,29 @@ async fn main() -> Result<()> {
         },
     }
     Ok(())
+}
+
+/// The Unix socket passed by socket activation (`LISTEN_FDS=1`, fd 3), if any.
+#[cfg(unix)]
+fn activated_unix_listener() -> Result<Option<tokio::net::UnixListener>> {
+    use std::os::fd::FromRawFd;
+    let fds = std::env::var("LISTEN_FDS").ok();
+    let pid_ok = std::env::var("LISTEN_PID")
+        .map(|p| p == std::process::id().to_string())
+        .unwrap_or(true);
+    if fds.as_deref() != Some("1") || !pid_ok {
+        return Ok(None);
+    }
+    // SAFETY: by the socket-activation protocol fd 3 is ours and open; it is
+    // taken exactly once.
+    let std_listener = unsafe { std::os::unix::net::UnixListener::from_raw_fd(3) };
+    std_listener
+        .set_nonblocking(true)
+        .context("activated fd 3 is not a Unix listening socket")?;
+    Ok(Some(tokio::net::UnixListener::from_std(std_listener)?))
+}
+
+#[cfg(not(unix))]
+fn activated_unix_listener() -> Result<Option<tokio::net::TcpListener>> {
+    Ok(None)
 }
