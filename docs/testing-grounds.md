@@ -28,9 +28,16 @@ The presets cover a board code's `hp` per side and `map`.
   - Bottom left: Forced Move, Delete Unit, Clear All.
 - Keys: WASD or arrows move the camera, the mouse wheel or Z/X zooms, Q/E/R/F rotate, and
   Ctrl+U upgrades every unit of the selected type.
-- Dragging on the Squad palette scrolls the list; it doesn't place a unit. Units probably go
-  through the normal shop (bottom right: unit cards with prices and "Unlock unit"). The palette
-  may add a unit type to the shop. Still to find out.
+- Dragging on the Squad palette scrolls the list; it doesn't place a unit.
+- **Unlock Unit** (bottom right) opens a fixed grid of every unit by tier (I: Crawler … Sabertooth,
+  II: Stormcaller … Wraith, III: Vulcan … Overlord, IV: War Factory, Mountain, Abyss) with tag
+  filters. Clicking a unit adds its card to the shop (bottom right, with its price). This grid is
+  the reliable way to get any unit.
+- A drag from the shop card onto the board with synthetic mouse events placed nothing. That was
+  probably because the camera didn't show my deployment area: after entering, the view pointed
+  at a map edge, and neither keyboard zoom (X) nor the default view showed the grid. Next time:
+  find a camera reset (or pan with WASD to the deployment zone, whose outline is dashed), then
+  try click-to-select followed by click-to-place as well as dragging.
 
 ## Plan
 
