@@ -752,7 +752,17 @@ select:hover {
 
 .board .zone {
   fill: var(--side-color);
-  opacity: 0.06;
+  fill-opacity: 0.06;
+  /* Deployment zones, outlined with dashes as in the game. */
+  stroke: var(--side-color);
+  stroke-opacity: 0.4;
+  stroke-width: 0.8;
+  stroke-dasharray: 3 2;
+}
+
+.board .zone.flank {
+  fill-opacity: 0.03;
+  stroke-opacity: 0.25;
 }
 
 .board .grid line {

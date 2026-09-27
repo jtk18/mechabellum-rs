@@ -68,6 +68,14 @@ interface MatchDetail {
 const SVG = "http://www.w3.org/2000/svg";
 /** Replay units per grid square. */
 const SQUARE = 10;
+/** Deployment geometry of 2.0 maps in replay units (see crates/mechabellum/src/board.rs): each
+ * side's zone is 60 squares wide and 30 deep, ending 1 square short of the middle; from round 3
+ * flank columns 6 squares wide open along both edges of the opponent's half. */
+const ZONE_HALF_WIDTH = 300;
+const ZONE_FRONT = 10;
+const ZONE_BACK = 310;
+const FLANK_OUTER = 360;
+const FLANK_OPENS_ROUND = 3;
 /** Footprint used when a unit's size is unknown. */
 const FALLBACK: [number, number] = [2, 2];
 
@@ -114,7 +122,12 @@ function drawBoard() {
   const board = $<HTMLElement>("board") as unknown as SVGSVGElement;
   const sides = m.rounds[roundIndex].sides;
 
-  // Fit the view to every unit in the match, plus a margin, snapped to the grid.
+  if (m.version >= 2000) {
+    drawZones(board, sides, m.rounds[roundIndex].round + 1);
+    return;
+  }
+
+  // Older maps differ in size: fit the view to every unit in the match, plus a margin.
   const boxes = m.rounds.flatMap((r) =>
     r.sides.flatMap((s) =>
       (s?.units ?? []).map((u) => {
@@ -164,6 +177,48 @@ function drawBoard() {
   layers.push(grid);
   if (separated) layers.push(svg("line", { class: "midline", x1: minX, y1: mid, x2: maxX, y2: mid }));
 
+  layers.push(drawUnits(sides));
+  board.replaceChildren(...layers);
+}
+
+/** 2.0 boards: the real frame, the midline at y = 0, both deployment zones, and from round 3
+ * the flank columns each side may deploy into on the other's half. */
+function drawZones(board: SVGSVGElement, sides: (SideLayout | null)[], fight: number) {
+  const margin = SQUARE;
+  const minX = -FLANK_OUTER - margin;
+  const maxX = FLANK_OUTER + margin;
+  const minY = -ZONE_BACK - margin;
+  const maxY = ZONE_BACK + margin;
+  board.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
+
+  // Board frame: the near side (bottom) is positive y.
+  const zone = (cls: string, x1: number, y1: number, x2: number, y2: number) =>
+    svg("rect", { class: cls, x: Math.min(x1, x2), y: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) });
+  const layers: SVGElement[] = [
+    svg("rect", { class: "surface", x: minX, y: minY, width: maxX - minX, height: maxY - minY }),
+    zone("zone side-near", -ZONE_HALF_WIDTH, ZONE_FRONT, ZONE_HALF_WIDTH, ZONE_BACK),
+    zone("zone side-far", -ZONE_HALF_WIDTH, -ZONE_FRONT, ZONE_HALF_WIDTH, -ZONE_BACK),
+  ];
+  if (fight >= FLANK_OPENS_ROUND) {
+    for (const sign of [-1, 1]) {
+      // Near side's flanks on the far half, and the far side's on the near half.
+      layers.push(zone("zone flank side-near", sign * ZONE_HALF_WIDTH, -ZONE_FRONT, sign * FLANK_OUTER, -ZONE_BACK));
+      layers.push(zone("zone flank side-far", sign * ZONE_HALF_WIDTH, ZONE_FRONT, sign * FLANK_OUTER, ZONE_BACK));
+    }
+  }
+  const grid = svg("g", { class: "grid" });
+  for (let x = minX; x <= maxX; x += SQUARE) {
+    grid.append(svg("line", { x1: x, y1: minY, x2: x, y2: maxY, class: x % 50 === 0 ? "major" : "" }));
+  }
+  for (let y = minY; y <= maxY; y += SQUARE) {
+    grid.append(svg("line", { x1: minX, y1: y, x2: maxX, y2: y, class: y % 50 === 0 ? "major" : "" }));
+  }
+  layers.push(grid, svg("line", { class: "midline", x1: minX, y1: 0, x2: maxX, y2: 0 }));
+  layers.push(drawUnits(sides));
+  board.replaceChildren(...layers);
+}
+
+function drawUnits(sides: (SideLayout | null)[]) {
   const units = svg("g", { class: "units" });
   sides.forEach((side, s) => {
     for (const u of side?.units ?? []) {
@@ -209,8 +264,7 @@ function drawBoard() {
       units.append(g);
     }
   });
-  layers.push(units);
-  board.replaceChildren(...layers);
+  return units;
 }
 
 function techList(loadout: TechRef[], enabled: TechRef[]) {

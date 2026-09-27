@@ -29,6 +29,10 @@ fn base_id(id: u32) -> u32 {
 }
 
 /// Footprint in grid squares, (width, depth), before rotation. `None` for unknown units.
+///
+/// Fang and Crawler were corrected 2026-09-27 from (4, 3) and (2, 3): in 2.0 replays their
+/// centers sit on half squares across (odd width) and on grid lines front to back (even depth)
+/// in 30 of 33 Fangs and 9 of 9 Crawlers, and Fangs stack 2 squares apart.
 pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     Some(match base_id(unit_id) {
         1 => (4, 4),    // Fortress
@@ -39,8 +43,8 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         6 => (3, 2),    // Wasp
         7 => (5, 2),    // Mustang
         8 => (5, 2),    // Steel Ball
-        9 => (4, 3),    // Fang
-        10 => (2, 3),   // Crawler
+        9 => (3, 2),    // Fang
+        10 => (3, 2),   // Crawler
         11 => (5, 5),   // Overlord
         12 => (3, 2),   // Stormcaller
         13 => (5, 2),   // Sledgehammer
@@ -191,6 +195,7 @@ mod tests {
         assert_eq!(footprint(11), Some((5, 5)), "Overlord, published");
         assert_eq!(footprint(1), Some((4, 4)), "giant, published");
         assert_eq!(footprint(5010), footprint(10));
+        assert_eq!(footprint(9), Some((3, 2)), "Fang, measured in 2.0 replays");
         assert_eq!(footprint(999), None);
     }
 }

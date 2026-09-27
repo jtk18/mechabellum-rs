@@ -787,10 +787,10 @@ good luck"#;
 [/board]"#;
         let board = Board::parse(code).unwrap();
         let south = &board.sides[0].units;
-        // Crawler is 2 wide, 3 deep: flush in the front-left corner, then 2 right, 1 back.
-        assert_eq!((south[0].x, south[0].y), (-300 + 10 + 20, -10 - 15 - 10));
+        // Crawler is 3 wide, 2 deep: flush in the front-left corner, then 2 right, 1 back.
+        assert_eq!((south[0].x, south[0].y), (-300 + 15 + 20, -10 - 10 - 10));
         assert_eq!((south[1].x, south[1].y), (0, 0));
-        assert_eq!((south[2].x, south[2].y), (330, 10 + 15 + 30));
+        assert_eq!((south[2].x, south[2].y), (330, 10 + 10 + 30));
         // The same code for the north half mirrors through the middle.
         let north = &board.sides[1].units[0];
         assert_eq!((north.x, north.y), (-south[0].x, -south[0].y));
