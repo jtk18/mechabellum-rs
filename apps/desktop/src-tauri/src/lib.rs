@@ -2,7 +2,9 @@
 //! folder, and stays in the system tray when its window is closed.
 
 mod art;
+mod gamelog;
 mod steam;
+mod sync;
 mod watcher;
 
 use mechabellum_server::{
@@ -26,6 +28,8 @@ struct Settings {
     /// None means "detect through Steam".
     replay_dir: Option<PathBuf>,
     port: u16,
+    /// Sharing matches with a community server.
+    sync: sync::SyncSettings,
 }
 
 impl Default for Settings {
@@ -33,6 +37,7 @@ impl Default for Settings {
         Settings {
             replay_dir: None,
             port: DEFAULT_PORT,
+            sync: sync::SyncSettings::default(),
         }
     }
 }
@@ -56,6 +61,9 @@ struct AppState {
     last_error: Arc<Mutex<Option<String>>>,
     art_dir: PathBuf,
     tools_dir: PathBuf,
+    syncer: sync::Syncer,
+    /// Wakes the sync worker (new matches, new settings).
+    sync_wake: Mutex<std::sync::mpsc::Sender<()>>,
     art: Arc<Mutex<Option<art::ArtManifest>>>,
     /// What art extraction is doing, or why it failed.
     art_status: Arc<Mutex<Option<String>>>,
@@ -170,6 +178,17 @@ fn start_watching(app: &AppHandle, state: &AppState) {
             WatchEvent::Failed { file, error } => {
                 log::warn!("{file}: {error}");
                 *last_error.lock().unwrap() = Some(format!("{file}: {error}"));
+            }
+            WatchEvent::Ingested {
+                outcome: mechabellum_server::IngestOutcome::Added { .. },
+                ..
+            } => {
+                let _ = app_handle
+                    .state::<AppState>()
+                    .sync_wake
+                    .lock()
+                    .unwrap()
+                    .send(());
             }
             WatchEvent::Ingested { .. } => {}
         }
@@ -307,6 +326,34 @@ async fn version_trends(
 }
 
 #[tauri::command]
+fn sync_settings(state: State<'_, AppState>) -> sync::SyncSettings {
+    state.settings.lock().unwrap().sync.clone()
+}
+
+/// Save sharing settings and sync right away if they're complete.
+#[tauri::command]
+fn set_sync_settings(state: State<'_, AppState>, sync: sync::SyncSettings) -> Result<(), String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.sync = sync.clone();
+        save_settings(&state.settings_path, &settings)?;
+    }
+    *state.syncer.settings.lock().unwrap() = sync;
+    let _ = state.sync_wake.lock().unwrap().send(());
+    Ok(())
+}
+
+#[tauri::command]
+fn sync_now(state: State<'_, AppState>) {
+    let _ = state.sync_wake.lock().unwrap().send(());
+}
+
+#[tauri::command]
+fn sync_status(state: State<'_, AppState>) -> sync::SyncStatus {
+    state.syncer.status.lock().unwrap().clone()
+}
+
+#[tauri::command]
 fn art_info(state: State<'_, AppState>) -> ArtInfo {
     ArtInfo::new(
         state.art_dir.clone(),
@@ -404,6 +451,29 @@ pub fn run() {
             let art_dir = data_dir.join("art");
             let manifest = art::ArtManifest::load(&art_dir);
 
+            // Ratings (MMR) from the game's log, which replays don't carry.
+            {
+                let store = store.clone();
+                let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                std::thread::Builder::new()
+                    .name("game-log".into())
+                    .spawn(move || {
+                        gamelog::follow(gamelog::log_dirs(&steam::libraries()), store, stop)
+                    })?;
+            }
+
+            // Sharing with a community server, when turned on.
+            let (sync_wake, wake_rx) = std::sync::mpsc::channel();
+            let progress_app = app.handle().clone();
+            let syncer = sync::Syncer::start(
+                store.clone(),
+                settings.sync.clone(),
+                wake_rx,
+                Arc::new(move |status: &sync::SyncStatus| {
+                    let _ = progress_app.emit("sync-status", status);
+                }),
+            );
+
             app.manage(AppState {
                 store: store.clone(),
                 db_path,
@@ -418,6 +488,8 @@ pub fn run() {
                 art_dir,
                 art: Arc::new(Mutex::new(manifest.clone())),
                 art_status: Arc::new(Mutex::new(None)),
+                syncer,
+                sync_wake: Mutex::new(sync_wake),
             });
             // Rebuild outdated stats in the background so the window opens right away.
             if store.needs_upgrade().unwrap_or(false) {
@@ -472,6 +544,10 @@ pub fn run() {
             match_detail,
             art_info,
             extract_art,
+            sync_settings,
+            set_sync_settings,
+            sync_now,
+            sync_status,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

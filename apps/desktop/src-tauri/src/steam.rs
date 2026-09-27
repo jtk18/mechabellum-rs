@@ -83,6 +83,15 @@ fn find_dir_named(dir: &Path, name: &str, depth: u32) -> Option<PathBuf> {
         .find_map(|sub| find_dir_named(&sub, name, depth - 1))
 }
 
+/// Every Steam library folder on this machine.
+pub fn libraries() -> Vec<PathBuf> {
+    steam_roots()
+        .iter()
+        .filter(|root| root.is_dir())
+        .flat_map(|root| library_folders(root))
+        .collect()
+}
+
 /// Find the replay folder of a Steam install of Mechabellum, if any.
 pub fn find_replay_dir() -> Option<PathBuf> {
     steam_roots()

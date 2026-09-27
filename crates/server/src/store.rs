@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS player_ratings (
     elo_games   INTEGER,
     PRIMARY KEY (battle_id, player_id)
 );
+-- Local app: which matches were offered to which community server, and any refusal.
+CREATE TABLE IF NOT EXISTS synced_matches (
+    server    TEXT NOT NULL,
+    battle_id TEXT NOT NULL,
+    rejected  TEXT,
+    at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    PRIMARY KEY (server, battle_id)
+);
 CREATE TABLE IF NOT EXISTS replay_blobs (
     battle_id TEXT PRIMARY KEY,
     xml_gz    BLOB NOT NULL
@@ -560,6 +568,30 @@ impl Store {
         Ok(stored)
     }
 
+    /// Record ratings without checking the match: the game logs ratings when a match starts, before
+    /// its replay exists. For the local app only; shared uploads go through `add_ratings`.
+    pub fn put_ratings(&self, battle_id: &str, ratings: &[Rating]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for r in ratings {
+            tx.execute(
+                "INSERT OR REPLACE INTO player_ratings
+                     (battle_id, player_id, elo, rank_point, level, elo_games)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    battle_id,
+                    r.player_id,
+                    r.elo,
+                    r.rank_point,
+                    r.level,
+                    r.elo_games
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Ratings for a stored match, one per player that has one.
     pub fn ratings(&self, battle_id: &str) -> Result<Vec<Rating>> {
         let conn = self.conn();
@@ -579,6 +611,28 @@ impl Store {
             })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(rows)
+    }
+
+    /// Matches already offered to `server`: battle ID -> why it was refused, if it was.
+    pub fn synced(
+        &self,
+        server: &str,
+    ) -> Result<std::collections::HashMap<String, Option<String>>> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare("SELECT battle_id, rejected FROM synced_matches WHERE server = ?1")?;
+        let rows = stmt
+            .query_map([server], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    pub fn mark_synced(&self, server: &str, battle_id: &str, rejected: Option<&str>) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO synced_matches (server, battle_id, rejected) VALUES (?1, ?2, ?3)",
+            params![server, battle_id, rejected],
+        )?;
+        Ok(())
     }
 
     /// Every stored battle ID, newest first.
