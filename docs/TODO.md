@@ -9,12 +9,9 @@ run `cargo test --workspace` and `npm run build` (apps/desktop) before committin
 push each finished item, tick it here, and note surprises in ORIENTATION.md. Nothing is sent
 to outside servers; sync tests use a local server on 127.0.0.1.
 
-0. **Hidden window goes stale.** The watcher stored tonight's 10 games live (1,063 stored), but
-   the window kept showing 1,053 until it was reopened from the tray. Refresh when the window
-   is shown. Also find the 10 stored matches that `/api/stats` doesn't count (1,053 of 1,063;
-   probably no `players` rows) and either fix their ingest or explain them in the UI.
-0b. Confirm tonight's ratings from `Player.log` (20 match-start lines) land in
-   `player_ratings`.
+0. ~~Hidden window goes stale; 10 uncounted matches~~ Done: the page refreshes when shown, and the
+   status line says how many matches ended before the first fight (no result to count).
+   Tonight's ratings from `Player.log` are all in `player_ratings`.
 Then items 1, 2, 4, 5, 6, 7, 8, 9, 11, 13, 14 (single instance, autostart), 24, 21, 12.
 
 Needs the user (skip overnight): 15 (Mac/Linux machines), 16 (the Ubuntu server), 17 (Steam

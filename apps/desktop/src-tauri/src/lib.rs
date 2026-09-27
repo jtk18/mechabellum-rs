@@ -132,6 +132,8 @@ struct Status {
     db_path: PathBuf,
     http_url: Option<String>,
     matches: u64,
+    /// Matches that ended before the first fight, so they have no result.
+    unfinished: u64,
     backfill: Backfill,
     last_error: Option<String>,
 }
@@ -290,6 +292,7 @@ fn status(state: State<'_, AppState>) -> Result<Status, String> {
         db_path: state.db_path.clone(),
         http_url: state.http_url.lock().unwrap().clone(),
         matches: state.store.match_count().map_err(|e| e.to_string())?,
+        unfinished: state.store.unfinished_count().map_err(|e| e.to_string())?,
         backfill: state.backfill.lock().unwrap().clone(),
         last_error: state.last_error.lock().unwrap().clone(),
     })

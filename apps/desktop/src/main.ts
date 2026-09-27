@@ -12,6 +12,7 @@ interface Status {
   db_path: string;
   http_url: string | null;
   matches: number;
+  unfinished: number;
   backfill: { done: number; total: number; finished: boolean };
   last_error: string | null;
 }
@@ -449,6 +450,9 @@ async function refreshStatus(): Promise<Status> {
 
   const { done, total, finished } = status.backfill;
   const parts = [`${status.matches} matches stored`];
+  if (status.unfinished > 0) {
+    parts.push(`${status.unfinished} ended before the first fight and aren't counted`);
+  }
   if (status.upgrading) parts.unshift("Updating stats for this version…");
   if (status.replay_dir && !finished && total > 0) {
     parts.unshift(`Reading replays ${done}/${total}`);
@@ -509,6 +513,7 @@ function scheduleRefresh(delay = 800) {
   refreshTimer = window.setTimeout(async () => {
     await refreshFacets();
     await refreshStats();
+    if (matchListLoaded) await refreshMatchList();
   }, delay);
 }
 
@@ -609,4 +614,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshStats();
   // Keep the status line fresh, and catch up on any change an event didn't announce.
   window.setInterval(refreshStatus, 2000);
+  // A window hidden in the tray may not run timers; catch up as soon as it's shown.
+  window.addEventListener("focus", () => refreshStatus());
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshStatus();
+  });
 });

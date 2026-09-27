@@ -952,6 +952,17 @@ impl Store {
             .query_row("SELECT COUNT(*) FROM matches", [], |r| r.get(0))?)
     }
 
+    /// Matches with no result to count: the game ended before the first fight (someone left
+    /// in round 1), so the replay has no fight report.
+    pub fn unfinished_count(&self) -> Result<u64> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM matches m
+             WHERE NOT EXISTS (SELECT 1 FROM players p WHERE p.battle_id = m.battle_id)",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn active_key_count(&self) -> Result<u64> {
         Ok(self.conn().query_row(
             "SELECT COUNT(*) FROM upload_keys WHERE revoked_at IS NULL",
