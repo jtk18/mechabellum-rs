@@ -7,7 +7,7 @@
 
 use super::battle_record::{ActiveTechnologiesUnitData, PlayerRecord, UnitsNewUnitData};
 use super::game_data::{footprint, xp_to_next_level};
-use super::names::{resolve, NameKind};
+use super::names::{resolve, GameNames, NameKind};
 use super::{BattleRecord, Item, Specialist, Unit};
 
 use serde::Serialize;
@@ -60,6 +60,31 @@ pub struct RoundLayout {
     pub sides: Vec<Option<SideLayout>>,
 }
 
+/// A card offered between rounds.
+#[derive(Debug, Clone, Serialize)]
+pub struct CardRef {
+    pub id: String,
+    pub name: Option<String>,
+    /// "specialist", "unit", "skill", "equipment", or "other".
+    pub kind: &'static str,
+    /// For unit reinforcements and unit specialists: the unit it's about.
+    pub unit_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NamedRef {
+    pub id: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Structure {
+    /// Strengthen level, when recorded.
+    pub level: Option<i32>,
+    /// Command Center: active skills. Research Center: blueprints.
+    pub items: Vec<NamedRef>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SideLayout {
     /// "Win" or "Lose" for this round's fight, as recorded.
@@ -70,6 +95,11 @@ pub struct SideLayout {
     /// Techs researched by this round, per unit type.
     pub enabled_techs: Vec<UnitTechs>,
     pub specialists: Vec<String>,
+    /// Cards offered before this round's fight (2.0+), and the ones picked.
+    pub cards_offered: Vec<CardRef>,
+    pub cards_chosen: Vec<CardRef>,
+    pub command_center: Structure,
+    pub research_center: Structure,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,6 +131,82 @@ fn base_unit_id(raw: &str) -> Option<u32> {
         5203 => 4001,
         _ => id,
     })
+}
+
+fn named(kind: NameKind, id: &str) -> NamedRef {
+    NamedRef {
+        id: id.to_owned(),
+        name: resolve(kind, id).map(str::to_owned),
+    }
+}
+
+/// The unit a card or specialist is named after, e.g. "Subsidized Mustang", "Rhino Assault",
+/// or "Titan：Abyss". The longest unit name wins, so "Experimental Death Knell" beats "Death Knell".
+pub fn unit_id_in_name(name: &str) -> Option<u32> {
+    if let Some(id) = unit_id_by_name(name) {
+        return Some(id);
+    }
+    let lower = name.to_lowercase();
+    let units = GameNames::bundled().categories.get("MechData")?;
+    units
+        .iter()
+        // Originals only (1-99, giants 2001-4999); skip AsyncBattle copies and enemy-only units.
+        .filter(|(id, _)| (1..100).contains(*id) || (2001..5000).contains(*id))
+        .filter(|(_, unit)| {
+            let unit = unit.to_lowercase();
+            // Match whole words: "Fang" must not match "Fanged".
+            lower.match_indices(unit.as_str()).any(|(at, m)| {
+                let before = lower[..at].chars().last();
+                let after = lower[at + m.len()..].chars().next();
+                !before.is_some_and(char::is_alphanumeric)
+                    && !after.is_some_and(char::is_alphanumeric)
+            })
+        })
+        .max_by_key(|(id, unit)| (unit.len(), std::cmp::Reverse(**id)))
+        .map(|(id, _)| *id as u32)
+}
+
+/// Unit ID for a unit's display name (the lowest, so AsyncBattle copies map to the original).
+/// Card names can carry a prefix, as in "Titan：Abyss".
+fn unit_id_by_name(name: &str) -> Option<u32> {
+    let units = GameNames::bundled().categories.get("MechData")?;
+    let lookup = |wanted: &str| {
+        units
+            .iter()
+            .filter(|(_, n)| n.as_str() == wanted)
+            .map(|(id, _)| *id as u32)
+            .min()
+    };
+    lookup(name).or_else(|| {
+        let bare = name.rsplit(|c| c == ':' || c == '：').next()?.trim();
+        (bare != name).then(|| lookup(bare)).flatten()
+    })
+}
+
+fn card_ref(id: &str) -> CardRef {
+    let names = GameNames::bundled();
+    let numeric: Option<u64> = id.trim().parse().ok();
+    let category = numeric.and_then(|n| names.category_of(NameKind::Card, n));
+    let name = numeric
+        .and_then(|n| names.resolve(NameKind::Card, n))
+        .map(str::to_owned);
+    let kind = match category {
+        Some("OfficerData") => "specialist",
+        Some("UnitReinforceData") => "unit",
+        Some(c) if c.starts_with("CSD_") => "skill",
+        Some(c) if c.ends_with("EquipmentData") => "equipment",
+        _ => "other",
+    };
+    let unit_id = match kind {
+        "unit" | "specialist" | "skill" => name.as_deref().and_then(unit_id_in_name),
+        _ => None,
+    };
+    CardRef {
+        id: id.to_owned(),
+        name,
+        kind,
+        unit_id,
+    }
 }
 
 fn tech_ref(id: &str) -> TechRef {
@@ -184,6 +290,37 @@ impl BattleRecord {
         let players: Vec<&PlayerRecord> = self.player_records.player_record.iter().collect();
         let mut rounds: BTreeMap<u32, Vec<Option<SideLayout>>> = BTreeMap::new();
 
+        // Cards offered in round r's preparation, per player (the fight of round r).
+        let offers: BTreeMap<u32, &Vec<super::battle_record::IntList>> = self
+            .match_datas
+            .match_snapshot_data
+            .iter()
+            .filter_map(|s| Some((s.round.trim().parse().ok()?, &s.reinforce_items.per_player)))
+            .collect();
+        // Cards picked during each player's round r preparation.
+        let picks: Vec<BTreeMap<u32, Vec<String>>> = players
+            .iter()
+            .map(|p| {
+                p.player_round_records
+                    .player_round_record
+                    .iter()
+                    .filter_map(|r| {
+                        let round: u32 = r.round.trim().parse().ok()?;
+                        let ids = r
+                            .action_records
+                            .match_action_data
+                            .iter()
+                            .filter(|a| a.xsi_type.ends_with("ChooseReinforceItem"))
+                            .filter_map(|a| a.id.clone())
+                            // 0 marks a skipped pick.
+                            .filter(|id| id.trim() != "0")
+                            .collect();
+                        Some((round, ids))
+                    })
+                    .collect()
+            })
+            .collect();
+
         for (i, player) in players.iter().enumerate() {
             for record in &player.player_round_records.player_round_record {
                 let Ok(recorded) = record.round.trim().parse::<u32>() else {
@@ -193,7 +330,42 @@ impl BattleRecord {
                 if recorded == 0 || data.units.new_unit_data.is_empty() {
                     continue;
                 }
+                let fight = recorded - 1;
+                let levels: Vec<i32> = data
+                    .tower_strengthen_levels
+                    .int
+                    .iter()
+                    .filter_map(|l| l.trim().parse().ok())
+                    .collect();
                 let side = SideLayout {
+                    cards_offered: offers
+                        .get(&fight)
+                        .and_then(|per_player| per_player.get(i))
+                        .map(|list| list.int.iter().map(|id| card_ref(id)).collect())
+                        .unwrap_or_default(),
+                    cards_chosen: picks[i]
+                        .get(&fight)
+                        .map(|ids| ids.iter().map(|id| card_ref(id)).collect())
+                        .unwrap_or_default(),
+                    // Index 0 is taken to be the Command Center and 1 the Research Center.
+                    command_center: Structure {
+                        level: levels.first().copied(),
+                        items: data
+                            .energy_tower_skills
+                            .int
+                            .iter()
+                            .map(|id| named(NameKind::TowerSkill, id))
+                            .collect(),
+                    },
+                    research_center: Structure {
+                        level: levels.get(1).copied(),
+                        items: data
+                            .bluepints
+                            .int
+                            .iter()
+                            .map(|id| named(NameKind::Blueprint, id))
+                            .collect(),
+                    },
                     result: data.pre_round_fight_result.clone(),
                     hp: data.reactor_core.trim().parse().unwrap_or(0),
                     units: data
@@ -288,5 +460,31 @@ mod tests {
             .flat_map(|u| &u.techs)
             .all(|t| t.name.is_some()));
         assert_ne!(a.result, b.result, "one side wins each fight");
+
+        // 2.0 replays record the cards offered each round and which were picked.
+        let offered: usize = detail
+            .rounds
+            .iter()
+            .flat_map(|r| r.sides.iter().flatten())
+            .map(|s| s.cards_offered.len())
+            .sum();
+        assert!(offered > 0);
+        let chosen: Vec<&CardRef> = detail
+            .rounds
+            .iter()
+            .flat_map(|r| r.sides.iter().flatten())
+            .flat_map(|s| &s.cards_chosen)
+            .collect();
+        assert!(!chosen.is_empty());
+        assert!(chosen.iter().all(|c| c.name.is_some()), "{chosen:?}");
+        assert!(chosen
+            .iter()
+            .any(|c| c.kind == "unit" && c.unit_id.is_some()));
+        assert_eq!(unit_id_by_name("Titan：Abyss"), Some(29));
+        assert_eq!(unit_id_in_name("Subsidized Mustang"), Some(7));
+        assert_eq!(unit_id_in_name("Rhino Assault"), Some(5));
+        assert_eq!(unit_id_in_name("Vanguard-Melting Point"), Some(4));
+        assert_eq!(unit_id_in_name("Experimental Death Knell"), Some(4001));
+        assert_eq!(unit_id_in_name("Supply Enhancement"), None);
     }
 }

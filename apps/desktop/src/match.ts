@@ -1,5 +1,6 @@
 // One match, redrawn round by round on a schematic board.
 import { invoke } from "@tauri-apps/api/core";
+import { art, artImage } from "./art";
 import { $, el, modeLabel, type Tip } from "./util";
 
 interface TechRef {
@@ -27,12 +28,28 @@ interface PlacedUnit {
   equipment: string[];
 }
 
+interface CardRef {
+  id: string;
+  name: string | null;
+  kind: "specialist" | "unit" | "skill" | "equipment" | "other";
+  unit_id: number | null;
+}
+
+interface Structure {
+  level: number | null;
+  items: { id: string; name: string | null }[];
+}
+
 interface SideLayout {
   result: string;
   hp: number;
   units: PlacedUnit[];
   enabled_techs: UnitTechs[];
   specialists: string[];
+  cards_offered: CardRef[];
+  cards_chosen: CardRef[];
+  command_center: Structure;
+  research_center: Structure;
 }
 
 interface MatchDetail {
@@ -113,16 +130,15 @@ function drawBoard() {
   const maxY = snap(Math.max(...boxes.map((b) => b[3])) + pad, true);
   board.setAttribute("viewBox", `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
 
-  // Midline between the two deployment areas.
+  // Midline between the two armies in this round. Deployment areas shift between rounds and
+  // maps, so it is measured per round rather than fixed.
   const nearTop = Math.min(
-    ...m.rounds.flatMap((r) => (r.sides[bottom]?.units ?? []).map((u) => toBoard(u.x, u.y)[1] - size(u)[1] / 2)),
+    ...(sides[bottom]?.units ?? []).map((u) => toBoard(u.x, u.y)[1] - size(u)[1] / 2),
   );
   const farBottom = Math.max(
-    ...m.rounds.flatMap((r) =>
-      r.sides.flatMap((s, i) => (i === bottom || !s ? [] : s.units.map((u) => toBoard(u.x, u.y)[1] + size(u)[1] / 2))),
-    ),
+    ...sides.flatMap((s, i) => (i === bottom || !s ? [] : s.units.map((u) => toBoard(u.x, u.y)[1] + size(u)[1] / 2))),
   );
-  const mid = Number.isFinite(nearTop) && Number.isFinite(farBottom) ? (nearTop + farBottom) / 2 : 0;
+  const mid = Number.isFinite(nearTop) && Number.isFinite(farBottom) ? (nearTop + farBottom) / 2 : (minY + maxY) / 2;
 
   const layers: SVGElement[] = [
     svg("rect", { class: "surface", x: minX, y: minY, width: maxX - minX, height: maxY - minY }),
@@ -150,8 +166,15 @@ function drawBoard() {
         role: "button",
         "aria-label": `${u.name}, level ${u.level + 1}, ${detail!.players[s].name}`,
       });
-      g.append(svg("rect", { x: bx - w / 2 + 0.6, y: by - h / 2 + 0.6, width: w - 1.2, height: h - 1.2, rx: 1.6 }));
-      if (w >= 20 && h >= 16) {
+      const box = { x: bx - w / 2 + 0.6, y: by - h / 2 + 0.6, width: w - 1.2, height: h - 1.2 };
+      g.append(svg("rect", { ...box, rx: 1.6 }));
+      const icon = art.unitIcon(u.unit_id);
+      if (icon) {
+        // A nested <svg> clips the art to the footprint.
+        const frame = svg("svg", { ...box, viewBox: "0 0 100 100", preserveAspectRatio: "xMidYMid slice", class: "art" });
+        frame.append(svg("image", { href: icon, width: 100, height: 100, preserveAspectRatio: "xMidYMid slice" }));
+        g.append(frame, svg("rect", { ...box, rx: 1.6, class: "tint" }), svg("rect", { ...box, rx: 1.6, class: "edge" }));
+      } else if (w >= 20 && h >= 16) {
         const label = svg("text", { x: bx, y: by + 2.2, "text-anchor": "middle" });
         label.textContent = abbreviation(u.name);
         g.append(label);
@@ -187,7 +210,8 @@ function techList(loadout: TechRef[], enabled: TechRef[]) {
   for (const tech of [...loadout, ...extra]) {
     const on = enabledIds.has(tech.id);
     const item = el("li", on ? "on" : "off");
-    item.append(el("span", "tech-mark", on ? "●" : "○"), el("span", "", tech.name ?? `Tech ${tech.id}`));
+    const mark = artImage(art.techIcon(tech.id), "tech-icon") ?? el("span", "tech-mark", on ? "●" : "○");
+    item.append(mark, el("span", "", tech.name ?? `Tech ${tech.id}`));
     item.append(el("span", "tech-state", on ? "researched" : "not researched"));
     list.append(item);
   }
@@ -214,6 +238,13 @@ function renderUnitPanel() {
         el("p", "", `${side.result === "Win" ? "Won" : "Lost"} the round with ${side.hp.toLocaleString()} HP left`),
         el("p", "muted", `${side.units.length} units${side.specialists.length ? `, specialists: ${side.specialists.join(", ")}` : ""}`),
       );
+      block.append(structureCard("Command Center", art.commandCenter(), side.command_center, "No skills active"));
+      block.append(structureCard("Research Center", art.researchCenter(), side.research_center, "No blueprints"));
+      if (side.cards_offered.length) {
+        block.append(el("h4", "", "Cards offered this round"), cardRow(side.cards_offered, side.cards_chosen));
+      } else if (side.cards_chosen.length) {
+        block.append(el("h4", "", "Cards picked this round"), cardRow(side.cards_chosen, side.cards_chosen));
+      }
       const researched = side.enabled_techs.filter((u) => u.techs.length);
       if (researched.length) {
         const list = el("ul", "tech-summary");
@@ -233,6 +264,8 @@ function renderUnitPanel() {
   const s = selected.side;
   const player = m.players[s];
   const card = el("section", `unit-card ${sideClass(s)}`);
+  const portrait = artImage(art.unitPortrait(unit.unit_id), "portrait", unit.name);
+  if (portrait) card.append(portrait);
   card.append(el("h3", "", unit.name), el("p", "muted", `${player.name}, unit #${unit.index + 1}`));
 
   const level = el("div", "level");
@@ -263,6 +296,47 @@ function renderUnitPanel() {
   });
   card.append(clear);
   panel.replaceChildren(card);
+}
+
+function structureCard(title: string, image: string | null, structure: Structure, empty: string) {
+  const card = el("div", "structure");
+  const picture = artImage(image, "structure-art", title);
+  if (picture) card.append(picture);
+  const text = el("div", "structure-text");
+  const heading = el("strong", "", title);
+  text.append(heading);
+  if (structure.level !== null) text.append(el("span", "muted", ` level ${structure.level + 1}`));
+  const items = structure.items.map((i) => i.name ?? `#${i.id}`);
+  text.append(el("p", items.length ? "" : "muted", items.length ? items.join(", ") : empty));
+  card.append(text);
+  return card;
+}
+
+const CARD_KIND: Record<CardRef["kind"], string> = {
+  specialist: "Specialist",
+  unit: "Unit",
+  skill: "Skill",
+  equipment: "Item",
+  other: "Card",
+};
+
+function cardRow(cards: CardRef[], chosen: CardRef[]) {
+  const picked = new Set(chosen.map((c) => c.id));
+  const row = el("ul", "card-row");
+  for (const card of cards) {
+    const isPicked = picked.has(card.id);
+    const item = el("li", `card ${card.kind}${isPicked ? " picked" : ""}`);
+    const image =
+      card.kind === "specialist"
+        ? art.specialist(card.id) ?? (card.unit_id !== null ? art.unitIcon(card.unit_id) : null)
+        : card.unit_id !== null
+          ? art.unitIcon(card.unit_id)
+          : null;
+    item.append(artImage(image, "card-art") ?? el("span", "card-art placeholder"));
+    item.append(el("span", "card-name", card.name ?? `#${card.id}`), el("span", "card-kind", isPicked ? "Picked" : CARD_KIND[card.kind]));
+    row.append(item);
+  }
+  return row;
 }
 
 function renderRoundBar() {
@@ -316,6 +390,11 @@ function wire(onBack: () => void) {
   });
 }
 
+/** Redraw the open match, e.g. once game art has been extracted. */
+export function redrawMatch() {
+  if (detail && detail.rounds.length > 0 && !$("view-match").hidden) render();
+}
+
 /** Show one match. `mainPlayerId` picks whose side is drawn at the bottom. */
 export async function openMatch(battleId: string, mainPlayerId: string | null, onBack: () => void) {
   wire(onBack);
@@ -331,9 +410,6 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   const outcome = near.won === null ? "" : near.won ? `${near.name} won. ` : `${near.name} lost. `;
   $("match-meta").textContent = `${outcome}${m.map_name ?? `Map ${m.map_id}`}, ${modeLabel(m.match_mode, m.game_mode)}, version ${m.version}`;
 
-  $("view-stats").hidden = true;
-  $("view-match").hidden = false;
-  window.scrollTo(0, 0);
 
   if (m.rounds.length === 0) {
     $("round-results").replaceChildren();

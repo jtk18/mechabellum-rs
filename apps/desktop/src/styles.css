@@ -1,56 +1,67 @@
-/* Colors come from the dataviz reference palette: one sequential hue for pick rate and the
-   blue <-> red diverging pair (gray midpoint) for win rate around 50%. Dark mode uses its own
-   validated steps rather than an automatic inversion. */
+/* One dark look, like the game: steel panels over the key art. Chart colors are the dataviz
+   reference palette's dark steps: one sequential hue for pick rate and the blue <-> red
+   diverging pair (gray midpoint) for win rate around 50%. */
 :root {
-  color-scheme: light;
-  --surface-0: #f4f3f0;
-  --surface-1: #fcfcfb;
-  --border: #e2e0da;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #7a7974;
-  --pick: #2a78d6;
-  --track: #f0efec;
-  --win: #2a78d6;
-  --loss: #e34948;
-  --midline: #b9b7b0;
-  --critical: #d03b3b;
+  color-scheme: dark;
+  --page: #07090b;
+  --surface-0: rgb(14 17 20 / 0.45);
+  --surface-1: rgb(20 24 28 / 0.58);
+  --surface-solid: #151a1e;
+  --border: rgb(160 190 210 / 0.14);
+  --border-strong: rgb(160 190 210 / 0.28);
+  --text-primary: #eef3f6;
+  --text-secondary: #b9c4cb;
+  --text-muted: #7f8c94;
+  --accent: #6cc6e0;
+  --pick: #3987e5;
+  --track: #2a3136;
+  --win: #3987e5;
+  --loss: #e66767;
+  --midline: #56626a;
+  --critical: #e66767;
   /* Match board: the two sides use categorical slots 1 and 2, not the win/loss pair. */
-  --side-near: #2a78d6;
-  --side-far: #eb6834;
-  --board: #e7e5de;
-  --board-line: rgb(0 0 0 / 0.07);
-  --board-line-major: rgb(0 0 0 / 0.14);
+  --side-near: #3987e5;
+  --side-far: #d95926;
+  --board: #10161a;
+  --board-line: rgb(150 200 230 / 0.06);
+  --board-line-major: rgb(150 200 230 / 0.13);
 
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Bahnschrift", "DIN Alternate", "D-DIN", "Barlow", "Roboto Condensed", system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.45;
   color: var(--text-primary);
-  background: var(--surface-0);
+  background: var(--page);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --surface-0: #121211;
-    --surface-1: #1a1a19;
-    --border: #2e2e2b;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8e86;
-    --pick: #3987e5;
-    --track: #383835;
-    --win: #3987e5;
-    --loss: #e66767;
-    --midline: #5c5c57;
-    --side-near: #3987e5;
-    --side-far: #d95926;
-    --board: #1f201f;
-    --board-line: rgb(255 255 255 / 0.05);
-    --board-line-major: rgb(255 255 255 / 0.11);
-  }
+/* Key art behind everything, darkened so panels stay readable. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--page);
+  background-size: cover;
+  background-position: center 30%;
+}
+
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(7 9 11 / 0.35) 0%, rgb(7 9 11 / 0.62) 45%, rgb(7 9 11 / 0.8) 100%);
+}
+
+.source,
+.filters,
+.panel,
+.round-bar,
+.board-wrap,
+.unit-panel,
+.matches-bar,
+.match-list {
+  backdrop-filter: blur(10px) saturate(1.1);
 }
 
 * {
@@ -901,4 +912,348 @@ select:hover {
 
 .unit-card > button {
   margin-top: 12px;
+}
+
+/* Top bar tabs */
+.topbar {
+  align-items: center;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-right: auto;
+  margin-left: 16px;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 14px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.tab[aria-current="page"] {
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.art-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Small art beside names */
+.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--track);
+}
+
+.row.tech .name-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Keeps names aligned when there is no art. */
+.name-icon.placeholder {
+  display: inline-block;
+  background: transparent;
+}
+
+.disclosure {
+  gap: 8px;
+}
+
+/* Matches view */
+.matches-view {
+  margin-top: 12px;
+}
+
+.matches-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.search input {
+  flex: 1;
+  max-width: 420px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.search input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.match-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 4px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: 92px 48px minmax(0, 1.2fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.match-row:last-child {
+  border-bottom: 0;
+}
+
+.match-row .when,
+.match-row .details {
+  color: var(--text-muted);
+}
+
+.match-row .details {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-row .players {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-row .winner {
+  font-weight: 600;
+}
+
+.match-row .vs {
+  color: var(--text-muted);
+}
+
+.outcome {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 4px;
+  padding: 1px 0;
+}
+
+.outcome.won {
+  color: #fff;
+  background: color-mix(in oklab, var(--win) 70%, transparent);
+}
+
+.outcome.lost {
+  color: #fff;
+  background: color-mix(in oklab, var(--loss) 60%, transparent);
+}
+
+.open-board {
+  white-space: nowrap;
+  border-color: var(--border-strong);
+}
+
+.open-board:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.match-list .empty {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+@media (max-width: 900px) {
+  .match-row {
+    grid-template-columns: 80px 44px 1fr auto;
+  }
+
+  .match-row .details {
+    grid-column: 3 / 4;
+  }
+}
+
+/* Unit art on the board */
+.board .unit .tint {
+  fill: var(--side-color);
+  fill-opacity: 0.32;
+  pointer-events: none;
+}
+
+.board .unit .edge {
+  fill: none;
+  stroke: var(--side-color);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.board .unit.selected .edge {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.board .unit:hover .tint,
+.board .unit:focus-visible .tint {
+  fill-opacity: 0.05;
+}
+
+.board .unit .art {
+  pointer-events: none;
+}
+
+/* Unit panel art */
+.unit-card .portrait {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+
+.tech-list .tech-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.tech-list li.off .tech-icon {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* Command Center and Research Center */
+.structure {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-0);
+}
+
+.structure-art {
+  flex: none;
+  width: 48px;
+  height: 58px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.structure-text p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+/* Cards offered between rounds */
+.card-row {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-0);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.card.picked {
+  border-color: var(--side-color);
+  box-shadow: 0 0 0 1px var(--side-color);
+}
+
+.card-art {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--track);
+}
+
+.card-art.placeholder {
+  display: block;
+  opacity: 0.5;
+}
+
+.card-name {
+  color: var(--text-primary);
+}
+
+.card-kind {
+  color: var(--text-muted);
+}
+
+.card.picked .card-kind {
+  color: var(--side-color);
+  font-weight: 600;
 }

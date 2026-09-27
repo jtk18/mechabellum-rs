@@ -16,6 +16,7 @@ use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
+pub use detail::unit_id_in_name;
 pub use detail::{
     MatchDetail, PlacedUnit, PlayerInfo, RoundLayout, SideLayout, TechRef, UnitTechs,
 };

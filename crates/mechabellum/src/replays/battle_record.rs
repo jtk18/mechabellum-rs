@@ -414,7 +414,7 @@ pub struct Bluepints {
 pub struct EnergyTowerSkills {
     #[serde(rename = "$text")]
     pub text: Option<String>,
-    pub int: Option<String>,
+    pub int: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -565,6 +565,22 @@ pub struct MatchSnapshotData {
     pub unit_reinforce_rounds: UnitReinforceRounds,
     #[serde(rename = "lastFightResult")]
     pub last_fight_result: Option<LastFightResult>,
+    /// Cards offered this round, one list per player (2.0+).
+    #[serde(rename = "reinforceItems")]
+    pub reinforce_items: SnapshotReinforceItems,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SnapshotReinforceItems {
+    #[serde(rename = "ArrayOfInt")]
+    pub per_player: Vec<IntList>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct IntList {
+    pub int: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

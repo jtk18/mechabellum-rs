@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openMatch } from "./match";
+import { art, artImage, loadArt } from "./art";
+import { openMatch, redrawMatch } from "./match";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -42,6 +43,7 @@ interface MatchRow {
   game_mode: string;
   rounds: number;
   occurred_on: string;
+  map: string;
   winners: string[];
   losers: string[];
 }
@@ -92,6 +94,7 @@ const SMALL_SAMPLE = 10;
 /** Units whose tech breakdown is open. */
 const expandedUnits = new Set<string>();
 let lastTechs = new Map<string, UnitTechStats>();
+let lastStats: Stats | null = null;
 
 let facets: Facets | null = null;
 /** Stored match count the panels were last drawn from. */
@@ -148,6 +151,8 @@ async function refreshFacets() {
   ]);
   const mine = $<HTMLInputElement>("filter-mine");
   mine.disabled = !facets.main_player;
+  // Start on your own games: this is your stats app.
+  if (first && facets.main_player) mine.checked = true;
   $("filter-mine-label").textContent = facets.main_player
     ? `Only ${facets.main_player[1]}'s side`
     : "Only my side";
@@ -174,6 +179,11 @@ function winBar(rate: number) {
   return bar;
 }
 
+/** Small art beside a name, when extracted. */
+function nameIcon(src: string | null) {
+  return artImage(src, "name-icon") ?? el("span", "name-icon placeholder");
+}
+
 function techRows(unit: UnitTechStats) {
   const block = el("div", "tech-rows");
   block.setAttribute("role", "rowgroup");
@@ -187,7 +197,9 @@ function techRows(unit: UnitTechStats) {
     const without = t.win_rate_without === null ? "every game had it" : `${pct(t.win_rate_without)} without`;
     const winCell = el("div", "tech-win");
     winCell.append(winBar(t.win_rate), el("span", "without", without));
-    row.append(el("div", "name", t.tech), pickBar(t.pick_rate), winCell, el("div", "games", String(t.picks)));
+    const techName = el("div", "name");
+    techName.append(nameIcon(art.techIconByName(t.tech)), el("span", "", t.tech));
+    row.append(techName, pickBar(t.pick_rate), winCell, el("div", "games", String(t.picks)));
     for (const cell of row.children) cell.setAttribute("role", "cell");
     const tip: Tip = {
       title: `${unit.unit}: ${t.tech}`,
@@ -210,8 +222,11 @@ function renderUsage(
   container: HTMLElement,
   rows: UsageStat[],
   results: number,
+  kind: "unit" | "specialist",
   techs?: Map<string, UnitTechStats>,
 ) {
+  const icon = (name: string) =>
+    nameIcon(kind === "unit" ? art.unitIconByName(name) : art.specialistByName(name));
   const heads = [
     ["", "Name"],
     ["", "Pick rate"],
@@ -229,18 +244,19 @@ function renderUsage(
     const name = el("div", "name");
     if (unitTechs) {
       const open = expandedUnits.has(stat.name);
-      const toggle = el("button", "disclosure", stat.name) as HTMLButtonElement;
+      const toggle = el("button", "disclosure") as HTMLButtonElement;
+      toggle.append(icon(stat.name), el("span", "", stat.name));
       toggle.type = "button";
       toggle.setAttribute("aria-expanded", String(open));
       toggle.title = open ? "Hide techs" : "Show techs";
       toggle.addEventListener("click", () => {
         if (open) expandedUnits.delete(stat.name);
         else expandedUnits.add(stat.name);
-        renderUsage(container, rows, results, techs);
+        renderUsage(container, rows, results, kind, techs);
       });
       name.append(toggle);
     } else {
-      name.textContent = stat.name;
+      name.append(icon(stat.name), el("span", "", stat.name));
     }
     row.append(
       name,
@@ -269,33 +285,57 @@ function renderUsage(
   }
 }
 
-function renderMatches(matches: MatchRow[]) {
-  const list = $("matches");
+let allMatches: MatchRow[] = [];
+
+async function refreshMatchList() {
+  allMatches = await invoke<MatchRow[]>("recent_matches", { limit: 5000 });
+  renderMatchList();
+}
+
+function renderMatchList() {
+  const me = facets?.main_player?.[1] ?? null;
+  const query = $<HTMLInputElement>("match-search").value.trim().toLowerCase();
+  const shown = allMatches.filter((m) => {
+    if (!query) return true;
+    const text = [...m.winners, ...m.losers, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
+      .join(" ")
+      .toLowerCase();
+    return query.split(/\s+/).every((word) => text.includes(word));
+  });
+  $("matches-summary").textContent = query
+    ? `${shown.length} of ${allMatches.length} matches`
+    : `${allMatches.length} matches`;
+
+  const list = $("match-list");
   list.replaceChildren(
-    ...matches.map((m) => {
-      const item = el("li");
+    ...shown.slice(0, 400).map((m) => {
+      const item = el("li", "match-row");
       const when = new Date(m.occurred_on);
-      const open = el("button", "match-open") as HTMLButtonElement;
-      open.type = "button";
-      open.setAttribute("aria-label", `Open the match on ${when.toLocaleDateString()}`);
-      const players = el("span");
+      const iWon = me !== null && m.winners.includes(me);
+      const iLost = me !== null && m.losers.includes(me);
+      const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
+      const players = el("span", "players");
       players.append(
-        el("span", "won", m.winners.join(", ") || "—"),
-        document.createTextNode(" beat "),
-        el("span", "", m.losers.join(", ") || "—"),
+        el("span", "winner", m.winners.join(", ") || "Nobody"),
+        el("span", "vs", " beat "),
+        el("span", "", m.losers.join(", ") || "nobody"),
       );
-      open.append(
-        el("span", "when", when.toLocaleDateString()),
-        players,
-        el("span", "meta", `${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, v${m.version}`),
-      );
+      const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
+      const open = el("button", "open-board", "Open board") as HTMLButtonElement;
+      open.type = "button";
+      open.setAttribute("aria-label", `Open the board for ${m.winners.join(", ")} vs ${m.losers.join(", ")} on ${when.toLocaleDateString()}`);
       open.addEventListener("click", () => showMatch(m.battle_id));
-      item.append(open);
+      item.append(el("span", "when", when.toLocaleDateString()), outcome, players, details, open);
+      item.addEventListener("dblclick", () => showMatch(m.battle_id));
       return item;
     }),
   );
-  if (matches.length === 0) {
+  if (allMatches.length === 0) {
     list.append(el("li", "empty", "No matches yet. Play a game and it will show up here."));
+  } else if (shown.length === 0) {
+    list.append(el("li", "empty", "No matches fit that search."));
+  } else if (shown.length > 400) {
+    list.append(el("li", "empty", `Showing the newest 400. Search to narrow the rest.`));
   }
 }
 
@@ -380,12 +420,12 @@ async function refreshStats() {
     invoke<UnitTechStats[]>("tech_stats", { filter }),
   ]);
   lastTechs = new Map(techs.map((t) => [t.unit, t]));
-  renderUsage($("units"), stats.units, stats.player_results, lastTechs);
-  renderUsage($("specialists"), stats.specialists, stats.player_results);
+  lastStats = stats;
+  renderUsage($("units"), stats.units, stats.player_results, "unit", lastTechs);
+  renderUsage($("specialists"), stats.specialists, stats.player_results, "specialist");
   $("summary").textContent =
     `${stats.matches} matches · ${stats.player_results} player results`;
-  renderMatches(await invoke<MatchRow[]>("recent_matches", { limit: 15 }));
-  await refreshTrends();
+  await Promise.all([refreshTrends(), refreshMatchList()]);
 }
 
 async function refreshStatus(): Promise<Status> {
@@ -420,12 +460,24 @@ async function refreshStatus(): Promise<Status> {
   return status;
 }
 
+type View = "stats" | "matches" | "match";
+
+function showView(view: View) {
+  $("view-stats").hidden = view !== "stats";
+  $("view-matches").hidden = view !== "matches";
+  $("view-match").hidden = view !== "match";
+  for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
+    const current = tab.dataset.view === view || (view === "match" && tab.dataset.view === "matches");
+    if (current) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  }
+  window.scrollTo(0, 0);
+}
+
 async function showMatch(battleId: string) {
   try {
-    await openMatch(battleId, facets?.main_player?.[0] ?? null, () => {
-      $("view-match").hidden = true;
-      $("view-stats").hidden = false;
-    });
+    await openMatch(battleId, facets?.main_player?.[0] ?? null, () => showView("matches"));
+    showView("match");
   } catch (e) {
     const error = $("error");
     error.hidden = false;
@@ -441,6 +493,24 @@ function scheduleRefresh(delay = 800) {
     await refreshFacets();
     await refreshStats();
   }, delay);
+}
+
+function applyArt() {
+  const background = art.background();
+  const backdrop = $("backdrop");
+  backdrop.style.backgroundImage = background ? `url("${background}")` : "";
+  document.body.classList.toggle("has-art", background !== null);
+
+  const status = art.status();
+  const line = $("art-status");
+  line.hidden = !status;
+  line.textContent = status ?? "";
+
+  if (lastStats) {
+    renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
+    renderUsage($("specialists"), lastStats.specialists, lastStats.player_results, "specialist");
+  }
+  redrawMatch();
 }
 
 function setupTooltip() {
@@ -466,6 +536,11 @@ function setupTooltip() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   setupTooltip();
+  for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
+    tab.addEventListener("click", () => showView(tab.dataset.view as View));
+  }
+  $("match-search").addEventListener("input", () => renderMatchList());
+  loadArt(applyArt);
 
   $("choose-dir").addEventListener("click", async () => {
     const dir = await open({ directory: true, multiple: false, title: "Mechabellum replay folder" });

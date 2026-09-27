@@ -1,6 +1,7 @@
 //! Desktop client: runs the stats server in-process on localhost, watches the game's replay
 //! folder, and stays in the system tray when its window is closed.
 
+mod art;
 mod steam;
 mod watcher;
 
@@ -53,6 +54,65 @@ struct AppState {
     backfill: Arc<Mutex<Backfill>>,
     http_url: Mutex<Option<String>>,
     last_error: Arc<Mutex<Option<String>>>,
+    art_dir: PathBuf,
+    tools_dir: PathBuf,
+    art: Arc<Mutex<Option<art::ArtManifest>>>,
+    /// What art extraction is doing, or why it failed.
+    art_status: Arc<Mutex<Option<String>>>,
+}
+
+#[derive(Serialize)]
+struct ArtInfo {
+    dir: PathBuf,
+    manifest: Option<art::ArtManifest>,
+    status: Option<String>,
+    /// Display name -> image file, for views that only know names (the stats tables).
+    units_by_name: std::collections::BTreeMap<String, String>,
+    techs_by_name: std::collections::BTreeMap<String, String>,
+    specialists_by_name: std::collections::BTreeMap<String, String>,
+}
+
+impl ArtInfo {
+    fn new(dir: PathBuf, manifest: Option<art::ArtManifest>, status: Option<String>) -> Self {
+        use mechabellum::{GameNames, NameKind};
+        let names = GameNames::bundled();
+        let mut info = ArtInfo {
+            dir,
+            manifest: None,
+            status,
+            units_by_name: Default::default(),
+            techs_by_name: Default::default(),
+            specialists_by_name: Default::default(),
+        };
+        if let Some(m) = &manifest {
+            // Lowest ID first, so an original unit wins over its AsyncBattle copy.
+            for (id, unit) in &m.units {
+                if let (Some(name), Some(icon)) =
+                    (names.resolve(NameKind::Unit, *id as u64), &unit.icon)
+                {
+                    info.units_by_name
+                        .entry(name.to_owned())
+                        .or_insert_with(|| icon.clone());
+                }
+            }
+            for (id, file) in &m.techs {
+                if let Some(name) = names.resolve(NameKind::Tech, *id) {
+                    info.techs_by_name
+                        .entry(name.to_owned())
+                        .or_insert_with(|| file.clone());
+                }
+            }
+            for (id, file) in &m.specialists {
+                if let Some(name) = names.resolve(NameKind::Officer, *id) {
+                    info.specialists_by_name
+                        .entry(name.to_owned())
+                        .or_insert_with(|| file.clone());
+                }
+            }
+        }
+        info.manifest = manifest;
+        info
+    }
 }
 
 #[derive(Serialize)]
@@ -126,6 +186,55 @@ fn start_watching(app: &AppHandle, state: &AppState) {
     }
 }
 
+/// The game install that holds the watched replay folder (`<game>/ProjectDatas/Replay`), or
+/// the one Steam knows about.
+fn game_dir(state: &AppState) -> Option<PathBuf> {
+    let from_replays = state
+        .watching
+        .lock()
+        .unwrap()
+        .as_ref()
+        .and_then(|dir| Some(dir.parent()?.parent()?.to_path_buf()));
+    from_replays
+        .filter(|d| d.join("ProjectDatas").is_dir())
+        .or_else(|| Some(steam::find_replay_dir()?.parent()?.parent()?.to_path_buf()))
+}
+
+/// Extract game art in the background, telling the UI as it goes.
+fn start_art_extraction(app: &AppHandle, state: &AppState) {
+    let Some(game) = game_dir(state) else {
+        *state.art_status.lock().unwrap() =
+            Some("Game art needs the Mechabellum install; choose the replay folder first.".into());
+        return;
+    };
+    let (art_dir, tools_dir) = (state.art_dir.clone(), state.tools_dir.clone());
+    let (art_slot, status) = (state.art.clone(), state.art_status.clone());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let report = |message: &str| {
+            *status.lock().unwrap() = Some(message.to_owned());
+            let _ = app.emit("art-status", message);
+        };
+        match art::extract(&game, &art_dir, &tools_dir, &report) {
+            Ok(manifest) => {
+                log::info!(
+                    "art: {} units, {} techs, {} specialists",
+                    manifest.units.len(),
+                    manifest.techs.len(),
+                    manifest.specialists.len()
+                );
+                *art_slot.lock().unwrap() = Some(manifest);
+                *status.lock().unwrap() = None;
+                let _ = app.emit("art-status", "ready");
+            }
+            Err(e) => {
+                log::warn!("art extraction: {e:#}");
+                report(&format!("Couldn't extract game art: {e:#}"));
+            }
+        }
+    });
+}
+
 /// Serve the stats API on localhost so browsers and other tools can use it too.
 fn start_http(app: &AppHandle, store: Arc<Store>, port: u16) {
     let app = app.clone();
@@ -192,6 +301,21 @@ async fn version_trends(
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+fn art_info(state: State<'_, AppState>) -> ArtInfo {
+    ArtInfo::new(
+        state.art_dir.clone(),
+        state.art.lock().unwrap().clone(),
+        state.art_status.lock().unwrap().clone(),
+    )
+}
+
+/// Extract the game's art again, e.g. after a patch.
+#[tauri::command]
+fn extract_art(app: AppHandle, state: State<'_, AppState>) {
+    start_art_extraction(&app, &state);
 }
 
 #[tauri::command]
@@ -274,6 +398,8 @@ pub fn run() {
             let settings_path = data_dir.join("settings.json");
             let settings = load_settings(&settings_path);
             let store = Arc::new(Store::open(&db_path)?);
+            let art_dir = data_dir.join("art");
+            let manifest = art::ArtManifest::load(&art_dir);
 
             app.manage(AppState {
                 store: store.clone(),
@@ -285,9 +411,16 @@ pub fn run() {
                 backfill: Arc::new(Mutex::new(Backfill::default())),
                 http_url: Mutex::new(None),
                 last_error: Arc::new(Mutex::new(None)),
+                tools_dir: data_dir.join("tools"),
+                art_dir,
+                art: Arc::new(Mutex::new(manifest.clone())),
+                art_status: Arc::new(Mutex::new(None)),
             });
             start_http(app.handle(), store, settings.port);
             start_watching(app.handle(), &app.state::<AppState>());
+            if manifest.is_none() {
+                start_art_extraction(app.handle(), &app.state::<AppState>());
+            }
 
             let show = MenuItem::with_id(app, "show", "Show stats", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -321,6 +454,8 @@ pub fn run() {
             version_trends,
             tech_stats,
             match_detail,
+            art_info,
+            extract_art,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

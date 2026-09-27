@@ -9,12 +9,17 @@
   </head>
 
   <body>
+    <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+
     <header class="topbar">
       <h1>Mechabellum Stats</h1>
+      <nav class="tabs" aria-label="Views">
+        <button type="button" class="tab" data-view="stats" aria-current="page">Stats</button>
+        <button type="button" class="tab" data-view="matches">Matches</button>
+      </nav>
       <div class="status" id="status" aria-live="polite"></div>
     </header>
 
-    <div id="view-stats">
     <section class="source">
       <div class="source-line">
         <span class="label">Replays</span>
@@ -22,73 +27,82 @@
         <span class="badge" id="replay-dir-badge" hidden>auto-detected</span>
       </div>
       <div class="source-actions">
+        <span class="art-status" id="art-status" hidden></span>
         <button type="button" id="choose-dir">Choose folder…</button>
         <button type="button" id="auto-dir" class="quiet" hidden>Use Steam's folder</button>
       </div>
       <p class="error" id="error" hidden></p>
     </section>
 
-    <section class="filters" aria-label="Filters">
-      <label>Patch
-        <select id="filter-version"></select>
-      </label>
-      <label>Mode
-        <select id="filter-mode"></select>
-      </label>
-      <label class="check">
-        <input type="checkbox" id="filter-mine" />
-        <span id="filter-mine-label">Only my side</span>
-      </label>
-      <span class="summary" id="summary"></span>
-    </section>
+    <div id="view-stats">
+      <section class="filters" aria-label="Filters">
+        <label>Patch
+          <select id="filter-version"></select>
+        </label>
+        <label>Mode
+          <select id="filter-mode"></select>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="filter-mine" />
+          <span id="filter-mine-label">Only my side</span>
+        </label>
+        <span class="summary" id="summary"></span>
+      </section>
 
-    <main class="panels">
-      <section class="panel">
-        <h2>Units <small>in the final-round army</small></h2>
-        <div class="usage" id="units" role="table" aria-label="Unit pick and win rates"></div>
-      </section>
-      <section class="panel">
-        <h2>Specialists</h2>
-        <div class="usage" id="specialists" role="table" aria-label="Specialist pick and win rates"></div>
-      </section>
-      <section class="panel wide">
-        <div class="panel-head">
-          <h2>Win rate by patch <small>all patches, other filters apply</small></h2>
-          <div class="panel-controls">
-            <div class="segmented" role="radiogroup" aria-label="Show">
-              <label><input type="radio" name="trend-kind" value="units" checked />Units</label>
-              <label><input type="radio" name="trend-kind" value="specialists" />Specialists</label>
+      <main class="panels">
+        <section class="panel">
+          <h2>Units <small>in the final-round army; open one for its techs</small></h2>
+          <div class="usage" id="units" role="table" aria-label="Unit pick and win rates"></div>
+        </section>
+        <section class="panel">
+          <h2>Specialists</h2>
+          <div class="usage" id="specialists" role="table" aria-label="Specialist pick and win rates"></div>
+        </section>
+        <section class="panel wide">
+          <div class="panel-head">
+            <h2>Win rate by patch <small>all patches, other filters apply</small></h2>
+            <div class="panel-controls">
+              <div class="segmented" role="radiogroup" aria-label="Show">
+                <label><input type="radio" name="trend-kind" value="units" checked />Units</label>
+                <label><input type="radio" name="trend-kind" value="specialists" />Specialists</label>
+              </div>
+              <label>Min games
+                <select id="trend-min">
+                  <option value="3">3</option>
+                  <option value="5" selected>5</option>
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                </select>
+              </label>
             </div>
-            <label>Min games
-              <select id="trend-min">
-                <option value="3">3</option>
-                <option value="5" selected>5</option>
-                <option value="10">10</option>
-                <option value="20">20</option>
-              </select>
-            </label>
           </div>
-        </div>
-        <div class="heatmap-scroll">
-          <div class="heatmap" id="heatmap" role="table" aria-label="Win rate by patch"></div>
-        </div>
-        <div class="legend" aria-hidden="true">
-          <span>≤25%</span>
-          <span class="legend-ramp"></span>
-          <span>≥75% win rate</span>
-          <span class="legend-swatch thin"></span><span>fewer than min games</span>
-        </div>
-      </section>
-      <section class="panel wide">
-        <h2>Recent matches <small>open one to see its board round by round</small></h2>
-        <ol class="matches" id="matches"></ol>
-      </section>
-    </main>
+          <div class="heatmap-scroll">
+            <div class="heatmap" id="heatmap" role="table" aria-label="Win rate by patch"></div>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span>≤25%</span>
+            <span class="legend-ramp"></span>
+            <span>≥75% win rate</span>
+            <span class="legend-swatch thin"></span><span>fewer than min games</span>
+          </div>
+        </section>
+      </main>
     </div>
+
+    <section id="view-matches" class="matches-view" hidden aria-label="Matches">
+      <div class="matches-bar">
+        <label class="search">
+          <span>Find a match</span>
+          <input type="search" id="match-search" placeholder="Player, map, or mode" autocomplete="off" />
+        </label>
+        <span class="summary" id="matches-summary"></span>
+      </div>
+      <ol class="match-list" id="match-list"></ol>
+    </section>
 
     <section id="view-match" class="match-view" hidden aria-labelledby="match-title">
       <div class="match-head">
-        <button type="button" id="match-back" class="quiet">Back to stats</button>
+        <button type="button" id="match-back" class="quiet">Back to matches</button>
         <div class="match-heading">
           <h2 id="match-title"></h2>
           <p class="match-meta" id="match-meta"></p>

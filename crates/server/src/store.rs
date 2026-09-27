@@ -216,6 +216,8 @@ pub struct MatchRow {
     pub game_mode: String,
     pub rounds: u32,
     pub occurred_on: String,
+    /// Map name, or its ID when the name is unknown.
+    pub map: String,
     pub winners: Vec<String>,
     pub losers: Vec<String>,
 }
@@ -634,7 +636,7 @@ impl Store {
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on,
+            "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
                     COALESCE((SELECT group_concat(name, char(31)) FROM players p
                               WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
                     COALESCE((SELECT group_concat(name, char(31)) FROM players p
@@ -656,8 +658,13 @@ impl Store {
                     game_mode: r.get(3)?,
                     rounds: r.get(4)?,
                     occurred_on: r.get(5)?,
-                    winners: split(r.get(6)?),
-                    losers: split(r.get(7)?),
+                    map: {
+                        let id: String = r.get(6)?;
+                        mechabellum::resolve_name(mechabellum::NameKind::Map, &id)
+                            .map_or(id, str::to_owned)
+                    },
+                    winners: split(r.get(7)?),
+                    losers: split(r.get(8)?),
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

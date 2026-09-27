@@ -25,6 +25,12 @@ pub enum NameKind {
     Tech,
     Construction,
     Map,
+    /// Command Center skills.
+    TowerSkill,
+    /// Research Center blueprints.
+    Blueprint,
+    /// A card offered between rounds: a specialist, unit reinforcement, skill, or item.
+    Card,
 }
 
 impl NameKind {
@@ -41,6 +47,14 @@ impl NameKind {
             }
             NameKind::Construction => category == "ConstructionData",
             NameKind::Map => category == "MatchSetting",
+            NameKind::TowerSkill => category == "EnergyTowerSkillData",
+            NameKind::Blueprint => category == "BlueprintData",
+            NameKind::Card => {
+                category == "OfficerData"
+                    || category == "UnitReinforceData"
+                    || category.starts_with("CSD_")
+                    || category.ends_with("EquipmentData")
+            }
         }
     }
 
@@ -54,6 +68,9 @@ impl NameKind {
             NameKind::Tech => "TechnologyData",
             NameKind::Construction => "ConstructionData",
             NameKind::Map => "MatchSetting",
+            NameKind::TowerSkill => "EnergyTowerSkillData",
+            NameKind::Blueprint => "BlueprintData",
+            NameKind::Card => "OfficerData",
         }
     }
 }
@@ -71,6 +88,30 @@ impl GameNames {
     pub fn bundled() -> &'static GameNames {
         static NAMES: OnceLock<GameNames> = OnceLock::new();
         NAMES.get_or_init(|| serde_json::from_str(BUNDLED).expect("bundled names.json is valid"))
+    }
+
+    /// Every ID of this kind that has a name.
+    pub fn ids(&self, kind: NameKind) -> std::collections::BTreeSet<u64> {
+        self.categories
+            .iter()
+            .filter(|(category, _)| kind.matches(category))
+            .flat_map(|(_, ids)| ids.keys().copied())
+            .collect()
+    }
+
+    /// The localization category that names this ID, for kinds that span several.
+    pub fn category_of(&self, kind: NameKind, id: u64) -> Option<&str> {
+        if self
+            .categories
+            .get(kind.primary())
+            .is_some_and(|ids| ids.contains_key(&id))
+        {
+            return Some(kind.primary());
+        }
+        self.categories
+            .iter()
+            .find(|(category, ids)| kind.matches(category) && ids.contains_key(&id))
+            .map(|(category, _)| category.as_str())
     }
 
     pub fn resolve(&self, kind: NameKind, id: u64) -> Option<&str> {
