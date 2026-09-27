@@ -196,7 +196,7 @@ select:hover {
 .panels {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -209,10 +209,16 @@ select:hover {
   grid-column: 1 / -1;
 }
 
+@media (max-width: 900px) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Usage rows: name | pick-rate bar | win-rate diverging bar | games */
 .usage {
   display: grid;
-  grid-template-columns: minmax(90px, 1.1fr) minmax(90px, 1.4fr) minmax(90px, 1.2fr) 44px;
+  grid-template-columns: minmax(130px, 1.5fr) minmax(90px, 1.3fr) minmax(90px, 1.2fr) 44px;
   column-gap: 10px;
   align-items: center;
   font-variant-numeric: tabular-nums;
@@ -551,6 +557,8 @@ select:hover {
 
 .row.tech .name {
   color: var(--text-secondary);
+  white-space: normal;
+  line-height: 1.25;
 }
 
 .tech-win {
@@ -715,8 +723,10 @@ select:hover {
   width: 100%;
   max-height: calc(100vh - 260px);
   min-height: 320px;
-  background: var(--board);
-  border-radius: 4px;
+}
+
+.board .surface {
+  fill: var(--board);
 }
 
 .board-note {

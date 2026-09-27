@@ -125,6 +125,7 @@ function drawBoard() {
   const mid = Number.isFinite(nearTop) && Number.isFinite(farBottom) ? (nearTop + farBottom) / 2 : 0;
 
   const layers: SVGElement[] = [
+    svg("rect", { class: "surface", x: minX, y: minY, width: maxX - minX, height: maxY - minY }),
     svg("rect", { class: "zone side-far", x: minX, y: minY, width: maxX - minX, height: Math.max(0, mid - minY) }),
     svg("rect", { class: "zone side-near", x: minX, y: mid, width: maxX - minX, height: Math.max(0, maxY - mid) }),
   ];
@@ -267,7 +268,8 @@ function renderUnitPanel() {
 function renderRoundBar() {
   const m = detail!;
   const round = m.rounds[roundIndex];
-  $("round-label").textContent = `Round ${round.round} of ${m.rounds[m.rounds.length - 1].round}`;
+  // Count positions rather than trusting round numbers: some modes start at 0.
+  $("round-label").textContent = `Round ${roundIndex + 1} of ${m.rounds.length}`;
   const input = $<HTMLInputElement>("round-input");
   input.max = String(m.rounds.length - 1);
   input.value = String(roundIndex);
