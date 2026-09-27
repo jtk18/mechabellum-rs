@@ -497,9 +497,9 @@ impl Board {
                     .collect();
                 let mut ys: Vec<i32> = side.units.iter().map(|u| u.y).collect();
                 ys.sort_unstable();
-                let half =
-                    ys.get(ys.len() / 2)
-                        .map(|&y| if y < 0 { Half::South } else { Half::North });
+                let half = ys
+                    .get(ys.len() / 2)
+                    .map(|&y| if y < 0 { Half::South } else { Half::North });
                 Some(Side {
                     name: Some(player.name.clone()),
                     hp: Some(side.hp),

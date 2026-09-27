@@ -71,6 +71,30 @@ The presets cover a board code's `hp` per side and `map`.
 - **The opponent's board:** Switch Sides shows the same interface for the other player: unlock,
   buy, and place the same way.
 
+## The `grounds` tool (crates/grounds)
+
+`grounds place code.txt` sets up the first side of a board code in a running Testing Grounds
+(Railway Town, south half). It has been verified against the saved replay: units land within
+half a square of their targets, which is the game's own snap.
+
+How it works:
+1. **Camera:** 15 wheel steps out from the starting view. A projective fit from 5 measured
+   points maps board squares to screen pixels (leave-one-out error is 8 to 90 px, so it needs
+   more points near the edges; see `RAILWAY_TOWN_SOUTH`).
+2. **Spawning:** Testing Grounds Tools, Squad tab, click the unit. That's free, with no
+   per-round limit (the shop allows 2 units per round, and "Cancel the unlock limit" doesn't
+   change that). The list holds 35 units, three per row. Scroll to the top, then 6 wheel
+   steps per row; the last rows are reached by scrolling to the bottom.
+3. **Finding it:** units bought or spawned this round are tinted yellow-green
+   (about RGB 160,180,90). The new unit is the green blob that wasn't there before.
+4. **Moving:** click the unit, click the target, double-click it, then right-click. A target on
+   a building (the Research Center stands at about board 14,-18 on Railway Town) is refused.
+5. **Levels:** select the unit, then Tools, Upgrade, once per level. Not verified yet.
+
+Still to do: levels (check), techs (Adjust Unit Tech), items, rotation (R, F keys?), the
+enemy side (Switch Sides, then the north half needs its own calibration), panning for units the
+default view can't reach (the zone's left third), and other maps.
+
 ## Plan
 
 1. **Driving:** a small Windows driver (the tester crate already has window lookup, clicks,
