@@ -15,13 +15,17 @@
   --accent: #6cc6e0;
   --pick: #3987e5;
   --track: #2a3136;
-  --win: #3987e5;
-  --loss: #e66767;
+  /* You and your opponent. The game shows you in blue in 1v1, whatever the replay says.
+     Win and loss follow the same pair. Settings can swap in a colorblind-friendly pair. */
+  --you: #3987e5;
+  --them: #e0504a;
+  --win: var(--you);
+  --loss: var(--them);
   --midline: #56626a;
   --critical: #e66767;
   /* Match board: the two sides use categorical slots 1 and 2, not the win/loss pair. */
-  --side-near: #3987e5;
-  --side-far: #d95926;
+  --side-near: var(--you);
+  --side-far: var(--them);
   --board: #10161a;
   --board-line: rgb(150 200 230 / 0.06);
   --board-line-major: rgb(150 200 230 / 0.13);
@@ -1558,4 +1562,44 @@ h1 {
   color: var(--text-secondary);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Color choices (Settings). Checked with a colorblindness simulator against the dark surface. */
+:root[data-palette="blue-orange"] {
+  --them: #d9822b;
+}
+
+:root[data-palette="purple-gold"] {
+  --you: #8a7cf0;
+  --them: #c9a227;
+}
+
+.palette-choice {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--text-secondary);
+}
+
+.palette-choice select {
+  max-width: 28ch;
+}
+
+.palette-swatches {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.palette-swatches span::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  background: var(--swatch);
 }

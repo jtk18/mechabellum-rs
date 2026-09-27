@@ -207,6 +207,18 @@
           <span>Start when I sign in, in the tray</span>
         </label>
         <p class="panel-note">It keeps collecting replays and ratings while the window is closed.</p>
+        <label class="palette-choice">
+          <span>Colors for you and your opponent</span>
+          <select id="palette">
+            <option value="game">Blue and red, like the game</option>
+            <option value="blue-orange">Blue and orange</option>
+            <option value="purple-gold">Purple and gold</option>
+          </select>
+          <span class="palette-swatches" aria-hidden="true">
+            <span style="--swatch: var(--you)">You, wins</span>
+            <span style="--swatch: var(--them)">Opponent, losses</span>
+          </span>
+        </label>
       </div>
       </div>
     </section>

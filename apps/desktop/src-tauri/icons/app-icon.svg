@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <!-- Source for every app icon: regenerate with `npx tauri icon src-tauri/icons/app-icon.svg`.
-       A chamfered armor plate over a battlefield grid, with rising bars in the two side colors. -->
+       A chamfered armor plate over a battlefield grid, with rising bars in the two side colors (blue is you). -->
   <defs>
     <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#2b3642"/>
@@ -32,10 +32,10 @@
     <path d="M96 272H928M96 448H928M96 624H928M96 800H928M272 96V928M448 96V928M624 96V928M800 96V928"/>
   </g>
 
-  <!-- Rising bars: two blue, one orange, tops cut like armor. -->
-  <path d="M212 820V612L262 562H362V820Z" fill="url(#blue)"/>
-  <path d="M437 820V452L487 402H587V820Z" fill="url(#blue)"/>
-  <path d="M662 820V262L712 212H812V820Z" fill="url(#orange)"/>
+  <!-- Rising bars, tops cut like armor: the tallest is blue, the color the game gives you. -->
+  <path d="M212 820V612L262 562H362V820Z" fill="url(#orange)"/>
+  <path d="M437 820V452L487 402H587V820Z" fill="url(#orange)"/>
+  <path d="M662 820V262L712 212H812V820Z" fill="url(#blue)"/>
 
   <!-- Ground line. -->
   <rect x="176" y="836" width="672" height="28" rx="6" fill="#d6dde5"/>

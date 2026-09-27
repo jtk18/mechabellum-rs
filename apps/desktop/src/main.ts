@@ -647,7 +647,39 @@ function setupTooltip() {
   });
 }
 
+const PALETTE_KEY = "palette";
+
+/** The color pair for you and your opponent, remembered on this computer. */
+function applyPalette(value: string) {
+  if (value === "game") document.documentElement.removeAttribute("data-palette");
+  else document.documentElement.dataset.palette = value;
+}
+
+function setupPalette() {
+  let saved = "game";
+  try {
+    saved = localStorage.getItem(PALETTE_KEY) ?? "game";
+  } catch {
+    /* Storage can be unavailable; the default still works. */
+  }
+  const select = $<HTMLSelectElement>("palette");
+  if (![...select.options].some((o) => o.value === saved)) saved = "game";
+  select.value = saved;
+  applyPalette(saved);
+  select.addEventListener("change", () => {
+    applyPalette(select.value);
+    try {
+      localStorage.setItem(PALETTE_KEY, select.value);
+    } catch {
+      /* Not remembered, but applied for now. */
+    }
+    // The heatmap computes its colors in script; redraw it.
+    if (lastTrends) renderHeatmap(lastTrends);
+  });
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
+  setupPalette();
   setupTooltip();
   for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
     tab.addEventListener("click", () => showView(tab.dataset.view as View));
