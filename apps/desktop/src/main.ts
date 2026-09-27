@@ -6,6 +6,7 @@ import { openMatch, redrawMatch } from "./match";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
+  upgrading: boolean;
   replay_dir: string | null;
   replay_dir_detected: boolean;
   db_path: string;
@@ -289,8 +290,11 @@ function renderUsage(
 }
 
 let allMatches: MatchRow[] = [];
+/** The full list is only fetched once the Matches tab is opened. */
+let matchListLoaded = false;
 
 async function refreshMatchList() {
+  matchListLoaded = true;
   allMatches = await invoke<MatchRow[]>("recent_matches", { limit: 5000 });
   renderMatchList();
 }
@@ -418,17 +422,22 @@ async function refreshTrends() {
 async function refreshStats() {
   renderedMatches = (await invoke<Status>("status")).matches;
   const filter = currentFilter();
-  const [stats, techs] = await Promise.all([
-    invoke<Stats>("stats", { filter }),
-    invoke<UnitTechStats[]>("tech_stats", { filter }),
-  ]);
-  lastTechs = new Map(techs.map((t) => [t.unit, t]));
-  lastStats = stats;
-  renderUsage($("units"), stats.units, stats.player_results, "unit", lastTechs);
-  renderSpecialists();
-  $("summary").textContent =
-    `${stats.matches} matches · ${stats.player_results} player results`;
-  await Promise.all([refreshTrends(), refreshMatchList()]);
+  const stats = invoke<Stats>("stats", { filter }).then((stats) => {
+    lastStats = stats;
+    renderUsage($("units"), stats.units, stats.player_results, "unit", lastTechs);
+    renderSpecialists();
+    $("summary").textContent = `${stats.matches} matches · ${stats.player_results} player results`;
+  });
+  // Tech breakdowns arrive separately and fill in the unit rows' disclosure.
+  const techs = invoke<UnitTechStats[]>("tech_stats", { filter }).then(async (techs) => {
+    lastTechs = new Map(techs.map((t) => [t.unit, t]));
+    await stats;
+    if (lastStats) renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
+  });
+  const trends = refreshTrends();
+  const matches = matchListLoaded ? refreshMatchList() : Promise.resolve();
+  await Promise.all([stats, techs, trends, matches]);
+
 }
 
 async function refreshStatus(): Promise<Status> {
@@ -440,6 +449,7 @@ async function refreshStatus(): Promise<Status> {
 
   const { done, total, finished } = status.backfill;
   const parts = [`${status.matches} matches stored`];
+  if (status.upgrading) parts.unshift("Updating stats for this version…");
   if (status.replay_dir && !finished && total > 0) {
     parts.unshift(`Reading replays ${done}/${total}`);
   } else if (status.replay_dir) {
@@ -466,6 +476,10 @@ async function refreshStatus(): Promise<Status> {
 type View = "stats" | "matches" | "match";
 
 function showView(view: View) {
+  if (view === "matches" && !matchListLoaded) {
+    $("match-list").replaceChildren(el("li", "empty", "Loading matches…"));
+    refreshMatchList();
+  }
   $("view-stats").hidden = view !== "stats";
   $("view-matches").hidden = view !== "matches";
   $("view-match").hidden = view !== "match";
@@ -498,12 +512,10 @@ function scheduleRefresh(delay = 800) {
   }, delay);
 }
 
-/** Picked from the offered cards, or granted (held without a pick, e.g. by the Research Center). */
+/** Specialists held at the end: starting ones, picks, and Research Center grants alike. */
 function renderSpecialists() {
   if (!lastStats) return;
-  const granted = document.querySelector<HTMLInputElement>('input[name="spec-kind"]:checked')?.value === "granted";
-  const rows = granted ? lastStats.granted_specialists : lastStats.picked_specialists;
-  renderUsage($("specialists"), rows, lastStats.player_results, "specialist");
+  renderUsage($("specialists"), lastStats.specialists, lastStats.player_results, "specialist");
 }
 
 function applyArt() {
@@ -551,9 +563,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     tab.addEventListener("click", () => showView(tab.dataset.view as View));
   }
   $("match-search").addEventListener("input", () => renderMatchList());
-  for (const radio of document.querySelectorAll('input[name="spec-kind"]')) {
-    radio.addEventListener("change", renderSpecialists);
-  }
   loadArt(applyArt);
 
   $("choose-dir").addEventListener("click", async () => {
@@ -581,6 +590,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     radio.addEventListener("change", redrawHeatmap);
   }
 
+  await listen<string>("stats-upgrade", (event) => {
+    if (event.payload === "done") scheduleRefresh(0);
+    refreshStatus();
+  });
   await listen<WatchEvent>("replay-event", (event) => {
     const e = event.payload;
     if (e.kind === "ingested" && e.outcome.status === "added") {

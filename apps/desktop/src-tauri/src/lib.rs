@@ -117,6 +117,8 @@ impl ArtInfo {
 
 #[derive(Serialize)]
 struct Status {
+    /// Stats are being rebuilt for a newer version of the app.
+    upgrading: bool,
     replay_dir: Option<PathBuf>,
     replay_dir_detected: bool,
     db_path: PathBuf,
@@ -263,6 +265,7 @@ fn status(state: State<'_, AppState>) -> Result<Status, String> {
     let configured = state.settings.lock().unwrap().replay_dir.is_some();
     let replay_dir = state.watching.lock().unwrap().clone();
     Ok(Status {
+        upgrading: state.store.needs_upgrade().unwrap_or(false),
         replay_dir_detected: replay_dir.is_some() && !configured,
         replay_dir,
         db_path: state.db_path.clone(),
@@ -416,6 +419,19 @@ pub fn run() {
                 art: Arc::new(Mutex::new(manifest.clone())),
                 art_status: Arc::new(Mutex::new(None)),
             });
+            // Rebuild outdated stats in the background so the window opens right away.
+            if store.needs_upgrade().unwrap_or(false) {
+                let (store, app) = (store.clone(), app.handle().clone());
+                std::thread::spawn(move || {
+                    let _ = app.emit("stats-upgrade", "running");
+                    match store.upgrade() {
+                        Ok(_) => {
+                            let _ = app.emit("stats-upgrade", "done");
+                        }
+                        Err(e) => log::warn!("stats upgrade: {e:#}"),
+                    }
+                });
+            }
             start_http(app.handle(), store, settings.port);
             start_watching(app.handle(), &app.state::<AppState>());
             if manifest.is_none() {

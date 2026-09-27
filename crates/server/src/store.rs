@@ -4,6 +4,7 @@
 use anyhow::{Context, Result};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use mechabellum::{BattleRecord, PlayerSummary};
+use rayon::prelude::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -291,20 +292,42 @@ impl Store {
         if !has_uploader {
             conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
         }
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         let store = Store {
             conn: Mutex::new(conn),
         };
-        if version < SCHEMA_VERSION {
-            if store.match_count()? > 0 {
-                log::info!("rebuilding stats for schema version {SCHEMA_VERSION}");
-                store.reindex()?;
-            }
-            store
-                .conn()
-                .execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        // A fresh database has nothing to rebuild.
+        if store.match_count()? == 0 {
+            store.mark_current()?;
         }
         Ok(store)
+    }
+
+    /// Whether stored stats were derived by an older version of this code and should be rebuilt
+    /// with `upgrade`. Until then, queries still work but may miss newer data.
+    pub fn needs_upgrade(&self) -> Result<bool> {
+        let version: i64 = self
+            .conn()
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        Ok(version < SCHEMA_VERSION)
+    }
+
+    /// Rebuild derived stats if they are out of date. Returns whether anything was rebuilt.
+    pub fn upgrade(&self) -> Result<bool> {
+        if !self.needs_upgrade()? {
+            return Ok(false);
+        }
+        log::info!("rebuilding stats for schema version {SCHEMA_VERSION}");
+        let started = std::time::Instant::now();
+        let count = self.reindex()?;
+        self.mark_current()?;
+        log::info!("rebuilt {count} matches in {:.1?}", started.elapsed());
+        Ok(true)
+    }
+
+    fn mark_current(&self) -> Result<()> {
+        self.conn()
+            .execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        Ok(())
     }
 
     /// A panic mid-transaction poisons the mutex. The transaction was rolled back when it
@@ -629,27 +652,54 @@ impl Store {
     }
 
     /// Rebuild every derived row from the stored replays. Run after upgrading the parser.
+    ///
+    /// Replays are decompressed and parsed on every core without holding the database; only
+    /// the final rewrite is one locked transaction, so readers wait briefly if at all.
     pub fn reindex(&self) -> Result<usize> {
+        let (uploaders, blobs) = {
+            let conn = self.conn();
+            let uploaders: BTreeMap<String, Option<String>> = conn
+                .prepare("SELECT battle_id, uploaded_by FROM matches")?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            let blobs: Vec<(String, Vec<u8>)> = conn
+                .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            (uploaders, blobs)
+        };
+
+        let records: Vec<(String, BattleRecord)> = blobs
+            .into_par_iter()
+            .filter_map(|(battle_id, gz)| {
+                let parsed = (|| -> Result<BattleRecord> {
+                    let mut xml = String::new();
+                    GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
+                    Ok(BattleRecord::from_bytes(
+                        xml.as_bytes(),
+                        Path::new(&battle_id),
+                    )?)
+                })();
+                match parsed {
+                    Ok(record) => Some((battle_id, record)),
+                    // Keep the rest of the database usable if one stored replay is unreadable.
+                    Err(e) => {
+                        log::warn!("reindex {battle_id}: {e:#}");
+                        None
+                    }
+                }
+            })
+            .collect();
+
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let uploaders: BTreeMap<String, Option<String>> = tx
-            .prepare("SELECT battle_id, uploaded_by FROM matches")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-        let blobs: Vec<(String, Vec<u8>)> = tx
-            .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
         tx.execute("DELETE FROM matches", [])?;
-        for (battle_id, gz) in &blobs {
-            let mut xml = String::new();
-            GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
-            let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
+        for (battle_id, record) in &records {
             let uploaded_by = uploaders.get(battle_id).cloned().flatten();
-            insert_record(&tx, battle_id, &record, uploaded_by.as_deref())?;
+            insert_record(&tx, battle_id, record, uploaded_by.as_deref())?;
         }
         tx.commit()?;
-        Ok(blobs.len())
+        Ok(records.len())
     }
 
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
