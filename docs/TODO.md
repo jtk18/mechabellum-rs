@@ -1,11 +1,11 @@
 # Work list
 
-Last updated 2026-09-27. Newest decisions are in  at the scratchpad root.
+Last updated 2026-09-27. Newest decisions are in `ORIENTATION.md` at the scratchpad root.
 
 ## Overnight loop (autonomous)
 
 Rules for each pass: take the top unfinished item, keep the game's Replay folder read-only,
-run  and  (apps/desktop) before committing, commit and
+run `cargo test --workspace` and `npm run build` (apps/desktop) before committing, commit and
 push each finished item, tick it here, and note surprises in ORIENTATION.md. Nothing is sent
 to outside servers; sync tests use a local server on 127.0.0.1.
 
@@ -13,8 +13,8 @@ to outside servers; sync tests use a local server on 127.0.0.1.
    app (started before the session) still reports 1,053 matches. The watcher missed files
    the game wrote while running. Diagnose (notify events on Program Files? write pattern?),
    fix, add a periodic rescan as a safety net, and add a regression test.
-0b. Then confirm those games' ratings from  (20 match-start lines) land in
-   .
+0b. Then confirm those games' ratings from `Player.log` (20 match-start lines) land in
+   `player_ratings`.
 Then items 1, 2, 4, 5, 6, 7, 8, 9, 11, 13, 14 (single instance, autostart), 24, 21, 12.
 
 Needs the user (skip overnight): 15 (Mac/Linux machines), 16 (the Ubuntu server), 17 (Steam
