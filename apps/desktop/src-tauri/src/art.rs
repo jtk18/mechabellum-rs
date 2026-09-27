@@ -18,9 +18,9 @@ const TOOL_VERSION: &str = "v0.19.0";
 /// Official press kit: Mechabellum_Keyart_16x9_Clean.png
 const KEY_ART_URL: &str = "https://drive.usercontent.google.com/download?id=11k5SALLz_OV_59W86rjYG9RjuGN1QomM&export=download&confirm=t";
 /// Only the sprites the app uses.
-const SPRITE_FILTER: &str = "^(Mech_Default_[0-9]+_1|Mech_Portrait_[0-9]+|Mech_Portrait_Research_Center_[0-9A-Z]+|Mech_Portrait_Tower|UT_[A-Za-z0-9_]+|O_[A-Za-z0-9_]+|RC_[A-Za-z0-9_]+|Icon_officers)$";
+const SPRITE_FILTER: &str = "^(Mech_Default_[0-9]+_1|Mech_Portrait_[0-9]+|Mech_Portrait_Research_Center_[0-9A-Z]+|Mech_Portrait_Tower|UT_[A-Za-z0-9_]+|O_[A-Za-z0-9_]+|RC_[A-Za-z0-9_]+|TD_[A-Za-z0-9_]+_SBUI|E_[A-Za-z0-9_]+_SBUI|Icon_officers)$";
 /// Bump when the manifest's contents change, so older extractions are redone.
-const MANIFEST_FORMAT: u32 = 4;
+const MANIFEST_FORMAT: u32 = 6;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct UnitArt {
@@ -37,6 +37,9 @@ pub struct ArtManifest {
     pub units: BTreeMap<u32, UnitArt>,
     pub techs: BTreeMap<u64, String>,
     pub specialists: BTreeMap<u64, String>,
+    /// Equipment (items) by ID.
+    #[serde(default)]
+    pub equipment: BTreeMap<u64, String>,
     pub specialist_fallback: Option<String>,
     pub command_center: Option<String>,
     pub research_center: Option<String>,
@@ -187,14 +190,32 @@ fn tech_icons(level0: &[u8], tech_ids: &BTreeSet<u64>) -> BTreeMap<u64, String> 
 }
 
 /// Specialist ID -> card art sprite name. Each specialist's config record in level0 stores its
-/// ID shortly before its card art's name: `O_###_SBUI`, `O_M_{unit}_SBUI`, or a Research
-/// Center card `RC_*`. The gap varies, so the nearest preceding specialist ID wins.
+/// ID shortly before its card art's name: `O_###_SBUI`, `O_M_{unit}_SBUI`, a Research Center
+/// card `RC_*`, a Star Expedition card `TD_*_SBUI`, or an item card `E_*_SBUI` for the
+/// "Mass-produced" specialists that hand out equipment.
 fn specialist_cards(level0: &[u8], officer_ids: &BTreeSet<u64>) -> BTreeMap<u64, String> {
+    cards_by_record(level0, &[b"O_", b"RC_", b"TD_", b"E_"], officer_ids, 320)
+}
+
+/// Equipment ID -> item card sprite name (`E_*_SBUI`), stored the same way as specialists.
+fn equipment_cards(level0: &[u8], equipment_ids: &BTreeSet<u64>) -> BTreeMap<u64, String> {
+    cards_by_record(level0, &[b"E_"], equipment_ids, 400)
+}
+
+/// Config records in level0 store an ID a varying distance before a length-prefixed sprite
+/// name starting with one of `prefixes`. The nearest preceding known ID within `max_gap` bytes
+/// wins.
+fn cards_by_record(
+    level0: &[u8],
+    prefixes: &[&[u8]],
+    ids: &BTreeSet<u64>,
+    max_gap: usize,
+) -> BTreeMap<u64, String> {
     let mut map = BTreeMap::new();
-    let mut i = 324;
+    let mut i = max_gap + 4;
     while i + 3 < level0.len() {
         let rest = &level0[i..];
-        let next = [b"O_" as &[u8], b"RC_"]
+        let next = prefixes
             .iter()
             .filter_map(|p| rest.windows(p.len()).position(|w| w == *p))
             .min();
@@ -213,9 +234,9 @@ fn specialist_cards(level0: &[u8], officer_ids: &BTreeSet<u64>) -> BTreeMap<u64,
         else {
             continue;
         };
-        let id = (8..=320).step_by(4).find_map(|gap| {
+        let id = (8..=max_gap).step_by(4).find_map(|gap| {
             let v = i32::from_le_bytes(level0[start - gap..start - gap + 4].try_into().unwrap());
-            (v > 0 && officer_ids.contains(&(v as u64))).then_some(v as u64)
+            (v > 0 && ids.contains(&(v as u64))).then_some(v as u64)
         });
         if let Some(id) = id {
             map.entry(id).or_insert_with(|| format!("{name}.png"));
@@ -300,6 +321,10 @@ pub fn extract(
         .into_iter()
         .filter(|(_, file)| exists(file))
         .collect();
+    manifest.equipment = equipment_cards(&level0, &names.ids(NameKind::Equipment))
+        .into_iter()
+        .filter(|(_, file)| exists(file))
+        .collect();
     let officer_ids = names.ids(NameKind::Officer);
     manifest.specialists = specialist_cards(&level0, &officer_ids)
         .into_iter()
@@ -365,6 +390,7 @@ mod tests {
         let ids: BTreeSet<u64> = [10004, 20310].into();
         let map = specialist_cards(&b, &ids);
         assert_eq!(map.get(&10004).map(String::as_str), Some("O_004_SBUI.png"));
+        assert!(equipment_cards(&b, &ids).is_empty(), "no E_ names here");
         assert_eq!(
             map.get(&20310).map(String::as_str),
             Some("RC_AttackNoArrow_n.png")

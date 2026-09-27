@@ -25,7 +25,7 @@ interface PlacedUnit {
   y: number;
   rotated: boolean;
   footprint: [number, number] | null;
-  equipment: string[];
+  equipment: { id: string; name: string | null }[];
 }
 
 interface CardRef {
@@ -290,7 +290,15 @@ function renderUnitPanel() {
   card.append(level);
 
   if (unit.equipment.length) {
-    card.append(el("h4", "", "Equipment"), el("p", "", unit.equipment.join(", ")));
+    const list = el("ul", "equipment-list");
+    for (const item of unit.equipment) {
+      const entry = el("li");
+      const icon = artImage(art.equipment(item.id), "equipment-icon");
+      if (icon) entry.append(icon);
+      entry.append(el("span", "", item.name ?? `#${item.id}`));
+      list.append(entry);
+    }
+    card.append(el("h4", "", "Equipment"), list);
   }
   const loadout = player.loadout.find((l) => l.unit_id === unit.unit_id)?.techs ?? [];
   const enabled = sides[s]?.enabled_techs.find((l) => l.unit_id === unit.unit_id)?.techs ?? [];
@@ -337,7 +345,9 @@ function cardRow(cards: CardRef[], chosen: CardRef[]) {
     const image =
       card.kind === "specialist"
         ? art.specialist(card.id) ?? (card.unit_id !== null ? art.unitIcon(card.unit_id) : null)
-        : card.unit_id !== null
+        : card.kind === "equipment"
+          ? art.equipment(card.id)
+          : card.unit_id !== null
           ? art.unitIcon(card.unit_id)
           : null;
     item.append(artImage(image, "card-art") ?? el("span", "card-art placeholder"));

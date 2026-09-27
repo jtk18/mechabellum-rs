@@ -6,6 +6,7 @@ interface ArtManifest {
   units: Record<string, { icon: string | null; portrait: string | null }>;
   techs: Record<string, string>;
   specialists: Record<string, string>;
+  equipment?: Record<string, string>;
   specialist_fallback: string | null;
   command_center: string | null;
   research_center: string | null;
@@ -53,6 +54,7 @@ export const art = {
   unitPortrait: (unitId: number) => url(m()?.units[unitId]?.portrait),
   techIcon: (techId: string | number) => url(m()?.techs[String(techId)]),
   specialist: (officerId: string | number) => url(m()?.specialists[String(officerId)]),
+  equipment: (equipmentId: string | number) => url(m()?.equipment?.[String(equipmentId)]),
   commandCenter: () => url(m()?.command_center),
   researchCenter: () => url(m()?.research_center),
   background: () => url(m()?.background),

@@ -38,8 +38,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 6. ~~Group builds~~ Done: the heatmap groups by month (default) or build. Replays carry no season, and published season dates are incomplete, so seasons are left out for now. Offline games now get their date from the battle ID.
 7. ~~Tech icons by (unit, tech ID)~~ Done: `player_techs.tech_id`; 257 of 264 rows resolve by ID, the rest by name. The same name can
    have different icons per unit.
-8. **Remaining art:** Star Expedition supply and equipment specialists (Supply Crate, Equipment
-   Expansion, Mass-produced …), plus equipment/item icons.
+8. ~~Remaining art~~ Done: Star Expedition cards (`TD_*`), "Mass-produced" cards (item art
+   `E_*_S2`), and 73 of 79 equipment icons (`E_*`, on the board's unit card and card rows). Still
+   unknown: card ID 40001 (no name in the game's tables).
 9. **Verify `towerStrengthenLevels`** order: index 0 is assumed to be the Command Center and
    index 1 the Research Center.
 

@@ -120,7 +120,7 @@ pub struct PlacedUnit {
     pub rotated: bool,
     /// Grid squares (width, depth) before rotation, when known.
     pub footprint: Option<(u8, u8)>,
-    pub equipment: Vec<String>,
+    pub equipment: Vec<NamedRef>,
 }
 
 fn base_unit_id(raw: &str) -> Option<u32> {
@@ -238,7 +238,10 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
         equipment: data
             .equipments
             .ids(&data.equipment_id)
-            .map(|id| Item::from_str(id).map_or_else(|_| id.to_owned(), |i| i.display_name()))
+            .map(|id| NamedRef {
+                id: id.to_owned(),
+                name: Some(Item::from_str(id).map_or_else(|_| id.to_owned(), |i| i.display_name())),
+            })
             .collect(),
     })
 }
