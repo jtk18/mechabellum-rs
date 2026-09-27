@@ -257,6 +257,32 @@ mod tests {
             .unwrap();
         assert_eq!(newer.matches, 1);
 
+        // Views: "me" and "my opponents" split my matches between the two sides.
+        let me = store
+            .facets()
+            .unwrap()
+            .main_player
+            .expect("someone played")
+            .0;
+        let mine = store
+            .stats(&StatsFilter {
+                player_id: Some(me.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        let theirs = store
+            .stats(&StatsFilter {
+                opponents_of: Some(me.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(mine.matches, theirs.matches);
+        assert_eq!(
+            theirs.player_results, theirs.matches,
+            "one opponent per 1v1 match"
+        );
+        assert!(theirs.player_results + mine.player_results <= stats.player_results);
+
         let trends = store.version_trends(&StatsFilter::default()).unwrap();
         let versions: Vec<u32> = trends.versions.iter().map(|v| v.version).collect();
         assert_eq!(versions, vec![1425, 2324]);

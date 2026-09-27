@@ -42,9 +42,12 @@
         <label>Mode
           <select id="filter-mode"></select>
         </label>
-        <label class="check">
-          <input type="checkbox" id="filter-mine" />
-          <span id="filter-mine-label">Only my side</span>
+        <label>View
+          <select id="filter-view">
+            <option value="me" id="view-me">Me</option>
+            <option value="opponents">My opponents</option>
+            <option value="all">Everyone</option>
+          </select>
         </label>
         <span class="summary" id="summary"></span>
       </section>
@@ -58,8 +61,8 @@
           <div class="panel-head">
             <h2>Specialists</h2>
             <div class="segmented" role="radiogroup" aria-label="Count specialists">
-              <label title="Specialists chosen from the offered cards"><input type="radio" name="spec-kind" value="picked" checked />Picked</label>
-              <label title="Specialists held in the final round, including ones the game granted"><input type="radio" name="spec-kind" value="held" />Held at the end</label>
+              <label title="Your starting specialists and the ones you picked from offered cards"><input type="radio" name="spec-kind" value="picked" checked />Picked</label>
+              <label title="Specialists held at the end without being picked, e.g. from the Research Center"><input type="radio" name="spec-kind" value="granted" />Granted</label>
             </div>
           </div>
           <div class="usage" id="specialists" role="table" aria-label="Specialist pick and win rates"></div>

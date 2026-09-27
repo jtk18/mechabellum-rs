@@ -112,6 +112,33 @@ impl BattleRecord {
                     score,
                     last_round_units,
                     unlocked_units,
+                    starting_specialists: rounds
+                        .iter()
+                        .map(|r| &r.player_data.officers.int)
+                        .find(|ids| !ids.is_empty())
+                        .map(|ids| {
+                            ids.iter()
+                                .map(|id| {
+                                    super::specialist::specialist_name(
+                                        id,
+                                        self.version.trim().parse().unwrap_or(0),
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    specialist_names: rounds[rounds.len() - 1]
+                        .player_data
+                        .officers
+                        .int
+                        .iter()
+                        .map(|id| {
+                            super::specialist::specialist_name(
+                                id,
+                                self.version.trim().parse().unwrap_or(0),
+                            )
+                        })
+                        .collect(),
                     specialist_cards,
                     skills,
                     picked_cards: rounds

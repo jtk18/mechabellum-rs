@@ -25,9 +25,13 @@ pub struct PlayerSummary {
     pub unlocked_units: Vec<Unit>,
     pub last_round_units: Vec<UnitInstance>,
     pub specialist_cards: Vec<Specialist>,
+    /// Specialists held at the end, named for the replay's game version (see `specialist_name`).
+    pub specialist_names: Vec<String>,
     pub skills: Vec<Skills>,
     /// Techs researched by the final round, per unit type.
     pub enabled_techs: Vec<UnitTechs>,
+    /// Specialists chosen before the first round (the earliest round record with any).
+    pub starting_specialists: Vec<String>,
     /// Every card the player picked between rounds, in order. Unlike `specialist_cards`, this
     /// leaves out specialists the game granted without a pick.
     pub picked_cards: Vec<CardRef>,

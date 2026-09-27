@@ -8,7 +8,7 @@
 use super::battle_record::{ActiveTechnologiesUnitData, PlayerRecord, UnitsNewUnitData};
 use super::game_data::{footprint, xp_to_next_level};
 use super::names::{resolve, GameNames, NameKind};
-use super::{BattleRecord, Item, Specialist, Unit};
+use super::{BattleRecord, Item, Unit};
 
 use serde::Serialize;
 
@@ -290,6 +290,7 @@ impl BattleRecord {
     pub fn match_detail(&self) -> MatchDetail {
         let players: Vec<&PlayerRecord> = self.player_records.player_record.iter().collect();
         let mut rounds: BTreeMap<u32, Vec<Option<SideLayout>>> = BTreeMap::new();
+        let version: u32 = self.version.trim().parse().unwrap_or(0);
 
         // Cards offered in round r's preparation, per player (the fight of round r).
         let offers: BTreeMap<u32, &Vec<super::battle_record::IntList>> = self
@@ -384,10 +385,7 @@ impl BattleRecord {
                         .officers
                         .int
                         .iter()
-                        .map(|id| {
-                            Specialist::from_str(id)
-                                .map_or_else(|_| id.clone(), |s| s.display_name())
-                        })
+                        .map(|id| super::specialist::specialist_name(id, version))
                         .collect(),
                 };
                 let slot = rounds

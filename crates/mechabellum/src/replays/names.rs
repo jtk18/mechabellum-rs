@@ -275,6 +275,17 @@ mod display_name_tests {
     use std::str::FromStr;
 
     #[test]
+    fn test_specialist_names_follow_game_version() {
+        use crate::specialist_name;
+        // The ID was reused: Fortified Mustang in the old tables, Additional Deployment Slot now.
+        assert_eq!(specialist_name("10004", 1527), "Fortified Mustang");
+        assert_eq!(specialist_name("10004", 2324), "Additional Deployment Slot");
+        // IDs only one table knows still resolve either way.
+        assert_eq!(specialist_name("20310", 1527), "Attack Enhancement");
+        assert_eq!(specialist_name("999999", 2324), "999999");
+    }
+
+    #[test]
     fn test_display_name_fallbacks() {
         assert_eq!(
             Specialist::from_str("20310").unwrap().display_name(),

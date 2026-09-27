@@ -30,7 +30,7 @@ pub use overview::BattleOverview;
 pub use parse_error::ParseError;
 pub use player::*;
 pub use skills::Skills;
-pub use specialist::Specialist;
+pub use specialist::{specialist_name, Specialist, LEGACY_NAMES_BEFORE};
 pub use units::*;
 
 use std::ffi::OsStr;

@@ -1,5 +1,7 @@
 use strum::{Display, EnumString};
 
+use std::str::FromStr;
+
 #[derive(Debug, Eq, PartialEq, Display, EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum Specialist {
@@ -1067,6 +1069,26 @@ mod tests {
             assert_eq!(&test.to_string().as_str(), expected);
         }
     }
+}
+
+/// The hand-written tables were built from version 1527 replays. The game has reused specialist
+/// IDs since (10004 was Fortified Mustang and is now Additional Deployment Slot), so from 1545,
+/// the first version with the newer replay format, the game's own name table comes first.
+pub const LEGACY_NAMES_BEFORE: u32 = 1545;
+
+/// Name of the specialist with this ID, as of the replay's game version.
+pub fn specialist_name(id: &str, version: u32) -> String {
+    let current = || super::names::resolve(super::names::NameKind::Officer, id).map(str::to_owned);
+    let legacy = || match Specialist::from_str(id) {
+        Ok(Specialist::Unknown(_)) | Err(_) => None,
+        Ok(known) => Some(known.to_string()),
+    };
+    let name = if version >= LEGACY_NAMES_BEFORE {
+        current().or_else(legacy)
+    } else {
+        legacy().or_else(current)
+    };
+    name.unwrap_or_else(|| id.to_owned())
 }
 
 impl Specialist {

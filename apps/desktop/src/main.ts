@@ -29,6 +29,7 @@ interface Stats {
   units: UsageStat[];
   specialists: UsageStat[];
   picked_specialists: UsageStat[];
+  granted_specialists: UsageStat[];
 }
 
 interface Facets {
@@ -82,6 +83,7 @@ interface StatsFilter {
   match_mode?: string;
   game_mode?: string;
   player_id?: string;
+  opponents_of?: string;
 }
 
 type WatchEvent =
@@ -113,9 +115,10 @@ function currentFilter(): StatsFilter {
     filter.match_mode = matchMode;
     filter.game_mode = gameMode;
   }
-  if ($<HTMLInputElement>("filter-mine").checked && facets?.main_player) {
-    filter.player_id = facets.main_player[0];
-  }
+  const view = $<HTMLSelectElement>("filter-view").value;
+  const me = facets?.main_player?.[0];
+  if (me && view === "me") filter.player_id = me;
+  if (me && view === "opponents") filter.opponents_of = me;
   return filter;
 }
 
@@ -150,13 +153,12 @@ async function refreshFacets() {
     ["", "All modes"],
     ...facets.modes.map(([m, g, n]): [string, string] => [`${m}|${g}`, `${modeLabel(m, g)} (${n})`]),
   ]);
-  const mine = $<HTMLInputElement>("filter-mine");
-  mine.disabled = !facets.main_player;
-  // Start on your own games: this is your stats app.
-  if (first && facets.main_player) mine.checked = true;
-  $("filter-mine-label").textContent = facets.main_player
-    ? `Only ${facets.main_player[1]}'s side`
-    : "Only my side";
+  // Start on your own side: this is your stats app. Without a known player, show everyone.
+  const view = $<HTMLSelectElement>("filter-view");
+  const meOption = $<HTMLOptionElement>("view-me");
+  meOption.textContent = facets.main_player ? `Me (${facets.main_player[1]})` : "Me";
+  for (const option of view.options) option.disabled = !facets.main_player && option.value !== "all";
+  if (first) view.value = facets.main_player ? "me" : "all";
 }
 
 function pickBar(rate: number) {
@@ -496,11 +498,11 @@ function scheduleRefresh(delay = 800) {
   }, delay);
 }
 
-/** Picked (chosen from offers) or held at the end (includes specialists the game granted). */
+/** Picked from the offered cards, or granted (held without a pick, e.g. by the Research Center). */
 function renderSpecialists() {
   if (!lastStats) return;
-  const picked = document.querySelector<HTMLInputElement>('input[name="spec-kind"]:checked')?.value !== "held";
-  const rows = picked ? lastStats.picked_specialists : lastStats.specialists;
+  const granted = document.querySelector<HTMLInputElement>('input[name="spec-kind"]:checked')?.value === "granted";
+  const rows = granted ? lastStats.granted_specialists : lastStats.picked_specialists;
   renderUsage($("specialists"), rows, lastStats.player_results, "specialist");
 }
 
@@ -570,7 +572,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await invoke("set_replay_dir", { dir: null });
     await refreshStatus();
   });
-  for (const id of ["filter-version", "filter-mode", "filter-mine"]) {
+  for (const id of ["filter-version", "filter-mode", "filter-view"]) {
     $(id).addEventListener("change", () => refreshStats());
   }
   const redrawHeatmap = () => lastTrends && renderHeatmap(lastTrends);

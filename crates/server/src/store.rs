@@ -91,8 +91,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 ";
 
 /// Bumped when derived tables change; opening an older database rebuilds them from the stored
-/// replays. 2: player_techs. 3: player_cards.
-const SCHEMA_VERSION: i64 = 3;
+/// replays. 2: player_techs. 3: player_cards. 4: specialist names by game version.
+/// 5: starting specialists count as picks.
+const SCHEMA_VERSION: i64 = 5;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -132,6 +133,34 @@ pub struct StatsFilter {
     pub game_mode: Option<String>,
     /// Only count this player's side (account ID).
     pub player_id: Option<String>,
+    /// Only count the other sides of this player's matches (their opponents).
+    pub opponents_of: Option<String>,
+}
+
+/// The player results a stats query counts, as `scope(battle_id, player_id, won, version)`.
+/// Parameters come from `StatsFilter::params`.
+const SCOPE: &str = "WITH scope AS (
+    SELECT p.battle_id, p.player_id, p.won, m.version FROM players p
+    JOIN matches m ON m.battle_id = p.battle_id
+    WHERE (?1 IS NULL OR m.version >= ?1)
+      AND (?2 IS NULL OR m.version <= ?2)
+      AND (?3 IS NULL OR m.match_mode = ?3)
+      AND (?4 IS NULL OR m.game_mode = ?4)
+      AND (?5 IS NULL OR p.player_id = ?5)
+      AND (?6 IS NULL OR (p.player_id != ?6 AND EXISTS (
+          SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6))))";
+
+impl StatsFilter {
+    fn params(&self) -> [&dyn rusqlite::ToSql; 6] {
+        [
+            &self.min_version,
+            &self.max_version,
+            &self.match_mode,
+            &self.game_mode,
+            &self.player_id,
+            &self.opponents_of,
+        ]
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -142,8 +171,11 @@ pub struct Stats {
     pub units: Vec<UsageStat>,
     /// Specialists held at the end, including ones the game granted without a pick.
     pub specialists: Vec<UsageStat>,
-    /// Specialists the player picked from the offered cards.
+    /// Specialists the player chose: their starting specialists and picks from offered cards.
     pub picked_specialists: Vec<UsageStat>,
+    /// Specialists held at the end that were never picked: granted by the game, for example by
+    /// the Research Center.
+    pub granted_specialists: Vec<UsageStat>,
 }
 
 #[derive(Debug, Serialize)]
@@ -419,21 +451,8 @@ impl Store {
 
     pub fn tech_stats(&self, filter: &StatsFilter) -> Result<Vec<UnitTechStats>> {
         let conn = self.conn();
-        let scope = "WITH scope AS (
-                SELECT p.battle_id, p.player_id, p.won FROM players p
-                JOIN matches m ON m.battle_id = p.battle_id
-                WHERE (?1 IS NULL OR m.version >= ?1)
-                  AND (?2 IS NULL OR m.version <= ?2)
-                  AND (?3 IS NULL OR m.match_mode = ?3)
-                  AND (?4 IS NULL OR m.game_mode = ?4)
-                  AND (?5 IS NULL OR p.player_id = ?5))";
-        let args = params![
-            filter.min_version,
-            filter.max_version,
-            filter.match_mode,
-            filter.game_mode,
-            filter.player_id
-        ];
+        let scope = SCOPE;
+        let args = filter.params();
         let mut units: BTreeMap<String, UnitTechStats> = conn
             .prepare(&format!(
                 "{scope} SELECT t.unit, COUNT(*), SUM(s.won) FROM player_units t
@@ -504,21 +523,8 @@ impl Store {
     /// Like `stats`, but broken down by game version. The filter's version bounds still apply.
     pub fn version_trends(&self, filter: &StatsFilter) -> Result<VersionTrends> {
         let conn = self.conn();
-        let scope = "WITH scope AS (
-                SELECT p.battle_id, p.player_id, p.won, m.version FROM players p
-                JOIN matches m ON m.battle_id = p.battle_id
-                WHERE (?1 IS NULL OR m.version >= ?1)
-                  AND (?2 IS NULL OR m.version <= ?2)
-                  AND (?3 IS NULL OR m.match_mode = ?3)
-                  AND (?4 IS NULL OR m.game_mode = ?4)
-                  AND (?5 IS NULL OR p.player_id = ?5))";
-        let args = params![
-            filter.min_version,
-            filter.max_version,
-            filter.match_mode,
-            filter.game_mode,
-            filter.player_id
-        ];
+        let scope = SCOPE;
+        let args = filter.params();
 
         let versions: Vec<VersionTotals> = conn
             .prepare(&format!(
@@ -687,21 +693,8 @@ impl Store {
     pub fn stats(&self, filter: &StatsFilter) -> Result<Stats> {
         let conn = self.conn();
         // Filtered player results. Every stat below is computed over this set.
-        let scope = "WITH scope AS (
-                SELECT p.battle_id, p.player_id, p.won FROM players p
-                JOIN matches m ON m.battle_id = p.battle_id
-                WHERE (?1 IS NULL OR m.version >= ?1)
-                  AND (?2 IS NULL OR m.version <= ?2)
-                  AND (?3 IS NULL OR m.match_mode = ?3)
-                  AND (?4 IS NULL OR m.game_mode = ?4)
-                  AND (?5 IS NULL OR p.player_id = ?5))";
-        let args = params![
-            filter.min_version,
-            filter.max_version,
-            filter.match_mode,
-            filter.game_mode,
-            filter.player_id
-        ];
+        let scope = SCOPE;
+        let args = filter.params();
 
         let (matches, player_results): (u64, u64) = conn.query_row(
             &format!("{scope} SELECT COUNT(DISTINCT battle_id), COUNT(*) FROM scope"),
@@ -740,6 +733,16 @@ impl Store {
             picked_specialists: usage(
                 "(SELECT battle_id, player_id, card FROM player_cards WHERE kind = 'specialist')",
                 "card",
+            )?,
+            // Names can differ in case and punctuation between the held list and the cards.
+            granted_specialists: usage(
+                "(SELECT s.battle_id, s.player_id, s.specialist FROM player_specialists s
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM player_cards c
+                      WHERE c.battle_id = s.battle_id AND c.player_id = s.player_id
+                        AND replace(replace(lower(c.card), ' ', ''), '-', '')
+                          = replace(replace(lower(s.specialist), ' ', ''), '-', '')))",
+                "specialist",
             )?,
         })
     }
@@ -843,6 +846,10 @@ fn insert_player(
         }
     }
     let mut picked: BTreeMap<(String, &str), i64> = BTreeMap::new();
+    // Starting specialists are chosen too, just before round 1 instead of from offered cards.
+    for name in &player.starting_specialists {
+        *picked.entry((name.clone(), "specialist")).or_default() += 1;
+    }
     for card in &player.picked_cards {
         let name = card.name.clone().unwrap_or_else(|| card.id.clone());
         *picked.entry((name, card.kind)).or_default() += 1;
@@ -854,11 +861,11 @@ fn insert_player(
             params![battle_id, player_id, card, kind, picks],
         )?;
     }
-    for specialist in &player.specialist_cards {
+    for specialist in &player.specialist_names {
         tx.execute(
             "INSERT OR IGNORE INTO player_specialists (battle_id, player_id, specialist)
              VALUES (?1, ?2, ?3)",
-            params![battle_id, player_id, specialist.display_name()],
+            params![battle_id, player_id, specialist],
         )?;
     }
     Ok(())
