@@ -39,6 +39,29 @@ The presets cover a board code's `hp` per side and `map`.
   find a camera reset (or pan with WASD to the deployment zone, whose outline is dashed), then
   try click-to-select followed by click-to-place as well as dragging.
 
+## What worked (second session)
+
+- **Camera:** after entering, 15 mouse-wheel steps out (at the window center) show the whole
+  deployment zone: a raised plateau with a dashed border, the Command Center, and a second
+  structure. Clamped zoom should make this view repeatable.
+- **Buying:** Unlock Unit, pick from the grid, then click the unit's shop card (bottom right).
+  The unit appears at a default spot inside the zone (near the helipad on Railway Town) and
+  supply drops by its price. Purchases per round are limited (the counter above the shop
+  card).
+- **Moving a new unit:** a drag from the unit (mouse down, glide, up) picks it up (a red
+  dashed line follows the cursor). A click then drops it where the cursor is. After the first
+  success, later attempts didn't move units, possibly because two new squads overlapped at the
+  spawn point. Still unreliable.
+- **Moving older units:** "Only newly recruited units can be moved." The fix (from the user):
+  give yourself the **Redeployment** card to move units bought in earlier rounds.
+- **Start** runs a round. **Menu, Save Replay** writes the sandbox game to the Replay folder
+  (`2324_26-09-27__03-08-07-618_[jtk18]VS[Bot].grbr`). It's an ordinary replay (GameMode Normal,
+  HP 50000, offline battle ID), so the app counts it as an offline bot game.
+- **Calibration works:** a Crawler dropped at screen (768, 576) in the view above is recorded
+  at `at=9.5,-25`. More points (one per purchase, all in one round) will give the projection.
+- **A real fight:** use **Switch Sides** and add units to the opponent's board, or the round
+  is just units walking into an empty base (from the user).
+
 ## Plan
 
 1. **Driving:** a small Windows driver (the tester crate already has window lookup, clicks,
