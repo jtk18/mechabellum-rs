@@ -1,4 +1,4 @@
-use super::{Skills, Specialist, Unit, UnitInstance, UnitTechs};
+use super::{CardRef, Skills, Specialist, Unit, UnitInstance, UnitTechs};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerName(String);
@@ -28,4 +28,7 @@ pub struct PlayerSummary {
     pub skills: Vec<Skills>,
     /// Techs researched by the final round, per unit type.
     pub enabled_techs: Vec<UnitTechs>,
+    /// Every card the player picked between rounds, in order. Unlike `specialist_cards`, this
+    /// leaves out specialists the game granted without a pick.
+    pub picked_cards: Vec<CardRef>,
 }

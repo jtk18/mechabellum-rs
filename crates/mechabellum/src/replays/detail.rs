@@ -61,7 +61,7 @@ pub struct RoundLayout {
 }
 
 /// A card offered between rounds.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CardRef {
     pub id: String,
     pub name: Option<String>,
@@ -95,7 +95,8 @@ pub struct SideLayout {
     /// Techs researched by this round, per unit type.
     pub enabled_techs: Vec<UnitTechs>,
     pub specialists: Vec<String>,
-    /// Cards offered before this round's fight (2.0+), and the ones picked.
+    /// Cards offered before this round's fight (2.0+), and the ones picked. In modes where
+    /// players choose from one shared set, every player gets the same offers.
     pub cards_offered: Vec<CardRef>,
     pub cards_chosen: Vec<CardRef>,
     pub command_center: Structure,
@@ -183,7 +184,7 @@ fn unit_id_by_name(name: &str) -> Option<u32> {
     })
 }
 
-fn card_ref(id: &str) -> CardRef {
+pub(crate) fn card_ref(id: &str) -> CardRef {
     let names = GameNames::bundled();
     let numeric: Option<u64> = id.trim().parse().ok();
     let category = numeric.and_then(|n| names.category_of(NameKind::Card, n));
@@ -340,7 +341,11 @@ impl BattleRecord {
                 let side = SideLayout {
                     cards_offered: offers
                         .get(&fight)
-                        .and_then(|per_player| per_player.get(i))
+                        .and_then(|lists| match lists.len() {
+                            // One shared list: every player picks from the same cards.
+                            1 => lists.first(),
+                            _ => lists.get(i),
+                        })
                         .map(|list| list.int.iter().map(|id| card_ref(id)).collect())
                         .unwrap_or_default(),
                     cards_chosen: picks[i]

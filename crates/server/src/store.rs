@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS player_techs (
     PRIMARY KEY (battle_id, player_id, unit, tech),
     FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
 );
+-- Cards picked between rounds (specialists, unit reinforcements, skills, items).
+CREATE TABLE IF NOT EXISTS player_cards (
+    battle_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    card      TEXT NOT NULL,
+    kind      TEXT NOT NULL,
+    picks     INTEGER NOT NULL,
+    PRIMARY KEY (battle_id, player_id, card),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS replay_blobs (
     battle_id TEXT PRIMARY KEY,
     xml_gz    BLOB NOT NULL
@@ -81,8 +91,8 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 ";
 
 /// Bumped when derived tables change; opening an older database rebuilds them from the stored
-/// replays. 2: player_techs.
-const SCHEMA_VERSION: i64 = 2;
+/// replays. 2: player_techs. 3: player_cards.
+const SCHEMA_VERSION: i64 = 3;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -130,7 +140,10 @@ pub struct Stats {
     pub player_results: u64,
     /// Units in the final-round army, per player result.
     pub units: Vec<UsageStat>,
+    /// Specialists held at the end, including ones the game granted without a pick.
     pub specialists: Vec<UsageStat>,
+    /// Specialists the player picked from the offered cards.
+    pub picked_specialists: Vec<UsageStat>,
 }
 
 #[derive(Debug, Serialize)]
@@ -724,6 +737,10 @@ impl Store {
             player_results,
             units: usage("player_units", "unit")?,
             specialists: usage("player_specialists", "specialist")?,
+            picked_specialists: usage(
+                "(SELECT battle_id, player_id, card FROM player_cards WHERE kind = 'specialist')",
+                "card",
+            )?,
         })
     }
 }
@@ -824,6 +841,18 @@ fn insert_player(
                 params![battle_id, player_id, unit.unit_name, name],
             )?;
         }
+    }
+    let mut picked: BTreeMap<(String, &str), i64> = BTreeMap::new();
+    for card in &player.picked_cards {
+        let name = card.name.clone().unwrap_or_else(|| card.id.clone());
+        *picked.entry((name, card.kind)).or_default() += 1;
+    }
+    for ((card, kind), picks) in picked {
+        tx.execute(
+            "INSERT OR IGNORE INTO player_cards (battle_id, player_id, card, kind, picks)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![battle_id, player_id, card, kind, picks],
+        )?;
     }
     for specialist in &player.specialist_cards {
         tx.execute(

@@ -28,6 +28,7 @@ interface Stats {
   player_results: number;
   units: UsageStat[];
   specialists: UsageStat[];
+  picked_specialists: UsageStat[];
 }
 
 interface Facets {
@@ -422,7 +423,7 @@ async function refreshStats() {
   lastTechs = new Map(techs.map((t) => [t.unit, t]));
   lastStats = stats;
   renderUsage($("units"), stats.units, stats.player_results, "unit", lastTechs);
-  renderUsage($("specialists"), stats.specialists, stats.player_results, "specialist");
+  renderSpecialists();
   $("summary").textContent =
     `${stats.matches} matches · ${stats.player_results} player results`;
   await Promise.all([refreshTrends(), refreshMatchList()]);
@@ -495,6 +496,14 @@ function scheduleRefresh(delay = 800) {
   }, delay);
 }
 
+/** Picked (chosen from offers) or held at the end (includes specialists the game granted). */
+function renderSpecialists() {
+  if (!lastStats) return;
+  const picked = document.querySelector<HTMLInputElement>('input[name="spec-kind"]:checked')?.value !== "held";
+  const rows = picked ? lastStats.picked_specialists : lastStats.specialists;
+  renderUsage($("specialists"), rows, lastStats.player_results, "specialist");
+}
+
 function applyArt() {
   const background = art.background();
   const backdrop = $("backdrop");
@@ -508,7 +517,7 @@ function applyArt() {
 
   if (lastStats) {
     renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
-    renderUsage($("specialists"), lastStats.specialists, lastStats.player_results, "specialist");
+    renderSpecialists();
   }
   redrawMatch();
 }
@@ -540,6 +549,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     tab.addEventListener("click", () => showView(tab.dataset.view as View));
   }
   $("match-search").addEventListener("input", () => renderMatchList());
+  for (const radio of document.querySelectorAll('input[name="spec-kind"]')) {
+    radio.addEventListener("change", renderSpecialists);
+  }
   loadArt(applyArt);
 
   $("choose-dir").addEventListener("click", async () => {

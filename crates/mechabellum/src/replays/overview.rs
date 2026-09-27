@@ -114,6 +114,14 @@ impl BattleRecord {
                     unlocked_units,
                     specialist_cards,
                     skills,
+                    picked_cards: rounds
+                        .iter()
+                        .flat_map(|r| &r.action_records.match_action_data)
+                        .filter(|a| a.xsi_type.ends_with("ChooseReinforceItem"))
+                        .filter_map(|a| a.id.as_deref())
+                        .filter(|id| id.trim() != "0")
+                        .map(super::detail::card_ref)
+                        .collect(),
                     enabled_techs: super::detail::enabled_techs(
                         &rounds[rounds.len() - 1]
                             .player_data

@@ -18,7 +18,8 @@ use serde_xml_rs::from_str;
 pub use battle_record::BattleRecord;
 pub use detail::unit_id_in_name;
 pub use detail::{
-    MatchDetail, PlacedUnit, PlayerInfo, RoundLayout, SideLayout, TechRef, UnitTechs,
+    CardRef, MatchDetail, NamedRef, PlacedUnit, PlayerInfo, RoundLayout, SideLayout, Structure,
+    TechRef, UnitTechs,
 };
 pub use game_data::{footprint, xp_to_next_level, GRID_SQUARE};
 pub use items::Item;

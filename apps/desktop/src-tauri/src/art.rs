@@ -18,9 +18,9 @@ const TOOL_VERSION: &str = "v0.19.0";
 /// Official press kit: Mechabellum_Keyart_16x9_Clean.png
 const KEY_ART_URL: &str = "https://drive.usercontent.google.com/download?id=11k5SALLz_OV_59W86rjYG9RjuGN1QomM&export=download&confirm=t";
 /// Only the sprites the app uses.
-const SPRITE_FILTER: &str = "^(Mech_Default_[0-9]+_1|Mech_Portrait_[0-9]+|Mech_Portrait_Research_Center_[0-9A-Z]+|Mech_Portrait_Tower|UT_[A-Za-z0-9_]+|O_[A-Za-z0-9_]+|Icon_officers)$";
+const SPRITE_FILTER: &str = "^(Mech_Default_[0-9]+_1|Mech_Portrait_[0-9]+|Mech_Portrait_Research_Center_[0-9A-Z]+|Mech_Portrait_Tower|UT_[A-Za-z0-9_]+|O_[A-Za-z0-9_]+|RC_[A-Za-z0-9_]+|Icon_officers)$";
 /// Bump when the manifest's contents change, so older extractions are redone.
-const MANIFEST_FORMAT: u32 = 3;
+const MANIFEST_FORMAT: u32 = 4;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct UnitArt {
@@ -186,6 +186,44 @@ fn tech_icons(level0: &[u8], tech_ids: &BTreeSet<u64>) -> BTreeMap<u64, String> 
     map
 }
 
+/// Specialist ID -> card art sprite name. Each specialist's config record in level0 stores its
+/// ID shortly before its card art's name: `O_###_SBUI`, `O_M_{unit}_SBUI`, or a Research
+/// Center card `RC_*`. The gap varies, so the nearest preceding specialist ID wins.
+fn specialist_cards(level0: &[u8], officer_ids: &BTreeSet<u64>) -> BTreeMap<u64, String> {
+    let mut map = BTreeMap::new();
+    let mut i = 324;
+    while i + 3 < level0.len() {
+        let rest = &level0[i..];
+        let next = [b"O_" as &[u8], b"RC_"]
+            .iter()
+            .filter_map(|p| rest.windows(p.len()).position(|w| w == *p))
+            .min();
+        let Some(pos) = next else { break };
+        let start = i + pos;
+        i = start + 2;
+        let len = i32::from_le_bytes(level0[start - 4..start].try_into().unwrap());
+        if !(5..=64).contains(&len) {
+            continue;
+        }
+        let Some(name) = level0
+            .get(start..start + len as usize)
+            .and_then(|b| std::str::from_utf8(b).ok())
+            .filter(|n| n.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'))
+            .filter(|n| n.starts_with("RC_") || n.ends_with("_SBUI"))
+        else {
+            continue;
+        };
+        let id = (8..=320).step_by(4).find_map(|gap| {
+            let v = i32::from_le_bytes(level0[start - gap..start - gap + 4].try_into().unwrap());
+            (v > 0 && officer_ids.contains(&(v as u64))).then_some(v as u64)
+        });
+        if let Some(id) = id {
+            map.entry(id).or_insert_with(|| format!("{name}.png"));
+        }
+    }
+    map
+}
+
 /// Download the press kit key art and shrink it to a background-sized JPEG.
 fn background(art_dir: &Path) -> Result<String> {
     let mut bytes = Vec::new();
@@ -262,16 +300,25 @@ pub fn extract(
         .into_iter()
         .filter(|(_, file)| exists(file))
         .collect();
-    for id in names.ids(NameKind::Officer) {
-        // Specialists named after a unit ("Elite Rhino", "Subsidized Mustang") use its card art.
+    let officer_ids = names.ids(NameKind::Officer);
+    manifest.specialists = specialist_cards(&level0, &officer_ids)
+        .into_iter()
+        .filter(|(_, file)| exists(file))
+        .collect();
+    for id in officer_ids {
+        if manifest.specialists.contains_key(&id) {
+            continue;
+        }
+        // The rest ("Vanguard-Vulcan", "Supplies-Fortress") use their unit's art when named after one.
         let Some(unit) = names
             .resolve(NameKind::Officer, id)
             .and_then(mechabellum::unit_id_in_name)
         else {
             continue;
         };
-        let file = format!("O_M_{unit}_SBUI.png");
-        if exists(&file) {
+        let card = format!("O_M_{unit}_SBUI.png");
+        let icon = format!("Mech_Default_{unit}_1.png");
+        if let Some(file) = [card, icon].into_iter().find(|f| exists(f)) {
             manifest.specialists.insert(id, file);
         }
     }
@@ -300,6 +347,29 @@ pub fn extract(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_specialist_cards_from_records() {
+        let mut b = vec![0u8; 400];
+        for (id, gap, name) in [
+            (10004u32, 144usize, "O_004_SBUI"),
+            (20310, 60, "RC_AttackNoArrow_n"),
+        ] {
+            let start = b.len() + gap;
+            b.extend(id.to_le_bytes());
+            b.resize(start - 4, 0);
+            b.extend((name.len() as i32).to_le_bytes());
+            b.extend(name.as_bytes());
+            b.extend([0u8; 16]);
+        }
+        let ids: BTreeSet<u64> = [10004, 20310].into();
+        let map = specialist_cards(&b, &ids);
+        assert_eq!(map.get(&10004).map(String::as_str), Some("O_004_SBUI.png"));
+        assert_eq!(
+            map.get(&20310).map(String::as_str),
+            Some("RC_AttackNoArrow_n.png")
+        );
+    }
 
     #[test]
     fn test_tech_icons_from_records() {
