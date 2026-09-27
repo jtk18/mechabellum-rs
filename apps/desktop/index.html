@@ -14,6 +14,7 @@
       <div class="status" id="status" aria-live="polite"></div>
     </header>
 
+    <div id="view-stats">
     <section class="source">
       <div class="source-line">
         <span class="label">Replays</span>
@@ -79,10 +80,39 @@
         </div>
       </section>
       <section class="panel wide">
-        <h2>Recent matches</h2>
+        <h2>Recent matches <small>open one to see its board round by round</small></h2>
         <ol class="matches" id="matches"></ol>
       </section>
     </main>
+    </div>
+
+    <section id="view-match" class="match-view" hidden aria-labelledby="match-title">
+      <div class="match-head">
+        <button type="button" id="match-back" class="quiet">Back to stats</button>
+        <div class="match-heading">
+          <h2 id="match-title"></h2>
+          <p class="match-meta" id="match-meta"></p>
+        </div>
+      </div>
+
+      <div class="round-bar">
+        <button type="button" id="round-prev" aria-label="Previous round">‹</button>
+        <label class="round-slider">
+          <span id="round-label">Round</span>
+          <input type="range" id="round-input" min="0" max="0" value="0" />
+        </label>
+        <button type="button" id="round-next" aria-label="Next round">›</button>
+        <div class="round-results" id="round-results"></div>
+      </div>
+
+      <div class="match-body">
+        <div class="board-wrap">
+          <svg id="board" class="board" role="img" aria-labelledby="match-title"></svg>
+          <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
+        </div>
+        <aside class="unit-panel" id="unit-panel" aria-live="polite"></aside>
+      </div>
+    </section>
 
     <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
   </body>

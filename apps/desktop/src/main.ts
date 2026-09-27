@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openMatch } from "./match";
+import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
   replay_dir: string | null;
@@ -55,11 +57,20 @@ interface VersionTrends {
   specialists: { name: string; picks: number; cells: (TrendCell | null)[] }[];
 }
 
-/** Tooltip content attached to a hoverable element as JSON in data-tip. */
-interface Tip {
-  title: string;
-  lines: string[];
-  note?: string;
+interface TechStat {
+  tech: string;
+  picks: number;
+  wins: number;
+  pick_rate: number;
+  win_rate: number;
+  win_rate_without: number | null;
+}
+
+interface UnitTechStats {
+  unit: string;
+  picks: number;
+  wins: number;
+  techs: TechStat[];
 }
 
 interface StatsFilter {
@@ -78,16 +89,9 @@ type WatchEvent =
 /** Win rates from fewer games than this are dimmed: too few to mean much. */
 const SMALL_SAMPLE = 10;
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const pct = (x: number) => `${Math.round(x * 100)}%`;
-
-const MATCH_MODES: Record<string, string> = {
-  VS_1_1: "1v1",
-  VS_2_2: "2v2",
-  VS_4_Scuffle: "4-player FFA",
-};
-const modeLabel = (matchMode: string, gameMode: string) =>
-  `${MATCH_MODES[matchMode] ?? matchMode} · ${gameMode.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
+/** Units whose tech breakdown is open. */
+const expandedUnits = new Set<string>();
+let lastTechs = new Map<string, UnitTechStats>();
 
 let facets: Facets | null = null;
 /** Stored match count the panels were last drawn from. */
@@ -149,13 +153,6 @@ async function refreshFacets() {
     : "Only my side";
 }
 
-function el(tag: string, className?: string, text?: string) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
 function pickBar(rate: number) {
   const bar = el("div", "bar");
   const track = el("div", "track");
@@ -177,7 +174,44 @@ function winBar(rate: number) {
   return bar;
 }
 
-function renderUsage(container: HTMLElement, rows: UsageStat[], results: number) {
+function techRows(unit: UnitTechStats) {
+  const block = el("div", "tech-rows");
+  block.setAttribute("role", "rowgroup");
+  if (unit.techs.length === 0) {
+    block.append(el("div", "tech-empty", "No researched techs recorded for this unit."));
+    return block;
+  }
+  for (const t of unit.techs) {
+    const row = el("div", t.picks < SMALL_SAMPLE ? "row tech small" : "row tech");
+    row.setAttribute("role", "row");
+    const without = t.win_rate_without === null ? "every game had it" : `${pct(t.win_rate_without)} without`;
+    const winCell = el("div", "tech-win");
+    winCell.append(winBar(t.win_rate), el("span", "without", without));
+    row.append(el("div", "name", t.tech), pickBar(t.pick_rate), winCell, el("div", "games", String(t.picks)));
+    for (const cell of row.children) cell.setAttribute("role", "cell");
+    const tip: Tip = {
+      title: `${unit.unit}: ${t.tech}`,
+      lines: [
+        `Researched in ${t.picks} of ${unit.picks} games fielding ${unit.unit} (${pct(t.pick_rate)})`,
+        `Won ${t.wins} of ${t.picks} with it (${pct(t.win_rate)})`,
+        t.win_rate_without === null
+          ? "Every game fielding it had this tech."
+          : `Won ${unit.wins - t.wins} of ${unit.picks - t.picks} without it (${pct(t.win_rate_without)})`,
+      ],
+      note: t.picks < SMALL_SAMPLE ? `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.` : undefined,
+    };
+    row.dataset.tip = JSON.stringify(tip);
+    block.append(row);
+  }
+  return block;
+}
+
+function renderUsage(
+  container: HTMLElement,
+  rows: UsageStat[],
+  results: number,
+  techs?: Map<string, UnitTechStats>,
+) {
   const heads = [
     ["", "Name"],
     ["", "Pick rate"],
@@ -191,8 +225,25 @@ function renderUsage(container: HTMLElement, rows: UsageStat[], results: number)
   const body = rows.map((stat) => {
     const row = el("div", stat.picks < SMALL_SAMPLE ? "row small" : "row");
     row.setAttribute("role", "row");
+    const unitTechs = techs?.get(stat.name);
+    const name = el("div", "name");
+    if (unitTechs) {
+      const open = expandedUnits.has(stat.name);
+      const toggle = el("button", "disclosure", stat.name) as HTMLButtonElement;
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.title = open ? "Hide techs" : "Show techs";
+      toggle.addEventListener("click", () => {
+        if (open) expandedUnits.delete(stat.name);
+        else expandedUnits.add(stat.name);
+        renderUsage(container, rows, results, techs);
+      });
+      name.append(toggle);
+    } else {
+      name.textContent = stat.name;
+    }
     row.append(
-      el("div", "name", stat.name),
+      name,
       pickBar(stat.pick_rate),
       winBar(stat.win_rate),
       el("div", "games", String(stat.picks)),
@@ -210,9 +261,9 @@ function renderUsage(container: HTMLElement, rows: UsageStat[], results: number)
           : undefined,
     };
     row.dataset.tip = JSON.stringify(tip);
-    return row;
+    return unitTechs && expandedUnits.has(stat.name) ? [row, techRows(unitTechs)] : [row];
   });
-  container.replaceChildren(...heads, ...body);
+  container.replaceChildren(...heads, ...body.flat());
   if (rows.length === 0) {
     container.append(el("div", "empty", "No games match these filters yet."));
   }
@@ -224,17 +275,22 @@ function renderMatches(matches: MatchRow[]) {
     ...matches.map((m) => {
       const item = el("li");
       const when = new Date(m.occurred_on);
+      const open = el("button", "match-open") as HTMLButtonElement;
+      open.type = "button";
+      open.setAttribute("aria-label", `Open the match on ${when.toLocaleDateString()}`);
       const players = el("span");
       players.append(
         el("span", "won", m.winners.join(", ") || "—"),
         document.createTextNode(" beat "),
         el("span", "", m.losers.join(", ") || "—"),
       );
-      item.append(
+      open.append(
         el("span", "when", when.toLocaleDateString()),
         players,
-        el("span", "meta", `${modeLabel(m.match_mode, m.game_mode)} · ${m.rounds} rounds · v${m.version}`),
+        el("span", "meta", `${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, v${m.version}`),
       );
+      open.addEventListener("click", () => showMatch(m.battle_id));
+      item.append(open);
       return item;
     }),
   );
@@ -318,8 +374,13 @@ async function refreshTrends() {
 
 async function refreshStats() {
   renderedMatches = (await invoke<Status>("status")).matches;
-  const stats = await invoke<Stats>("stats", { filter: currentFilter() });
-  renderUsage($("units"), stats.units, stats.player_results);
+  const filter = currentFilter();
+  const [stats, techs] = await Promise.all([
+    invoke<Stats>("stats", { filter }),
+    invoke<UnitTechStats[]>("tech_stats", { filter }),
+  ]);
+  lastTechs = new Map(techs.map((t) => [t.unit, t]));
+  renderUsage($("units"), stats.units, stats.player_results, lastTechs);
   renderUsage($("specialists"), stats.specialists, stats.player_results);
   $("summary").textContent =
     `${stats.matches} matches · ${stats.player_results} player results`;
@@ -357,6 +418,19 @@ async function refreshStatus(): Promise<Status> {
   error.hidden = !status.last_error;
   error.textContent = status.last_error ?? "";
   return status;
+}
+
+async function showMatch(battleId: string) {
+  try {
+    await openMatch(battleId, facets?.main_player?.[0] ?? null, () => {
+      $("view-match").hidden = true;
+      $("view-stats").hidden = false;
+    });
+  } catch (e) {
+    const error = $("error");
+    error.hidden = false;
+    error.textContent = String(e);
+  }
 }
 
 let refreshTimer: number | undefined;

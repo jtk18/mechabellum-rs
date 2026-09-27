@@ -1,0 +1,292 @@
+//! Everything needed to redraw one match: each round's layout for both sides, with levels, XP,
+//! equipment, and techs.
+//!
+//! A player's round record for round `r` holds the army exactly as it fought in round `r - 1`
+//! (it matches that fight's report position for position), along with that fight's result and
+//! the techs researched by then.
+
+use super::battle_record::{ActiveTechnologiesUnitData, PlayerRecord, UnitsNewUnitData};
+use super::game_data::{footprint, xp_to_next_level};
+use super::names::{resolve, NameKind};
+use super::{BattleRecord, Item, Specialist, Unit};
+
+use serde::Serialize;
+
+use std::collections::BTreeMap;
+use std::str::FromStr;
+
+#[derive(Debug, Serialize)]
+pub struct MatchDetail {
+    pub battle_id: String,
+    pub version: u32,
+    pub map_id: String,
+    pub map_name: Option<String>,
+    pub match_mode: String,
+    pub game_mode: String,
+    pub players: Vec<PlayerInfo>,
+    /// Ascending by round.
+    pub rounds: Vec<RoundLayout>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlayerInfo {
+    pub id: String,
+    pub name: String,
+    pub team: String,
+    /// Whether this player won the match, when the replay says.
+    pub won: Option<bool>,
+    /// Techs the player brought for each unit (their Unit Modification loadout).
+    pub loadout: Vec<UnitTechs>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnitTechs {
+    pub unit_id: u32,
+    pub unit_name: String,
+    pub techs: Vec<TechRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TechRef {
+    pub id: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RoundLayout {
+    pub round: u32,
+    /// One per player, in `MatchDetail::players` order; `None` if that player has no record for
+    /// this round.
+    pub sides: Vec<Option<SideLayout>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SideLayout {
+    /// "Win" or "Lose" for this round's fight, as recorded.
+    pub result: String,
+    /// Reactor core HP after the fight.
+    pub hp: i32,
+    pub units: Vec<PlacedUnit>,
+    /// Techs researched by this round, per unit type.
+    pub enabled_techs: Vec<UnitTechs>,
+    pub specialists: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlacedUnit {
+    /// Base unit ID (AsyncBattle copies folded into the original).
+    pub unit_id: u32,
+    pub name: String,
+    pub index: u32,
+    /// 0-based, as stored in replays.
+    pub level: u32,
+    /// Progress within the current level.
+    pub exp: u32,
+    /// XP needed to leave this level, when known.
+    pub xp_to_next: Option<u32>,
+    pub x: i32,
+    pub y: i32,
+    pub rotated: bool,
+    /// Grid squares (width, depth) before rotation, when known.
+    pub footprint: Option<(u8, u8)>,
+    pub equipment: Vec<String>,
+}
+
+fn base_unit_id(raw: &str) -> Option<u32> {
+    let id: u32 = raw.trim().parse().ok()?;
+    Some(match id {
+        5001..=5099 => id - 5000,
+        5201 => 2001,
+        5202 => 2002,
+        5203 => 4001,
+        _ => id,
+    })
+}
+
+fn tech_ref(id: &str) -> TechRef {
+    TechRef {
+        id: id.to_owned(),
+        name: resolve(NameKind::Tech, id).map(str::to_owned),
+    }
+}
+
+fn unit_name(raw_id: &str) -> String {
+    Unit::from_replay_id(raw_id).display_name()
+}
+
+fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
+    let unit_id = base_unit_id(&data.id)?;
+    let level = data.level.trim().parse().unwrap_or(0);
+    Some(PlacedUnit {
+        unit_id,
+        name: unit_name(&data.id),
+        index: data.index.trim().parse().unwrap_or(0),
+        level,
+        exp: data.exp.trim().parse().unwrap_or(0),
+        xp_to_next: xp_to_next_level(unit_id, level),
+        x: data.position.x.trim().parse().unwrap_or(0),
+        y: data.position.y.trim().parse().unwrap_or(0),
+        rotated: data.is_rotate.trim().eq_ignore_ascii_case("true"),
+        footprint: footprint(unit_id),
+        equipment: data
+            .equipments
+            .ids(&data.equipment_id)
+            .map(|id| Item::from_str(id).map_or_else(|_| id.to_owned(), |i| i.display_name()))
+            .collect(),
+    })
+}
+
+pub(crate) fn enabled_techs(units: &[ActiveTechnologiesUnitData]) -> Vec<UnitTechs> {
+    units
+        .iter()
+        .filter_map(|u| {
+            let techs: Vec<TechRef> = u
+                .techs
+                .iter()
+                .flat_map(|t| &t.tech)
+                .map(|t| tech_ref(&t.data))
+                .collect();
+            if techs.is_empty() {
+                return None;
+            }
+            Some(UnitTechs {
+                unit_id: base_unit_id(&u.id)?,
+                unit_name: unit_name(&u.id),
+                techs,
+            })
+        })
+        .collect()
+}
+
+fn loadout(player: &PlayerRecord) -> Vec<UnitTechs> {
+    player
+        .data
+        .unit_datas
+        .unit_data
+        .iter()
+        .filter_map(|u| {
+            Some(UnitTechs {
+                unit_id: base_unit_id(&u.id)?,
+                unit_name: unit_name(&u.id),
+                techs: u
+                    .techs
+                    .iter()
+                    .flat_map(|t| &t.tech)
+                    .map(|t| tech_ref(&t.data))
+                    .collect(),
+            })
+        })
+        .collect()
+}
+
+impl BattleRecord {
+    pub fn match_detail(&self) -> MatchDetail {
+        let players: Vec<&PlayerRecord> = self.player_records.player_record.iter().collect();
+        let mut rounds: BTreeMap<u32, Vec<Option<SideLayout>>> = BTreeMap::new();
+
+        for (i, player) in players.iter().enumerate() {
+            for record in &player.player_round_records.player_round_record {
+                let Ok(recorded) = record.round.trim().parse::<u32>() else {
+                    continue;
+                };
+                let data = &record.player_data;
+                if recorded == 0 || data.units.new_unit_data.is_empty() {
+                    continue;
+                }
+                let side = SideLayout {
+                    result: data.pre_round_fight_result.clone(),
+                    hp: data.reactor_core.trim().parse().unwrap_or(0),
+                    units: data
+                        .units
+                        .new_unit_data
+                        .iter()
+                        .filter_map(placed_unit)
+                        .collect(),
+                    enabled_techs: enabled_techs(&data.active_technologies.unit_data),
+                    specialists: data
+                        .officers
+                        .int
+                        .iter()
+                        .map(|id| {
+                            Specialist::from_str(id)
+                                .map_or_else(|_| id.clone(), |s| s.display_name())
+                        })
+                        .collect(),
+                };
+                let slot = rounds
+                    .entry(recorded - 1)
+                    .or_insert_with(|| (0..players.len()).map(|_| None).collect());
+                slot[i] = Some(side);
+            }
+        }
+
+        MatchDetail {
+            battle_id: self.battle_info.battle_id.clone(),
+            version: self.version.trim().parse().unwrap_or(0),
+            map_id: self.battle_info.map_id.clone(),
+            map_name: resolve(NameKind::Map, &self.battle_info.map_id).map(str::to_owned),
+            match_mode: self.battle_info.match_mode.clone(),
+            game_mode: self.battle_info.game_mode.clone(),
+            players: players
+                .iter()
+                .map(|p| PlayerInfo {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                    team: p.data.team.clone(),
+                    won: p
+                        .player_round_records
+                        .player_round_record
+                        .last()
+                        .map(|r| r.player_data.pre_round_fight_result == "Win"),
+                    loadout: loadout(p),
+                })
+                .collect(),
+            rounds: rounds
+                .into_iter()
+                .map(|(round, sides)| RoundLayout { round, sides })
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_match_detail_2324() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/battle_record_2324.xml");
+        let detail = BattleRecord::new_from_file(path, false)
+            .unwrap()
+            .match_detail();
+        assert_eq!(detail.version, 2324);
+        assert_eq!(detail.players.len(), 2);
+        assert!(detail.map_name.is_some());
+        assert!(detail.players.iter().all(|p| !p.loadout.is_empty()));
+
+        // Round records 2..=9 become fights 1..=8, each with both sides.
+        let rounds: Vec<u32> = detail.rounds.iter().map(|r| r.round).collect();
+        assert_eq!(rounds, (1..=8).collect::<Vec<_>>());
+        let last = detail.rounds.last().unwrap();
+        let (a, b) = (
+            last.sides[0].as_ref().unwrap(),
+            last.sides[1].as_ref().unwrap(),
+        );
+        // Shared frame: the two armies deploy on opposite halves.
+        let max_a = a.units.iter().map(|u| u.y).max().unwrap();
+        let min_b = b.units.iter().map(|u| u.y).min().unwrap();
+        assert!(max_a < 200 && min_b > 0, "{max_a} {min_b}");
+        assert!(
+            a.units.iter().all(|u| u.footprint.is_some()),
+            "every 2.0 unit has a footprint"
+        );
+        assert!(a
+            .enabled_techs
+            .iter()
+            .flat_map(|u| &u.techs)
+            .all(|t| t.name.is_some()));
+        assert_ne!(a.result, b.result, "one side wins each fight");
+    }
+}

@@ -4,13 +4,13 @@
 mod store;
 
 pub use store::{
-    Facets, IngestOutcome, MatchRow, Stats, StatsFilter, Store, Trend, TrendCell, UploadKey,
-    UsageStat, VersionTotals, VersionTrends,
+    Facets, IngestOutcome, MatchRow, Stats, StatsFilter, Store, TechStat, Trend, TrendCell,
+    UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
 };
 
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Query, State},
+    extract::{DefaultBodyLimit, Path as UrlPath, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
@@ -51,6 +51,8 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
         .route("/api/replays", get(list_replays).post(upload_replay))
         .route("/api/stats", get(stats))
         .route("/api/stats/versions", get(version_trends))
+        .route("/api/stats/techs", get(tech_stats))
+        .route("/api/replays/{battle_id}", get(match_detail))
         .layer(DefaultBodyLimit::max(MAX_REPLAY_BYTES))
         .with_state(state)
 }
@@ -172,6 +174,25 @@ async fn stats(
     Ok(Json(blocking(move || store.stats(&filter)).await?))
 }
 
+async fn tech_stats(
+    State(state): State<AppState>,
+    Query(filter): Query<StatsFilter>,
+) -> Result<Json<Vec<UnitTechStats>>, ApiError> {
+    let store = state.store.clone();
+    Ok(Json(blocking(move || store.tech_stats(&filter)).await?))
+}
+
+async fn match_detail(
+    State(state): State<AppState>,
+    UrlPath(battle_id): UrlPath<String>,
+) -> Result<Json<mechabellum::MatchDetail>, ApiError> {
+    let store = state.store.clone();
+    blocking(move || store.match_detail(&battle_id))
+        .await?
+        .map(Json)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no such match".into()))
+}
+
 async fn version_trends(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
@@ -252,6 +273,23 @@ mod tests {
             .find(|t| t.name == overall.name)
             .unwrap();
         assert_eq!(trend.picks, overall.picks);
+
+        let techs = store.tech_stats(&StatsFilter::default()).unwrap();
+        let with_techs = techs
+            .iter()
+            .find(|u| !u.techs.is_empty())
+            .expect("some unit has techs");
+        for tech in &with_techs.techs {
+            assert!(tech.picks <= with_techs.picks);
+            if let Some(without) = tech.win_rate_without {
+                assert!((0.0..=1.0).contains(&without));
+            }
+        }
+
+        let battle_id = store.recent_matches(1).unwrap()[0].battle_id.clone();
+        let detail = store.match_detail(&battle_id).unwrap().expect("stored");
+        assert!(!detail.rounds.is_empty());
+        assert!(store.match_detail("nope").unwrap().is_none());
 
         assert_eq!(store.reindex().unwrap(), 2);
         assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 2);

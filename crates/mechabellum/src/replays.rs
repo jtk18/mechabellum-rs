@@ -1,4 +1,6 @@
 mod battle_record;
+mod detail;
+mod game_data;
 mod items;
 mod map;
 mod mode;
@@ -14,6 +16,10 @@ use chrono::prelude::{DateTime, SecondsFormat, Utc};
 use serde_xml_rs::from_str;
 
 pub use battle_record::BattleRecord;
+pub use detail::{
+    MatchDetail, PlacedUnit, PlayerInfo, RoundLayout, SideLayout, TechRef, UnitTechs,
+};
+pub use game_data::{footprint, xp_to_next_level, GRID_SQUARE};
 pub use items::Item;
 pub use map::MapPoint;
 pub use mode::GameMode;

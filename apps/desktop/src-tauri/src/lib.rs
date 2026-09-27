@@ -4,7 +4,9 @@
 mod steam;
 mod watcher;
 
-use mechabellum_server::{Facets, MatchRow, Stats, StatsFilter, Store, UploadAuth, VersionTrends};
+use mechabellum_server::{
+    Facets, MatchRow, Stats, StatsFilter, Store, UnitTechStats, UploadAuth, VersionTrends,
+};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -193,6 +195,31 @@ async fn version_trends(
 }
 
 #[tauri::command]
+async fn tech_stats(
+    state: State<'_, AppState>,
+    filter: StatsFilter,
+) -> Result<Vec<UnitTechStats>, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.tech_stats(&filter))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+async fn match_detail(
+    state: State<'_, AppState>,
+    battle_id: String,
+) -> Result<mechabellum::MatchDetail, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.match_detail(&battle_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?
+        .ok_or_else(|| "That match is no longer stored.".to_owned())
+}
+
+#[tauri::command]
 async fn facets(state: State<'_, AppState>) -> Result<Facets, String> {
     let store = state.store.clone();
     tauri::async_runtime::spawn_blocking(move || store.facets())
@@ -292,6 +319,8 @@ pub fn run() {
             recent_matches,
             facets,
             version_trends,
+            tech_stats,
+            match_detail,
             set_replay_dir
         ])
         .run(tauri::generate_context!())

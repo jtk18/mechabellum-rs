@@ -24,6 +24,7 @@ pub enum NameKind {
     Equipment,
     Tech,
     Construction,
+    Map,
 }
 
 impl NameKind {
@@ -39,6 +40,7 @@ impl NameKind {
                     || category == "SearchTargetSpecificData"
             }
             NameKind::Construction => category == "ConstructionData",
+            NameKind::Map => category == "MatchSetting",
         }
     }
 
@@ -51,6 +53,7 @@ impl NameKind {
             NameKind::Equipment => "EquipmentData",
             NameKind::Tech => "TechnologyData",
             NameKind::Construction => "ConstructionData",
+            NameKind::Map => "MatchSetting",
         }
     }
 }
@@ -197,6 +200,7 @@ mod tests {
             resolve(NameKind::Equipment, "13030010"),
             Some("Dominion Core")
         );
+        assert_eq!(resolve(NameKind::Map, "1001"), Some("Railway Town"));
         assert_eq!(resolve(NameKind::Unit, "not a number"), None);
     }
 

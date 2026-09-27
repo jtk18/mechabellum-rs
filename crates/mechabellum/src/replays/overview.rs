@@ -114,6 +114,12 @@ impl BattleRecord {
                     unlocked_units,
                     specialist_cards,
                     skills,
+                    enabled_techs: super::detail::enabled_techs(
+                        &rounds[rounds.len() - 1]
+                            .player_data
+                            .active_technologies
+                            .unit_data,
+                    ),
                 };
                 if last_round_result == "Win" {
                     winners.push(summary);

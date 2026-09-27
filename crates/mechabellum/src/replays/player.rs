@@ -1,4 +1,4 @@
-use super::{Skills, Specialist, Unit, UnitInstance};
+use super::{Skills, Specialist, Unit, UnitInstance, UnitTechs};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerName(String);
@@ -26,4 +26,6 @@ pub struct PlayerSummary {
     pub last_round_units: Vec<UnitInstance>,
     pub specialist_cards: Vec<Specialist>,
     pub skills: Vec<Skills>,
+    /// Techs researched by the final round, per unit type.
+    pub enabled_techs: Vec<UnitTechs>,
 }

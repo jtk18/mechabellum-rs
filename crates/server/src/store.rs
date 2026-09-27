@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS player_specialists (
     PRIMARY KEY (battle_id, player_id, specialist),
     FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
 );
+-- Techs researched by the final round, for unit types the player fielded then.
+CREATE TABLE IF NOT EXISTS player_techs (
+    battle_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    unit      TEXT NOT NULL,
+    tech      TEXT NOT NULL,
+    PRIMARY KEY (battle_id, player_id, unit, tech),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS replay_blobs (
     battle_id TEXT PRIMARY KEY,
     xml_gz    BLOB NOT NULL
@@ -70,6 +79,10 @@ CREATE TABLE IF NOT EXISTS ingested_files (
     parser_version TEXT NOT NULL
 );
 ";
+
+/// Bumped when derived tables change; opening an older database rebuilds them from the stored
+/// replays. 2: player_techs.
+const SCHEMA_VERSION: i64 = 2;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -160,6 +173,30 @@ pub struct TrendCell {
     pub wins: u64,
 }
 
+/// How each tech affects a unit's results: win rate with the tech researched vs. without.
+#[derive(Debug, Serialize)]
+pub struct UnitTechStats {
+    pub unit: String,
+    /// Player results that fielded the unit in the final round.
+    pub picks: u64,
+    pub wins: u64,
+    /// Most researched first.
+    pub techs: Vec<TechStat>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TechStat {
+    pub tech: String,
+    /// Results that fielded the unit with this tech researched.
+    pub picks: u64,
+    pub wins: u64,
+    /// Share of the unit's results that had this tech.
+    pub pick_rate: f64,
+    pub win_rate: f64,
+    /// Win rate of the unit's results without this tech. `None` if every result had it.
+    pub win_rate_without: Option<f64>,
+}
+
 /// What the stored matches can be filtered by, with match counts.
 #[derive(Debug, Serialize)]
 pub struct Facets {
@@ -207,9 +244,20 @@ impl Store {
         if !has_uploader {
             conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
         }
-        Ok(Store {
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        let store = Store {
             conn: Mutex::new(conn),
-        })
+        };
+        if version < SCHEMA_VERSION {
+            if store.match_count()? > 0 {
+                log::info!("rebuilding stats for schema version {SCHEMA_VERSION}");
+                store.reindex()?;
+            }
+            store
+                .conn()
+                .execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        }
+        Ok(store)
     }
 
     /// A panic mid-transaction poisons the mutex. The transaction was rolled back when it
@@ -352,6 +400,90 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn tech_stats(&self, filter: &StatsFilter) -> Result<Vec<UnitTechStats>> {
+        let conn = self.conn();
+        let scope = "WITH scope AS (
+                SELECT p.battle_id, p.player_id, p.won FROM players p
+                JOIN matches m ON m.battle_id = p.battle_id
+                WHERE (?1 IS NULL OR m.version >= ?1)
+                  AND (?2 IS NULL OR m.version <= ?2)
+                  AND (?3 IS NULL OR m.match_mode = ?3)
+                  AND (?4 IS NULL OR m.game_mode = ?4)
+                  AND (?5 IS NULL OR p.player_id = ?5))";
+        let args = params![
+            filter.min_version,
+            filter.max_version,
+            filter.match_mode,
+            filter.game_mode,
+            filter.player_id
+        ];
+        let mut units: BTreeMap<String, UnitTechStats> = conn
+            .prepare(&format!(
+                "{scope} SELECT t.unit, COUNT(*), SUM(s.won) FROM player_units t
+                 JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
+                 GROUP BY t.unit"
+            ))?
+            .query_map(args, |r| {
+                Ok(UnitTechStats {
+                    unit: r.get(0)?,
+                    picks: r.get(1)?,
+                    wins: r.get(2)?,
+                    techs: Vec::new(),
+                })
+            })?
+            .map(|u| u.map(|u| (u.unit.clone(), u)))
+            .collect::<rusqlite::Result<_>>()?;
+
+        let mut stmt = conn.prepare(&format!(
+            "{scope} SELECT t.unit, t.tech, COUNT(*), SUM(s.won) FROM player_techs t
+             JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
+             GROUP BY t.unit, t.tech"
+        ))?;
+        let mut rows = stmt.query(args)?;
+        while let Some(row) = rows.next()? {
+            let (unit, tech, picks, wins): (String, String, u64, u64) =
+                (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
+            let Some(u) = units.get_mut(&unit) else {
+                continue;
+            };
+            let (without_picks, without_wins) = (u.picks - picks, u.wins - wins);
+            u.techs.push(TechStat {
+                tech,
+                picks,
+                wins,
+                pick_rate: ratio(picks, u.picks),
+                win_rate: ratio(wins, picks),
+                win_rate_without: (without_picks > 0).then(|| ratio(without_wins, without_picks)),
+            });
+        }
+        let mut out: Vec<UnitTechStats> = units.into_values().collect();
+        for u in &mut out {
+            u.techs
+                .sort_by(|a, b| b.picks.cmp(&a.picks).then_with(|| a.tech.cmp(&b.tech)));
+        }
+        out.sort_by(|a, b| b.picks.cmp(&a.picks).then_with(|| a.unit.cmp(&b.unit)));
+        Ok(out)
+    }
+
+    /// One stored match, redrawn round by round from its replay.
+    pub fn match_detail(&self, battle_id: &str) -> Result<Option<mechabellum::MatchDetail>> {
+        let blob: Option<Vec<u8>> = self
+            .conn()
+            .query_row(
+                "SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1",
+                [battle_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(gz) = blob else {
+            return Ok(None);
+        };
+        let mut xml = String::new();
+        GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
+        let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
+        Ok(Some(record.match_detail()))
     }
 
     /// Like `stats`, but broken down by game version. The filter's version bounds still apply.
@@ -667,6 +799,24 @@ fn insert_player(
             "INSERT INTO player_units (battle_id, player_id, unit, count) VALUES (?1, ?2, ?3, ?4)",
             params![battle_id, player_id, unit, count],
         )?;
+    }
+    let fielded: std::collections::BTreeSet<String> = player
+        .last_round_units
+        .iter()
+        .map(|u| u.unit_type.display_name())
+        .collect();
+    for unit in &player.enabled_techs {
+        if !fielded.contains(&unit.unit_name) {
+            continue;
+        }
+        for tech in &unit.techs {
+            let name = tech.name.as_deref().unwrap_or(&tech.id);
+            tx.execute(
+                "INSERT OR IGNORE INTO player_techs (battle_id, player_id, unit, tech)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![battle_id, player_id, unit.unit_name, name],
+            )?;
+        }
     }
     for specialist in &player.specialist_cards {
         tx.execute(
