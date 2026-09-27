@@ -71,7 +71,9 @@ impl Half {
 // Deployment geometry, the same on every 2.0 map measured (82 games, 5 maps), in replay units
 // and a side's own frame: x to the side's right, y toward the middle ("forward"). Each side's
 // zone is 60 squares wide and 30 deep, ending 1 square short of the middle. From round 3,
-// flank columns 6 squares wide open along both edges of the opponent's half.
+// flank columns 6 squares wide open along both edges of the opponent's half. Units in a flank
+// column stand on end: there `rotated = false` means turned 90° from the main zone (seen in
+// play, and the only way units at x = ±310 fit inside a 300-360 column).
 const ZONE_HALF_WIDTH: i32 = 300;
 const ZONE_FRONT: i32 = -10;
 const ZONE_BACK: i32 = -310;

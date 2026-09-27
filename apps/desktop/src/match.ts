@@ -95,7 +95,16 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
 
 function size(unit: PlacedUnit): [number, number] {
   const [w, d] = unit.footprint ?? FALLBACK;
-  return unit.rotated ? [d * SQUARE, w * SQUARE] : [w * SQUARE, d * SQUARE];
+  return turned(unit) ? [d * SQUARE, w * SQUARE] : [w * SQUARE, d * SQUARE];
+}
+
+/** Whether the unit is drawn turned 90°. On 2.0 maps a flank column (past the zone's side edge)
+ * runs front to back, and the game stands units in it on end: IsRotate reads the other way
+ * there. Seen in play (J, 2026-09-27) and in every 2.0 flank unit whose position decides it:
+ * two Fangs at x = ±310 and a Tarantula at -345 only fit inside the column turned. */
+function turned(unit: PlacedUnit) {
+  const inFlank = (detail?.version ?? 0) >= 2000 && Math.abs(unit.x) > ZONE_HALF_WIDTH;
+  return inFlank ? !unit.rotated : unit.rotated;
 }
 
 function sideClass(side: number) {
