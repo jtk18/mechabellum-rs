@@ -30,7 +30,7 @@ pub enum Command {
         )]
         game_dir: PathBuf,
         /// Where to write the table
-        #[arg(short, long, default_value = "data/names.json")]
+        #[arg(short, long, default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/data/names.json"))]
         output: PathBuf,
     },
 }

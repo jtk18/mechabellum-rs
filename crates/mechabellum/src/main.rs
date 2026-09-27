@@ -10,7 +10,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-use mechabellum_replay_parser::*;
+use mechabellum::*;
 
 fn main() {
     env_logger::init();
