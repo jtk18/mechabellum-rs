@@ -4,14 +4,14 @@
 use anyhow::{Context, Result};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use mechabellum::{BattleRecord, PlayerSummary};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS matches (
@@ -53,10 +53,31 @@ CREATE TABLE IF NOT EXISTS replay_blobs (
     xml_gz    BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS matches_version ON matches(version);
+CREATE TABLE IF NOT EXISTS upload_keys (
+    name       TEXT PRIMARY KEY,
+    -- SHA-256 of the key; the key itself is shown once at creation and never stored
+    key_hash   BLOB NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    revoked_at TEXT
+);
 ";
 
+/// Prefix on generated upload keys, so they're recognizable in configs and logs.
+const KEY_PREFIX: &str = "mbk_";
+
+/// All access goes through one connection, so writes from this process are serialized. Every
+/// write runs in an IMMEDIATE transaction, which takes SQLite's write lock up front, so
+/// writes are also serialized against other processes on the same file (e.g. `import` while
+/// the server runs).
 pub struct Store {
     conn: Mutex<Connection>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadKey {
+    pub name: String,
+    pub created_at: String,
+    pub revoked_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -119,15 +140,37 @@ impl Store {
     }
 
     fn init(conn: Connection) -> Result<Self> {
+        // Wait for another process's write lock instead of failing with SQLITE_BUSY.
+        conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(SCHEMA)?;
+        let has_uploader = conn
+            .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'uploaded_by'")?
+            .exists([])?;
+        if !has_uploader {
+            conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
+        }
         Ok(Store {
             conn: Mutex::new(conn),
         })
     }
 
-    /// Parse and store one replay (`.grbr` bytes or extracted XML).
-    pub fn ingest(&self, bytes: &[u8], source: &Path) -> Result<IngestOutcome> {
+    /// A panic mid-transaction poisons the mutex. The transaction was rolled back when it
+    /// unwound, so the connection is still consistent and can keep serving.
+    pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Parse and store one replay (`.grbr` bytes or extracted XML) as a single transaction.
+    /// `uploaded_by` records which upload key sent it.
+    pub fn ingest(
+        &self,
+        bytes: &[u8],
+        source: &Path,
+        uploaded_by: Option<&str>,
+    ) -> Result<IngestOutcome> {
+        // Parse and compress before taking the lock so concurrent uploads only serialize on
+        // the actual writes.
         let document = BattleRecord::extract_document(bytes)
             .with_context(|| format!("{}: no battle record found", source.display()))?;
         let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
@@ -135,35 +178,101 @@ impl Store {
             "" | "0" => format!("sha256:{:x}", Sha256::digest(document.as_bytes())),
             id => id.to_owned(),
         };
-
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        let exists: Option<i64> = tx
-            .query_row(
-                "SELECT 1 FROM matches WHERE battle_id = ?1",
-                [&battle_id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if exists.is_some() {
-            return Ok(IngestOutcome::Duplicate { battle_id });
-        }
-        insert_record(&tx, &battle_id, &record)?;
-
         let mut gz = GzEncoder::new(Vec::new(), Compression::default());
         gz.write_all(document.as_bytes())?;
+        let xml_gz = gz.finish()?;
+
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let exists = tx
+            .prepare_cached("SELECT 1 FROM matches WHERE battle_id = ?1")?
+            .exists([&battle_id])?;
+        if exists {
+            return Ok(IngestOutcome::Duplicate { battle_id });
+        }
+        insert_record(&tx, &battle_id, &record, uploaded_by)?;
         tx.execute(
             "INSERT INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
-            params![battle_id, gz.finish()?],
+            params![battle_id, xml_gz],
         )?;
         tx.commit()?;
         Ok(IngestOutcome::Added { battle_id })
     }
 
+    /// Create an upload key. Returns the key, which is only available now; the database keeps
+    /// its hash.
+    pub fn create_key(&self, name: &str) -> Result<String> {
+        let mut secret = [0u8; 32];
+        getrandom::getrandom(&mut secret).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
+        let key = format!("{KEY_PREFIX}{}", hex(&secret));
+        self.conn()
+            .execute(
+                "INSERT INTO upload_keys (name, key_hash) VALUES (?1, ?2)",
+                params![name, Sha256::digest(key.as_bytes()).as_slice()],
+            )
+            .with_context(|| format!("creating key {name:?} (names must be unique)"))?;
+        Ok(key)
+    }
+
+    /// Name of the active key matching `presented`, if any. Lookup is by SHA-256, so response
+    /// time doesn't depend on how much of the key matched.
+    pub fn verify_key(&self, presented: &str) -> Result<Option<String>> {
+        if !presented.starts_with(KEY_PREFIX) {
+            return Ok(None);
+        }
+        let hash = Sha256::digest(presented.as_bytes());
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT name FROM upload_keys WHERE key_hash = ?1 AND revoked_at IS NULL",
+                [hash.as_slice()],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Returns false if no active key has that name.
+    pub fn revoke_key(&self, name: &str) -> Result<bool> {
+        let changed = self.conn().execute(
+            "UPDATE upload_keys SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE name = ?1 AND revoked_at IS NULL",
+            [name],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn list_keys(&self) -> Result<Vec<UploadKey>> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare("SELECT name, created_at, revoked_at FROM upload_keys ORDER BY name")?;
+        let keys = stmt
+            .query_map([], |r| {
+                Ok(UploadKey {
+                    name: r.get(0)?,
+                    created_at: r.get(1)?,
+                    revoked_at: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(keys)
+    }
+
+    pub fn active_key_count(&self) -> Result<u64> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM upload_keys WHERE revoked_at IS NULL",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
     /// Rebuild every derived row from the stored replays. Run after upgrading the parser.
     pub fn reindex(&self) -> Result<usize> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let uploaders: BTreeMap<String, Option<String>> = tx
+            .prepare("SELECT battle_id, uploaded_by FROM matches")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
         let blobs: Vec<(String, Vec<u8>)> = tx
             .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
@@ -173,14 +282,15 @@ impl Store {
             let mut xml = String::new();
             GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
             let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
-            insert_record(&tx, battle_id, &record)?;
+            let uploaded_by = uploaders.get(battle_id).cloned().flatten();
+            insert_record(&tx, battle_id, &record, uploaded_by.as_deref())?;
         }
         tx.commit()?;
         Ok(blobs.len())
     }
 
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on,
                     COALESCE((SELECT group_concat(name, char(31)) FROM players p
@@ -213,7 +323,7 @@ impl Store {
     }
 
     pub fn stats(&self, filter: &StatsFilter) -> Result<Stats> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         // Filtered player results. Every stat below is computed over this set.
         let scope = "WITH scope AS (
                 SELECT p.battle_id, p.player_id, p.won FROM players p
@@ -269,6 +379,10 @@ impl Store {
     }
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn ratio(n: u64, d: u64) -> f64 {
     if d == 0 {
         0.0
@@ -277,11 +391,17 @@ fn ratio(n: u64, d: u64) -> f64 {
     }
 }
 
-fn insert_record(tx: &rusqlite::Transaction, battle_id: &str, record: &BattleRecord) -> Result<()> {
+fn insert_record(
+    tx: &rusqlite::Transaction,
+    battle_id: &str,
+    record: &BattleRecord,
+    uploaded_by: Option<&str>,
+) -> Result<()> {
     let overview = record.get_battle_overview()?;
     tx.execute(
-        "INSERT INTO matches (battle_id, version, match_mode, game_mode, map_id, rounds, occurred_on)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO matches
+             (battle_id, version, match_mode, game_mode, map_id, rounds, occurred_on, uploaded_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             battle_id,
             overview.version,
@@ -290,6 +410,7 @@ fn insert_record(tx: &rusqlite::Transaction, battle_id: &str, record: &BattleRec
             overview.map_id,
             overview.rounds as i64,
             overview.occurred_on,
+            uploaded_by,
         ],
     )?;
     let sides = overview

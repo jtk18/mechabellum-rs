@@ -1,4 +1,6 @@
-# Upstream deployment. Put the upload token in a .env file next to this one:
+# Upstream deployment. Uploads need a key; create one before the first `up`:
+#   docker compose run --rm server keys add <name>
+# Optionally also set an admin token in a .env file next to this one:
 #   MECHABELLUM_UPLOAD_TOKEN=<long random string>
 # Bound to localhost only; the Pingora proxy terminates TLS and forwards to it.
 services:
@@ -7,7 +9,8 @@ services:
     image: mechabellum-server
     restart: unless-stopped
     environment:
-      MECHABELLUM_UPLOAD_TOKEN: ${MECHABELLUM_UPLOAD_TOKEN:?set MECHABELLUM_UPLOAD_TOKEN in .env}
+      MECHABELLUM_REQUIRE_AUTH: "true"
+      MECHABELLUM_UPLOAD_TOKEN: ${MECHABELLUM_UPLOAD_TOKEN:-}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

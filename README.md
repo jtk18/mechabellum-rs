@@ -36,7 +36,7 @@ cargo run --release -p mechabellum-server -- --db mechabellum.db serve --bind 12
 
 | Endpoint | |
 |---|---|
-| `POST /api/replays` | Body is a raw `.grbr` or `.xml`. Returns 201 when added, 200 when already present. Requires `Authorization: Bearer <token>` when `MECHABELLUM_UPLOAD_TOKEN` is set. |
+| `POST /api/replays` | Body is a raw `.grbr` or `.xml`. Returns 201 when added, 200 when already present, 400 when the body isn't a replay, and 422 when it's a replay that can't be parsed. With `--require-auth`, it requires `Authorization: Bearer <key>`. |
 | `GET /api/replays?limit=50` | Most recent matches. |
 | `GET /api/stats` | Unit and specialist pick and win rates, taken from each player's final-round army. Filters: `min_version`, `max_version`, `match_mode` (`VS_1_1`, ...), `game_mode` (`Normal`, `AsyncBattle`, ...), `player_id`. |
 | `GET /health` | |
@@ -44,11 +44,29 @@ cargo run --release -p mechabellum-server -- --db mechabellum.db serve --bind 12
 The database stores each original replay (gzipped). After upgrading the parser, run
 `mechabellum-server reindex` to rebuild every stat from those stored replays.
 
+### Upload auth
+
+The local instance (the desktop app) accepts uploads from anyone. A public instance runs with `--require-auth`
+(`MECHABELLUM_REQUIRE_AUTH=true`) and accepts either of these:
+
+- **Upload keys**, one per client. Create them with `keys add <name>`. Only the key's SHA-256 is stored, and the key itself is printed once. `keys revoke <name>` cuts a client off immediately, and each match records which key uploaded it.
+- An optional **admin token** (`MECHABELLUM_UPLOAD_TOKEN`), compared in constant time.
+
+The server refuses to start in auth mode if neither exists. Later, when "sign in with X" accounts arrive, keys get tied to
+accounts. The provider's own tokens only prove who someone is when they sign in on the website. They are never used to upload.
+
+### Consistency
+
+All writes go through one SQLite connection per process and run in `BEGIN IMMEDIATE` transactions, with a busy timeout.
+Uploads therefore apply one at a time, even when `import` runs next to the server. Each replay is stored whole or not at all,
+and `battle_id` is the primary key, so a replay can't be stored twice. Parsing and compression happen before taking the lock.
+
 ### Deploying (Ubuntu + Docker)
 
 ```sh
-echo "MECHABELLUM_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
-docker compose up -d --build
+docker compose build
+docker compose run --rm server keys add jason-desktop   # prints the key once
+docker compose up -d
 # optional backfill: docker compose run --rm -v /path/to/replays:/replays:ro server import /replays
 ```
 
