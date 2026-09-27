@@ -1,6 +1,24 @@
 # Work list
 
-Last updated 2026-09-26. Newest decisions are in `ORIENTATION.md` at the scratchpad root.
+Last updated 2026-09-27. Newest decisions are in  at the scratchpad root.
+
+## Overnight loop (autonomous)
+
+Rules for each pass: take the top unfinished item, keep the game's Replay folder read-only,
+run  and  (apps/desktop) before committing, commit and
+push each finished item, tick it here, and note surprises in ORIENTATION.md. Nothing is sent
+to outside servers; sync tests use a local server on 127.0.0.1.
+
+0. **Bug: tonight's 10 games were not ingested.** The replay folder has 1,063 files, but the
+   app (started before the session) still reports 1,053 matches. The watcher missed files
+   the game wrote while running. Diagnose (notify events on Program Files? write pattern?),
+   fix, add a periodic rescan as a safety net, and add a regression test.
+0b. Then confirm those games' ratings from  (20 match-start lines) land in
+   .
+Then items 1, 2, 4, 5, 6, 7, 8, 9, 11, 13, 14 (single instance, autostart), 24, 21, 12.
+
+Needs the user (skip overnight): 15 (Mac/Linux machines), 16 (the Ubuntu server), 17 (Steam
+Web API key), 22 (drives the live game), 23 (deleting GitHub branches).
 
 ## In progress: sharing matches (trust phase 1)
 
@@ -17,7 +35,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
    - opponent names are hidden server-side, and ratings are attached
    - a restart resumes without resending
    - a second key for the opponent fills in their name
-3. **Check tonight's games** (the user is playing now): new replays ingest and validate, and
+3. **Check tonight's games** (see item 0 first): new replays ingest and validate, and
    `Player.log` ratings land in `player_ratings` for them.
 4. **Show MMR** in the match list and on the board (both players' elo at match start).
 
