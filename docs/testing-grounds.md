@@ -107,8 +107,8 @@ Rotation and techs (verified 2026-09-27, same replay check):
   re-enter Testing Grounds to reset it).
 - **Techs:** select the unit (a click picks it up), click its card's tech buttons, then
   right-click (it snaps back to where it was placed). The 4 buttons (screen 260/370/480/590,
-  1453) follow the unit's equipped techs in replay  order, and each player has its
-  own loadout: yours for the south half, Bot's for the north.  reads both from the
+  1453) follow the unit's equipped techs in replay `unitDatas` order, and each player has its
+  own loadout: yours for the south half, Bot's for the north. `grounds` reads both from the
   newest replay. Each side has its own supplies, so it adds 5000 per side first.
 - **Adjust Unit Tech** in the tools changes the loadouts themselves (which techs are equipped),
   not research on a unit.
