@@ -119,6 +119,16 @@ impl ReplayWatcher {
     /// files that were already read, with the same size and modification time, are skipped
     /// without parsing.
     pub fn start(dir: &Path, store: Arc<Store>, sink: EventSink) -> anyhow::Result<Self> {
+        // File events report real paths (macOS: /private/var/... for /var/...), so scan the
+        // same form, or a file first seen live is read again after a restart. Windows keeps
+        // the path as given; canonical paths there carry a \\?\ prefix.
+        let canonical;
+        let dir = if cfg!(windows) {
+            dir
+        } else {
+            canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+            canonical.as_path()
+        };
         let (tx, rx) = mpsc::channel::<PathBuf>();
         let mut watcher =
             notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
