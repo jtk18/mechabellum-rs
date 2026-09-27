@@ -72,7 +72,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     recorded (every round's armies, HP, results; no names), `corroborated_only` in the stats
     filter, and `mechabellum-server disputes`. Not yet checked: that two real players' copies
     of one match fingerprint identically (needs both copies; watch `disputes` once people share).
-19. **Per-uploader caps** in aggregates; median-of-means aggregation; outlier review.
+19. ~~Per-uploader caps, median of means, outlier review~~ Done: `crates/server/src/aggregate.rs`,
+    `/api/stats/robust`, and `mechabellum-server outliers`. The website should show these rather
+    than the plain rates once there are many uploaders.
 20. **Public website:** stats pages and per-player pages (players shown pseudonymously unless
     they share).
 

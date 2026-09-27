@@ -50,6 +50,8 @@ enum Command {
     },
     /// List shared matches whose players' copies disagree
     Disputes,
+    /// List uploaders whose results sit far from everyone else's
+    Outliers,
     /// Manage upload keys
     Keys {
         #[command(subcommand)]
@@ -145,6 +147,23 @@ async fn main() -> Result<()> {
                 "removed {} matches shared by {uploader}",
                 store.purge_uploader(&uploader)?
             );
+        }
+        Command::Outliers => {
+            let found = store.outliers(&Default::default())?;
+            if found.is_empty() {
+                println!("no outliers");
+            }
+            for o in found {
+                println!(
+                    "{}: {} won {:.0}% of {} games; everyone else {:.0}% (z = {:.1})",
+                    o.name,
+                    o.uploader,
+                    o.win_rate * 100.0,
+                    o.games,
+                    o.others_win_rate * 100.0,
+                    o.z
+                );
+            }
         }
         Command::Disputes => {
             let (corroborated, disputed) = store.corroboration()?;

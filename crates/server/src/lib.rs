@@ -1,12 +1,13 @@
 //! Replay ingestion and stats API. Runs standalone (`mechabellum-server serve`) or embedded in the
 //! desktop app via [`router`].
 
+pub mod aggregate;
 mod store;
 
 pub use store::{
     Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand, Rejection,
-    Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey,
-    UsageStat, VersionTotals, VersionTrends,
+    RobustStats, Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell,
+    UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -58,6 +59,7 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
         .route("/api/stats", get(stats))
         .route("/api/stats/versions", get(version_trends))
         .route("/api/stats/techs", get(tech_stats))
+        .route("/api/stats/robust", get(robust_stats))
         .route("/api/replays/{battle_id}", get(match_detail))
         .route("/api/replays/missing", axum::routing::post(missing_replays))
         .route(
@@ -301,6 +303,15 @@ async fn match_detail(
         .await?
         .map(Json)
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no such match".into()))
+}
+
+/// Win rates with each uploader's weight capped and a median of per-uploader rates.
+async fn robust_stats(
+    State(state): State<AppState>,
+    Query(filter): Query<StatsFilter>,
+) -> Result<Json<RobustStats>, ApiError> {
+    let store = state.store.clone();
+    Ok(Json(blocking(move || store.robust_stats(&filter)).await?))
 }
 
 async fn version_trends(

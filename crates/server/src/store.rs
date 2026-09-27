@@ -396,6 +396,12 @@ pub struct Facets {
     pub main_player: Option<(String, String)>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct RobustStats {
+    pub units: Vec<crate::aggregate::RobustStat>,
+    pub specialists: Vec<crate::aggregate::RobustStat>,
+}
+
 /// A shared match whose copies disagree.
 #[derive(Debug, Serialize)]
 pub struct Dispute {
@@ -943,6 +949,63 @@ impl Store {
             }
         }
         Ok(disputes)
+    }
+
+    /// Games and wins per (unit or specialist, uploader) in the filtered results. Matches that
+    /// came from the local watcher or the admin token count as one uploader, "".
+    fn uploader_counts(
+        &self,
+        filter: &StatsFilter,
+        table: &'static str,
+        column: &'static str,
+    ) -> Result<BTreeMap<String, Vec<crate::aggregate::UploaderCount>>> {
+        let conn = self.conn();
+        let scope = SCOPE;
+        let mut stmt = conn.prepare(&format!(
+            "{scope} SELECT t.{column}, COALESCE(m.uploaded_by, ''), COUNT(*), SUM(s.won)
+             FROM {table} t
+             JOIN scope s ON s.battle_id = t.battle_id AND s.player_id = t.player_id
+             JOIN matches m ON m.battle_id = s.battle_id
+             GROUP BY 1, 2"
+        ))?;
+        let mut rows = stmt.query(filter.params())?;
+        let mut out: BTreeMap<String, Vec<crate::aggregate::UploaderCount>> = BTreeMap::new();
+        while let Some(row) = rows.next()? {
+            out.entry(row.get(0)?)
+                .or_default()
+                .push(crate::aggregate::UploaderCount {
+                    uploader: row.get(1)?,
+                    games: row.get(2)?,
+                    wins: row.get(3)?,
+                });
+        }
+        Ok(out)
+    }
+
+    /// Unit and specialist win rates that no single uploader can move much.
+    pub fn robust_stats(&self, filter: &StatsFilter) -> Result<RobustStats> {
+        use crate::aggregate::robust_stats;
+        Ok(RobustStats {
+            units: robust_stats(&self.uploader_counts(filter, "player_units", "unit")?),
+            specialists: robust_stats(&self.uploader_counts(
+                filter,
+                "player_specialists",
+                "specialist",
+            )?),
+        })
+    }
+
+    /// Uploaders whose results are implausibly far from everyone else's, for review.
+    pub fn outliers(&self, filter: &StatsFilter) -> Result<Vec<crate::aggregate::Outlier>> {
+        use crate::aggregate::outliers;
+        let mut all = outliers(&self.uploader_counts(filter, "player_units", "unit")?);
+        all.extend(outliers(&self.uploader_counts(
+            filter,
+            "player_specialists",
+            "specialist",
+        )?));
+        all.sort_by(|a, b| b.z.abs().total_cmp(&a.z.abs()));
+        Ok(all)
     }
 
     /// How many shared matches are corroborated (two players' copies agree) and disputed.
