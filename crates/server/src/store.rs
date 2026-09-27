@@ -110,6 +110,11 @@ CREATE TABLE IF NOT EXISTS upload_keys (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     revoked_at TEXT
 );
+-- Local app: the account logged in to the game on this machine, from its Player.log.
+CREATE TABLE IF NOT EXISTS local_player (
+    only      INTEGER PRIMARY KEY CHECK (only = 0),
+    player_id TEXT NOT NULL
+);
 -- Files already read from a watched replay folder, so restarts skip them without parsing.
 CREATE TABLE IF NOT EXISTS ingested_files (
     path           TEXT PRIMARY KEY,
@@ -758,6 +763,15 @@ impl Store {
 
     /// Record ratings without checking the match: the game logs ratings when a match starts, before
     /// its replay exists. For the local app only; shared uploads go through `add_ratings`.
+    /// Record the account logged in to the game on this machine (from its Player.log).
+    pub fn set_local_player(&self, player_id: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO local_player (only, player_id) VALUES (0, ?1)",
+            params![player_id],
+        )?;
+        Ok(())
+    }
+
     pub fn put_ratings(&self, battle_id: &str, ratings: &[Rating]) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1282,7 +1296,21 @@ impl Store {
             )?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<_>>()?;
-        let main_player = conn
+        // "Me": the account the game says is logged in here, once it has a stored match.
+        // Without that, whoever appears in the most matches.
+        let logged_in = conn
+            .query_row(
+                "SELECT l.player_id,
+                        (SELECT q.name FROM players q JOIN matches m ON m.battle_id = q.battle_id
+                         WHERE q.player_id = l.player_id
+                         ORDER BY m.occurred_on DESC, m.version DESC LIMIT 1)
+                 FROM local_player l",
+                [],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)),
+            )
+            .optional()?
+            .and_then(|(id, name)| Some((id, name?)));
+        let most_matches = conn
             .query_row(
                 // Name from their most recent match: accounts can be renamed.
                 "SELECT p.player_id,
@@ -1297,7 +1325,7 @@ impl Store {
         Ok(Facets {
             versions,
             modes,
-            main_player,
+            main_player: logged_in.or(most_matches),
         })
     }
 

@@ -642,6 +642,29 @@ mod tests {
     /// racing to add the same two replays: each is stored exactly once, with no errors or
     /// partial rows.
     #[test]
+    fn test_me_is_the_logged_in_player() {
+        let store = Store::open_in_memory().unwrap();
+        store.ingest(&fixture(NEW), Path::new("a"), None).unwrap();
+        let players: Vec<(String, String)> = store
+            .conn()
+            .prepare("SELECT player_id, name FROM players ORDER BY player_id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(players.len(), 2);
+        // A one-match tie: the guess is one of them. The log settles it either way.
+        let guess = store.facets().unwrap().main_player.unwrap();
+        let other = players.iter().find(|p| **p != guess).unwrap().clone();
+        store.set_local_player(&other.0).unwrap();
+        assert_eq!(store.facets().unwrap().main_player, Some(other));
+        // A logged-in account with no stored match yet has no name; fall back to the guess.
+        store.set_local_player("999").unwrap();
+        assert_eq!(store.facets().unwrap().main_player, Some(guess));
+    }
+
+    #[test]
     fn test_concurrent_ingest_is_serialized() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("race.db");

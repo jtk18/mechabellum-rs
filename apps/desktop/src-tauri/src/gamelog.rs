@@ -64,6 +64,17 @@ fn json_span(text: &str, start: usize) -> Option<&str> {
 }
 
 /// Match-start ratings in a chunk of log text: (battle ID, ratings).
+/// The player ID of the account that logged in, from the last `[C] receive server id : <id>`
+/// line. That's the player using this machine, whoever appears in the most replays.
+pub fn parse_logged_in(text: &str) -> Option<String> {
+    text.lines()
+        .rev()
+        .filter_map(|line| line.split_once("receive server id :"))
+        .map(|(_, id)| id.trim())
+        .find(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+        .map(str::to_owned)
+}
+
 pub fn parse_ratings(text: &str) -> Vec<(String, Vec<Rating>)> {
     let mut found = Vec::new();
     for line in text.lines() {
@@ -127,6 +138,11 @@ pub fn follow(dirs: Vec<PathBuf>, store: Arc<Store>, stop: Arc<AtomicBool>) {
     };
     log::info!("reading ratings from {}", dir.join("Player.log").display());
     let save = |text: &str| {
+        if let Some(id) = parse_logged_in(text) {
+            if let Err(e) = store.set_local_player(&id) {
+                log::warn!("saving the logged-in player: {e:#}");
+            }
+        }
         for (battle, ratings) in parse_ratings(text) {
             if let Err(e) = store.put_ratings(&battle, &ratings) {
                 log::warn!("saving ratings for {battle}: {e:#}");
@@ -233,5 +249,13 @@ mod tests {
         read_new(&path, &mut offset, &mut partial, &save).unwrap();
         let _ = tail;
         assert_eq!(*seen.borrow(), vec!["a--1", "b--2", "c--3"]);
+    }
+
+    #[test]
+    fn test_logged_in_player_is_the_last_login() {
+        let log = "noise\n[C] receive server id : 281474976711196086\nmore\n\
+                   [C] receive server id : 42\r\n[C] receive server id : \n";
+        assert_eq!(parse_logged_in(log).as_deref(), Some("42"));
+        assert_eq!(parse_logged_in("nothing here"), None);
     }
 }
