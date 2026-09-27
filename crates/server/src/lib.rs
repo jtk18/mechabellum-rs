@@ -3,7 +3,7 @@
 
 mod store;
 
-pub use store::{IngestOutcome, MatchRow, Stats, StatsFilter, Store, UploadKey, UsageStat};
+pub use store::{Facets, IngestOutcome, MatchRow, Stats, StatsFilter, Store, UploadKey, UsageStat};
 
 use axum::{
     body::Bytes,

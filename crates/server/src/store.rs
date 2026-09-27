@@ -60,7 +60,19 @@ CREATE TABLE IF NOT EXISTS upload_keys (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     revoked_at TEXT
 );
+-- Files already read from a watched replay folder, so restarts skip them without parsing.
+CREATE TABLE IF NOT EXISTS ingested_files (
+    path           TEXT PRIMARY KEY,
+    size           INTEGER NOT NULL,
+    modified       INTEGER NOT NULL,
+    battle_id      TEXT,
+    error          TEXT,
+    parser_version TEXT NOT NULL
+);
 ";
+
+/// Failed files are retried when the parser changes.
+const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Prefix on generated upload keys, so they're recognizable in configs and logs.
 const KEY_PREFIX: &str = "mbk_";
@@ -80,7 +92,7 @@ pub struct UploadKey {
     pub revoked_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum IngestOutcome {
     Added { battle_id: String },
@@ -116,6 +128,17 @@ pub struct UsageStat {
     pub wins: u64,
     pub pick_rate: f64,
     pub win_rate: f64,
+}
+
+/// What the stored matches can be filtered by, with match counts.
+#[derive(Debug, Serialize)]
+pub struct Facets {
+    /// Newest first.
+    pub versions: Vec<(u32, u64)>,
+    /// (match_mode, game_mode, matches), most common first.
+    pub modes: Vec<(String, String, u64)>,
+    /// The account with the most matches: on a desktop install, the owner.
+    pub main_player: Option<(String, String)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -255,6 +278,83 @@ impl Store {
             })?
             .collect::<rusqlite::Result<_>>()?;
         Ok(keys)
+    }
+
+    /// Whether `path` was already handled with this size and modification time. Failures count
+    /// as handled until the parser version changes.
+    pub fn file_seen(&self, path: &str, size: u64, modified: i64) -> Result<bool> {
+        Ok(self
+            .conn()
+            .prepare_cached(
+                "SELECT 1 FROM ingested_files
+                 WHERE path = ?1 AND size = ?2 AND modified = ?3
+                   AND (error IS NULL OR parser_version = ?4)",
+            )?
+            .exists(params![path, size as i64, modified, PARSER_VERSION])?)
+    }
+
+    pub fn mark_file(
+        &self,
+        path: &str,
+        size: u64,
+        modified: i64,
+        result: std::result::Result<&str, &str>,
+    ) -> Result<()> {
+        let (battle_id, error) = match result {
+            Ok(id) => (Some(id), None),
+            Err(e) => (None, Some(e)),
+        };
+        self.conn().execute(
+            "INSERT OR REPLACE INTO ingested_files
+                 (path, size, modified, battle_id, error, parser_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                path,
+                size as i64,
+                modified,
+                battle_id,
+                error,
+                PARSER_VERSION
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn facets(&self) -> Result<Facets> {
+        let conn = self.conn();
+        let versions = conn
+            .prepare(
+                "SELECT version, COUNT(*) FROM matches GROUP BY version ORDER BY version DESC",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let modes = conn
+            .prepare(
+                "SELECT match_mode, game_mode, COUNT(*) FROM matches
+                 GROUP BY match_mode, game_mode ORDER BY COUNT(*) DESC",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let main_player = conn
+            .query_row(
+                "SELECT player_id, (SELECT name FROM players q WHERE q.player_id = p.player_id
+                                    ORDER BY q.battle_id DESC LIMIT 1)
+                 FROM players p GROUP BY player_id ORDER BY COUNT(*) DESC LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        Ok(Facets {
+            versions,
+            modes,
+            main_player,
+        })
+    }
+
+    pub fn match_count(&self) -> Result<u64> {
+        Ok(self
+            .conn()
+            .query_row("SELECT COUNT(*) FROM matches", [], |r| r.get(0))?)
     }
 
     pub fn active_key_count(&self) -> Result<u64> {

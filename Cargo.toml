@@ -1,5 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
-# The Tauri app builds on its own through its npm/tauri tooling.
-exclude = ["apps/desktop/src-tauri"]
+members = ["crates/*", "apps/desktop/src-tauri"]

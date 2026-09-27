@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    mechabellum_stats_lib::run()
+    mechabellum_desktop_lib::run()
 }

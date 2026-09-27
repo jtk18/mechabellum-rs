@@ -2,20 +2,60 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Mechabellum Stats</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
   <body>
-    <main class="container">
+    <header class="topbar">
       <h1>Mechabellum Stats</h1>
+      <div class="status" id="status" aria-live="polite"></div>
+    </header>
 
-      <form class="row" id="dir-form">
-        <button type="submit">Pick Directory</button>
-      </form>
-      <p id="dir-picked"></p>
+    <section class="source">
+      <div class="source-line">
+        <span class="label">Replays</span>
+        <code id="replay-dir">…</code>
+        <span class="badge" id="replay-dir-badge" hidden>auto-detected</span>
+      </div>
+      <div class="source-actions">
+        <button type="button" id="choose-dir">Choose folder…</button>
+        <button type="button" id="auto-dir" class="quiet" hidden>Use Steam's folder</button>
+      </div>
+      <p class="error" id="error" hidden></p>
+    </section>
+
+    <section class="filters" aria-label="Filters">
+      <label>Patch
+        <select id="filter-version"></select>
+      </label>
+      <label>Mode
+        <select id="filter-mode"></select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="filter-mine" />
+        <span id="filter-mine-label">Only my side</span>
+      </label>
+      <span class="summary" id="summary"></span>
+    </section>
+
+    <main class="panels">
+      <section class="panel">
+        <h2>Units <small>in the final-round army</small></h2>
+        <div class="usage" id="units" role="table" aria-label="Unit pick and win rates"></div>
+      </section>
+      <section class="panel">
+        <h2>Specialists</h2>
+        <div class="usage" id="specialists" role="table" aria-label="Specialist pick and win rates"></div>
+      </section>
+      <section class="panel wide">
+        <h2>Recent matches</h2>
+        <ol class="matches" id="matches"></ol>
+      </section>
     </main>
+
+    <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
   </body>
 </html>

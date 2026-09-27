@@ -1,21 +1,24 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "mechabellum-stats",
+  "productName": "Mechabellum Stats",
   "version": "0.1.0",
-  "identifier": "com.mechabellum-stats.app",
+  "identifier": "com.jtk18.mechabellum-stats",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "mechabellum-stats",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Mechabellum Stats",
+        "width": 1100,
+        "height": 780,
+        "minWidth": 720,
+        "minHeight": 480
       }
     ],
     "security": {
@@ -31,6 +34,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "Stats from your Mechabellum replays"
   }
 }
