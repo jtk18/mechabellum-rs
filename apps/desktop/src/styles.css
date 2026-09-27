@@ -978,6 +978,10 @@ h1 {
   background: rgb(7 9 11 / 0.82);
   backdrop-filter: blur(10px) saturate(1.1);
 }
+/* display: grid above would otherwise override the hidden attribute. */
+.splash[hidden] {
+  display: none;
+}
 .splash-card {
   width: min(520px, 100%);
   padding: 28px 28px 22px;
