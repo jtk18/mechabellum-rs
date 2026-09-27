@@ -149,7 +149,7 @@ fn main() -> Result<()> {
             let mut game = mechabellum_grounds::win::Game::find()?;
             for (x, y) in points {
                 let target = (f64::from(x), f64::from(y));
-                let ok = spawn_and_place(&mut game, &unit, target)?;
+                let ok = spawn_and_place(&mut game, &unit, target, false)?;
                 println!(
                     "{unit} to {x},{y}: {}",
                     if ok { "placed" } else { "NOT confirmed" }
@@ -230,6 +230,39 @@ fn place(
         }
     }
 
+    // Techs are clicked by position on each unit's card, in loadout order.
+    let replays = std::path::Path::new(
+        r"C:\Program Files (x86)\Steam\steamapps\common\Mechabellum\ProjectDatas\Replay",
+    );
+    let wants_techs = board
+        .sides
+        .iter()
+        .flat_map(|s| &s.units)
+        .any(|u| !u.techs.is_empty());
+    let (mine, theirs) = if wants_techs {
+        mechabellum_grounds::loadouts(replays)?
+    } else {
+        Default::default()
+    };
+    let mut buttons: Vec<Vec<usize>> = Vec::new();
+    for (side, unit) in board
+        .sides
+        .iter()
+        .flat_map(|s| s.units.iter().map(move |u| (s, u)))
+    {
+        let loadout = if side.half == Some(Half::North) {
+            &theirs
+        } else {
+            &mine
+        };
+        let equipped = loadout.get(&unit.unit_id).map(Vec::as_slice).unwrap_or(&[]);
+        buttons.push(
+            mechabellum_grounds::tech_buttons(&unit.name, &unit.techs, equipped)
+                .map_err(|e| anyhow::anyhow!(e))?,
+        );
+    }
+    let mut buttons = buttons.into_iter();
+
     let mut game = Game::find()?;
     // Testing Grounds starts on your own (south) side.
     let mut current = Half::South;
@@ -238,14 +271,32 @@ fn place(
         let half = side.half.unwrap_or(Half::South);
         switch_to(&mut game, half, &mut current)?;
         let projection = if half == Half::North { north } else { south };
+        // Research costs supplies, and each side has its own; add plenty.
+        if side.units.iter().any(|u| !u.techs.is_empty()) {
+            game.click(ui::TOOLS, 1200);
+            for _ in 0..5 {
+                game.click(ui::TOOLS_SUPPLIES_1000, 300);
+            }
+            game.click(ui::TOOLS_CLOSE_LEFT, 500);
+            game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+        }
         println!("{}:", side.name.as_deref().unwrap_or(half_name(half)));
         for (step, unit) in plan(side, projection).iter().zip(&side.units) {
             if limit.is_some_and(|l| placed >= l) {
                 break;
             }
             placed += 1;
-            let landed = spawn_and_place(&mut game, &step.name, step.screen)
+            let landed = spawn_and_place(&mut game, &step.name, step.screen, unit.rotated)
                 .with_context(|| format!("{} at {},{}", step.name, step.board.0, step.board.1))?;
+            // Techs: select it (a click picks it up), click its card's buttons, then put it back.
+            let techs = buttons.next().unwrap_or_default();
+            if !techs.is_empty() {
+                game.click(step.screen, 900);
+                for b in &techs {
+                    game.click(ui::CARD_TECHS[*b], 900);
+                }
+                game.right_click(ui::NEUTRAL, 700);
+            }
             // Level: select it, then Upgrade in the tools, once per level.
             if unit.level > 1 {
                 game.click(step.screen, 700);
@@ -278,14 +329,11 @@ fn place(
         .sides
         .iter()
         .flat_map(|s| &s.units)
-        .filter(|u| !u.techs.is_empty() || !u.items.is_empty() || u.rotated)
+        .filter(|u| !u.items.is_empty())
         .map(|u| u.name.as_str())
         .collect();
     if !skipped.is_empty() {
-        println!(
-            "Not set yet (techs, items, rotation): {}",
-            skipped.join(", ")
-        );
+        println!("Not set yet (items): {}", skipped.join(", "));
     }
     Ok(())
 }
@@ -304,6 +352,7 @@ fn spawn_and_place(
     game: &mut mechabellum_grounds::win::Game,
     name: &str,
     target: mechabellum_grounds::Px,
+    rotated: bool,
 ) -> Result<bool> {
     use mechabellum_grounds::{green_blobs, ui, Px};
 
@@ -381,6 +430,11 @@ fn spawn_and_place(
     for _ in 0..3 {
         game.click(spawn, 700);
         game.click(target, 700);
+        // Between the first click at the spot and the confirming double click, a middle click
+        // turns the unit 90 degrees.
+        if rotated {
+            game.middle_click(target, 700);
+        }
         game.double_click(target, 700);
         game.right_click(target, 900);
         let now = green_blobs(&game.screenshot()?);

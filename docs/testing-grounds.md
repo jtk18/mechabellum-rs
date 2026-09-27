@@ -101,25 +101,20 @@ How it works:
 Gotchas: a cursor resting at a screen edge scrolls the camera, so the cursor parks over the
 supplies counter. Stacked units on the pad are picked up together. Right-clicking cancels a carry.
 
-Findings for what's next:
-- **Rotation:** not found yet. Holding the left button, the middle button, or T while a unit is
-  selected switches its *formation* (per the on-screen hint), not its facing. The card's
-  bottom-right icon opens a follow camera (right-click exits; switching sides twice resets the
-  view). To try next: R or F while carrying (the hint lists Q/E/R/F for camera rotation, so
-  probably not), and the unit card's other buttons.
-- **Techs:** two different things. **Adjust Unit Tech** (in the tools, under the Squad list)
-  opens a grid of every unit with its tech icons: gold means available, a left click toggles,
-  a right click "carries/removes", then Confirm. That's the Unit Modification loadout. Techs
-  *researched* on a unit are bought from its card: the row of 4 priced buttons (e.g. 100, 250,
-  250, 150 for a Crawler) under its stats. Setting a board code's `techs` means clicking those
-  by position. **The card's buttons are in the replay's `unitDatas` order** (checked on the
-  Crawler: Mechanical Rage 10510, Replicate 180110, Loose Formation 3510, Impact Drill 10710,
-  matching the icons left to right). GameData.grdb lists the same techs in a different order.
-  Not yet tried: whether clicking a button buys the tech in Testing Grounds.
-- **Hovering** a unit in the Squad list shows its equipped techs and stats.
-- Clicking a stack on the pad picks up the older unit. Keep the pad clear between spawns.
+Rotation and techs (verified 2026-09-27, same replay check):
+- **Rotation:** carry the unit, click at the spot, **middle-click**, then double-click to confirm.
+  R, F, Q, and E turn the *camera* instead (and switching sides doesn't undo that; leave and
+  re-enter Testing Grounds to reset it).
+- **Techs:** select the unit (a click picks it up), click its card's tech buttons, then
+  right-click (it snaps back to where it was placed). The 4 buttons (screen 260/370/480/590,
+  1453) follow the unit's equipped techs in replay  order, and each player has its
+  own loadout: yours for the south half, Bot's for the north.  reads both from the
+  newest replay. Each side has its own supplies, so it adds 5000 per side first.
+- **Adjust Unit Tech** in the tools changes the loadouts themselves (which techs are equipped),
+  not research on a unit.
+- Hovering a unit in the Squad list shows its equipped techs and stats.
 
-Still to do: techs (above), items, rotation, other maps (each
+Still to do: items, other maps (each
 needs its 6 calibration points, gathered with `grounds drop x,y ...` and read back from the replay),
 and a Command Center anchor per map.
 

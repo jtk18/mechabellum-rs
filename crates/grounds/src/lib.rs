@@ -125,6 +125,15 @@ pub mod ui {
     pub const TOOLS_CLOSE_RIGHT: Px = (2534.0, 317.0);
     pub const TOOLS_SQUAD_TAB: Px = (2099.0, 448.0);
     pub const TOOLS_UPGRADE: Px = (118.0, 1203.0);
+    pub const TOOLS_SUPPLIES_1000: Px = (116.0, 745.0);
+    /// The researchable tech buttons on a selected unit's card, left to right. They follow the
+    /// unit's equipped techs in the order replays record them (`unitDatas`).
+    pub const CARD_TECHS: [Px; 4] = [
+        (260.0, 1453.0),
+        (370.0, 1453.0),
+        (480.0, 1453.0),
+        (590.0, 1453.0),
+    ];
     /// A point inside the Squad list, for scrolling it with the wheel.
     pub const PALETTE_SCROLL: Px = (2350.0, 1100.0);
 
@@ -297,6 +306,84 @@ pub mod ui {
     }
 }
 
+/// Equipped techs per unit type, in card order.
+pub type Loadout = std::collections::BTreeMap<u32, Vec<(u32, String)>>;
+
+/// Each player's equipped techs in card order, from the newest replay in `replay_dir`: yours
+/// first, then the other side (in Testing Grounds, "Bot", which has its own loadout).
+pub fn loadouts(replay_dir: &std::path::Path) -> anyhow::Result<(Loadout, Loadout)> {
+    let newest = std::fs::read_dir(replay_dir)?
+        .flatten()
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|x| x == "grbr" || x == "xml")
+        })
+        .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
+        .ok_or_else(|| anyhow::anyhow!("no replays in {}", replay_dir.display()))?;
+    let record = mechabellum::BattleRecord::new_from_file(newest.path(), false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", newest.path().display()))?;
+    let detail = record.match_detail();
+    let to_map = |p: &mechabellum::PlayerInfo| {
+        let mut map = Loadout::new();
+        // Star Expedition copies fold into the same unit ID; the regular unit comes first.
+        for u in &p.loadout {
+            map.entry(u.unit_id).or_insert_with(|| {
+                u.techs
+                    .iter()
+                    .map(|t| {
+                        (
+                            t.id.parse().unwrap_or(0),
+                            t.name.clone().unwrap_or_default(),
+                        )
+                    })
+                    .collect()
+            });
+        }
+        map
+    };
+    let mine = detail.players.iter().find(|p| p.name != "Bot");
+    let other = detail
+        .players
+        .iter()
+        .find(|p| Some(p.id.as_str()) != mine.map(|m| m.id.as_str()));
+    Ok((
+        mine.map(to_map).unwrap_or_default(),
+        other.map(to_map).unwrap_or_default(),
+    ))
+}
+
+/// Card button positions (0-based) for the techs a board code names, in the order given.
+/// Errors name any tech that isn't equipped for the unit.
+pub fn tech_buttons(
+    unit: &str,
+    wanted: &[String],
+    equipped: &[(u32, String)],
+) -> Result<Vec<usize>, String> {
+    let key = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    wanted
+        .iter()
+        .map(|w| {
+            equipped
+                .iter()
+                .position(|(id, name)| key(name) == key(w) || id.to_string() == *w)
+                .filter(|&i| i < 4)
+                .ok_or_else(|| {
+                    let have: Vec<&str> = equipped.iter().map(|(_, n)| n.as_str()).collect();
+                    format!(
+                        "{unit} has no equipped tech {w:?} (equipped: {})",
+                        have.join(", ")
+                    )
+                })
+        })
+        .collect()
+}
+
 /// Where each unit of a side goes on screen.
 #[derive(Debug, Clone)]
 pub struct PlanStep {
@@ -427,6 +514,27 @@ mod tests {
             let (su, sv) = north.to_screen(x, y);
             assert!((su - u).hypot(sv - v) < 15.0);
         }
+    }
+
+    #[test]
+    fn test_tech_buttons() {
+        let equipped = vec![
+            (10510, "Mechanical Rage".to_string()),
+            (180110, "Replicate".to_string()),
+            (3510, "Loose Formation".to_string()),
+            (10710, "Impact Drill".to_string()),
+        ];
+        assert_eq!(
+            tech_buttons(
+                "Crawler",
+                &["impact drill".into(), "Mechanical Rage".into()],
+                &equipped
+            ),
+            Ok(vec![3, 0])
+        );
+        assert!(tech_buttons("Crawler", &["Barrier".into()], &equipped)
+            .unwrap_err()
+            .contains("equipped"));
     }
 
     #[test]

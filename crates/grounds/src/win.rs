@@ -13,8 +13,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    mouse_event, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN,
-    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSE_EVENT_FLAGS,
+    mouse_event, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
+    MOUSE_EVENT_FLAGS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GetClientRect, IsIconic, SetCursorPos, SetForegroundWindow, SetProcessDPIAware,
@@ -113,6 +114,13 @@ impl Game {
         self.glide(p);
         self.button(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
         self.button(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
+        ms(wait_ms);
+    }
+
+    /// While carrying a unit, a middle click turns it 90 degrees.
+    pub fn middle_click(&mut self, p: Px, wait_ms: u64) {
+        self.glide(p);
+        self.button(MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP);
         ms(wait_ms);
     }
 
