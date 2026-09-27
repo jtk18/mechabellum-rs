@@ -33,7 +33,7 @@ impl BattleRecord {
         for (i, player) in self.player_records.player_record.iter().enumerate() {
             let name: PlayerName = player.name.clone().into();
             let rounds = &player.player_round_records.player_round_record;
-            if rounds.len() == 0 {
+            if rounds.is_empty() {
                 // bot likely, skip for now
                 continue;
             }

@@ -559,6 +559,38 @@ pub enum Specialist {
     Unknown(String),
 }
 
+/// The hand-written tables were built from version 1527 replays. The game has reused specialist
+/// IDs since (10004 was Fortified Mustang and is now Additional Deployment Slot), so from 1545,
+/// the first version with the newer replay format, the game's own name table comes first.
+pub const LEGACY_NAMES_BEFORE: u32 = 1545;
+
+/// Name of the specialist with this ID, as of the replay's game version.
+pub fn specialist_name(id: &str, version: u32) -> String {
+    let current = || super::names::resolve(super::names::NameKind::Officer, id).map(str::to_owned);
+    let legacy = || match Specialist::from_str(id) {
+        Ok(Specialist::Unknown(_)) | Err(_) => None,
+        Ok(known) => Some(known.to_string()),
+    };
+    let name = if version >= LEGACY_NAMES_BEFORE {
+        current().or_else(legacy)
+    } else {
+        legacy().or_else(current)
+    };
+    name.unwrap_or_else(|| id.to_owned())
+}
+
+impl Specialist {
+    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
+    pub fn display_name(&self) -> String {
+        match self {
+            Specialist::Unknown(id) => super::names::resolve(super::names::NameKind::Officer, id)
+                .map(str::to_owned)
+                .unwrap_or_else(|| id.clone()),
+            known => known.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1067,38 +1099,6 @@ mod tests {
 
         for (test, expected) in tests {
             assert_eq!(&test.to_string().as_str(), expected);
-        }
-    }
-}
-
-/// The hand-written tables were built from version 1527 replays. The game has reused specialist
-/// IDs since (10004 was Fortified Mustang and is now Additional Deployment Slot), so from 1545,
-/// the first version with the newer replay format, the game's own name table comes first.
-pub const LEGACY_NAMES_BEFORE: u32 = 1545;
-
-/// Name of the specialist with this ID, as of the replay's game version.
-pub fn specialist_name(id: &str, version: u32) -> String {
-    let current = || super::names::resolve(super::names::NameKind::Officer, id).map(str::to_owned);
-    let legacy = || match Specialist::from_str(id) {
-        Ok(Specialist::Unknown(_)) | Err(_) => None,
-        Ok(known) => Some(known.to_string()),
-    };
-    let name = if version >= LEGACY_NAMES_BEFORE {
-        current().or_else(legacy)
-    } else {
-        legacy().or_else(current)
-    };
-    name.unwrap_or_else(|| id.to_owned())
-}
-
-impl Specialist {
-    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
-    pub fn display_name(&self) -> String {
-        match self {
-            Specialist::Unknown(id) => super::names::resolve(super::names::NameKind::Officer, id)
-                .map(str::to_owned)
-                .unwrap_or_else(|| id.clone()),
-            known => known.to_string(),
         }
     }
 }

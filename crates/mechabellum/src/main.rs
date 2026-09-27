@@ -89,7 +89,7 @@ fn main() {
         errors.len()
     );
 
-    if errors.len() > 0 {
+    if !errors.is_empty() {
         println!("Saving errors to {}", args.error_output_file.display());
         let mut file = fs::File::create_new(args.error_output_file)
             .expect("Couldn't open error output file for writing!");
@@ -97,9 +97,9 @@ fn main() {
         for error in errors.into_iter() {
             if let ParseError::UnableToParse(_, doc, err) = error {
                 let _ = file.write_all(doc.0.as_bytes());
-                let _ = file.write_all(&[b'\n']);
+                let _ = file.write_all(b"\n");
                 let _ = file.write_all(err.0.as_bytes());
-                let _ = file.write_all(&[b'\n']);
+                let _ = file.write_all(b"\n");
             } else {
                 other_errors.push(error);
             }

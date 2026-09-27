@@ -244,7 +244,7 @@ async fn add_ratings(
             let Some(player) = store.key_player(&key)? else {
                 return Ok(None);
             };
-            if !store.missing(&[battle_id.clone()])?.is_empty()
+            if !store.missing(std::slice::from_ref(&battle_id))?.is_empty()
                 || !store.ratings_allowed(&battle_id, &player)?
             {
                 return Ok(None);

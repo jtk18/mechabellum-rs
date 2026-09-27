@@ -191,6 +191,20 @@ pub enum Skills {
     Unknown(String),
 }
 
+impl Skills {
+    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
+    pub fn display_name(&self) -> String {
+        match self {
+            Skills::Unknown(id) => {
+                super::names::resolve(super::names::NameKind::CommanderSkill, id)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| id.clone())
+            }
+            known => known.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,20 +355,6 @@ mod tests {
 
         for (test, expected) in tests {
             assert_eq!(&test.to_string().as_str(), expected);
-        }
-    }
-}
-
-impl Skills {
-    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
-    pub fn display_name(&self) -> String {
-        match self {
-            Skills::Unknown(id) => {
-                super::names::resolve(super::names::NameKind::CommanderSkill, id)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| id.clone())
-            }
-            known => known.to_string(),
         }
     }
 }

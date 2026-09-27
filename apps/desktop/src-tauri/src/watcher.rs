@@ -159,7 +159,7 @@ impl ReplayWatcher {
                     }
                     process_file(&store, path, &sink, true);
                     let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
-                    if finished % 25 == 0 || finished == total {
+                    if finished.is_multiple_of(25) || finished == total {
                         sink(WatchEvent::BackfillProgress {
                             done: finished,
                             total,

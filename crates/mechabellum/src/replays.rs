@@ -80,10 +80,10 @@ impl BattleRecord {
         let mut record = Self::parse_document(embedded_document, path)?;
         record.create_time = creation_time;
 
-        if save_embedded_delete_original && path.extension() == Some(&OsStr::new("grbr")) {
+        if save_embedded_delete_original && path.extension() == Some(OsStr::new("grbr")) {
             let mk_file = path.with_extension("xml");
             fs::File::create(&mk_file)
-                .and_then(|mut f| write!(f, "{}\n", embedded_document))
+                .and_then(|mut f| writeln!(f, "{}", embedded_document))
                 .and_then(|_| fs::remove_file(path))
                 .map_err(|e| {
                     ParseError::UnableToRemoveOriginal(path.into(), e.to_string().into())

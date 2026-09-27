@@ -252,7 +252,7 @@ mod tests {
         let key = b"ConfigData/MechData/name_30";
         b.extend((key.len() as i32).to_le_bytes());
         b.extend(key);
-        while b.len() % 4 != 0 {
+        while !b.len().is_multiple_of(4) {
             b.push(0);
         }
         b.extend(0i32.to_le_bytes());
@@ -260,7 +260,7 @@ mod tests {
         for s in ["Void Eye", "Oeil du vide"] {
             b.extend((s.len() as i32).to_le_bytes());
             b.extend(s.as_bytes());
-            while b.len() % 4 != 0 {
+            while !b.len().is_multiple_of(4) {
                 b.push(0);
             }
         }

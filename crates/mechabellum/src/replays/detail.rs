@@ -179,7 +179,7 @@ fn unit_id_by_name(name: &str) -> Option<u32> {
             .min()
     };
     lookup(name).or_else(|| {
-        let bare = name.rsplit(|c| c == ':' || c == '：').next()?.trim();
+        let bare = name.rsplit([':', '：']).next()?.trim();
         (bare != name).then(|| lookup(bare)).flatten()
     })
 }

@@ -8,7 +8,6 @@ use rayon::prelude::*;
 use regex::Regex;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -518,8 +517,8 @@ impl MechabellumTester {
         // Convert screenshot to DynamicImage
         let image = DynamicImage::ImageRgba8(
             ImageBuffer::from_raw(
-                screenshot.width() as u32,
-                screenshot.height() as u32,
+                screenshot.width(),
+                screenshot.height(),
                 screenshot.as_raw().to_vec(),
             )
             .context("Failed to create image buffer")?,
@@ -976,7 +975,7 @@ impl MechabellumTester {
         let array = self
             .object_arrays
             .entry(array_name.to_string())
-            .or_insert_with(Vec::new);
+            .or_default();
 
         // Add the object to the array
         array.push(serde_json::Value::Object(object_data));
