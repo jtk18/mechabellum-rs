@@ -251,3 +251,15 @@ mod tests {
         }
     }
 }
+
+impl Item {
+    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
+    pub fn display_name(&self) -> String {
+        match self {
+            Item::Unknown(id) => super::names::resolve(super::names::NameKind::Equipment, id)
+                .map(str::to_owned)
+                .unwrap_or_else(|| id.clone()),
+            known => known.to_string(),
+        }
+    }
+}

@@ -48,7 +48,7 @@ impl BattleRecord {
                 .unlocked_units
                 .int
                 .iter()
-                .filter_map(|unit_id| Unit::from_str(unit_id).ok())
+                .map(|unit_id| Unit::from_replay_id(unit_id))
                 .collect();
 
             let specialist_cards: Vec<Specialist> = rounds[rounds.len() - 1]
@@ -82,24 +82,18 @@ impl BattleRecord {
                     .unit_datas
                     .new_unit_data
                     .iter()
-                    .filter_map(|data| {
-                        Unit::from_str(data.id.as_str())
-                            .and_then(|unit_type| {
-                                Ok(UnitInstance {
-                                    unit_type,
-                                    xp: data.exp.parse().unwrap_or(0),
-                                    position: MapPoint(
-                                        data.position.x.parse().unwrap_or(0),
-                                        data.position.y.parse().unwrap_or(0),
-                                    ),
-                                    equipment: if data.equipment_id.as_str().eq("0") {
-                                        None
-                                    } else {
-                                        Item::from_str(&data.equipment_id).ok()
-                                    },
-                                })
-                            })
-                            .ok()
+                    .map(|data| UnitInstance {
+                        unit_type: Unit::from_replay_id(&data.id),
+                        xp: data.exp.parse().unwrap_or(0),
+                        position: MapPoint(
+                            data.position.x.parse().unwrap_or(0),
+                            data.position.y.parse().unwrap_or(0),
+                        ),
+                        equipment: data
+                            .equipments
+                            .ids(&data.equipment_id)
+                            .filter_map(|id| Item::from_str(id).ok())
+                            .collect(),
                     })
                     .collect();
                 let summary = PlayerSummary {
@@ -155,5 +149,33 @@ mod tests {
 
         let overview = record.get_battle_overview().expect("Shouldn't die");
         println!("{:#?}", overview);
+    }
+
+    /// Replays from both ends of the supported range: an original 1425 `.grbr` and a 2324 record,
+    /// which dropped fields older versions required and added multi-item equipment.
+    #[test]
+    fn test_parse_across_versions() {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+
+        for file in [
+            "1425_20241123--67298547_[小疯子]VS[kaltorak18].grbr",
+            "battle_record_2324.xml",
+        ] {
+            let record = BattleRecord::new_from_file(fixtures.join(file), false)
+                .unwrap_or_else(|e| panic!("{file}: {e}"));
+            let overview = record.get_battle_overview().expect("overview");
+            let players: Vec<_> = overview.winners.iter().chain(&overview.losers).collect();
+            assert_eq!(players.len(), 2, "{file}");
+            for player in players {
+                assert!(!player.last_round_units.is_empty(), "{file}");
+                for unit in &player.last_round_units {
+                    assert!(
+                        !matches!(unit.unit_type, Unit::Unknown(_)),
+                        "{file}: unresolved unit {:?}",
+                        unit.unit_type
+                    );
+                }
+            }
+        }
     }
 }

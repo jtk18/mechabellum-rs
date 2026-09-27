@@ -344,3 +344,17 @@ mod tests {
         }
     }
 }
+
+impl Skills {
+    /// Display name, falling back to the game's name table for IDs this enum doesn't know.
+    pub fn display_name(&self) -> String {
+        match self {
+            Skills::Unknown(id) => {
+                super::names::resolve(super::names::NameKind::CommanderSkill, id)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| id.clone())
+            }
+            known => known.to_string(),
+        }
+    }
+}

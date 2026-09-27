@@ -2,7 +2,8 @@ use serde::Deserialize;
 
 /// Created with https://github.com/Thomblin/xml_schema_generator then hand edited from parse error output.
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct BattleRecord {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -22,7 +23,8 @@ pub struct BattleRecord {
     pub create_time: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -30,7 +32,8 @@ pub struct PlayerRecords {
     pub player_record: Vec<PlayerRecord>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerRecord {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -43,7 +46,8 @@ pub struct PlayerRecord {
     pub player_round_records: PlayerRoundRecords,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Data {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -67,7 +71,8 @@ pub struct Data {
     pub style: Style,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct DataUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -75,7 +80,8 @@ pub struct DataUnitDatas {
     pub unit_data: Vec<UnitDatasUnitData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitDatasUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -86,7 +92,8 @@ pub struct UnitDatasUnitData {
     pub unlocked_techs: UnitDatasUnitDataUnlockedTechs,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitDatasUnitDataTechs {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -94,15 +101,18 @@ pub struct UnitDatasUnitDataTechs {
     pub tech: Vec<UnitDatasUnitDataTechsTech>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitDatasUnitDataTechsTech {
     pub data: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitDatasUnitDataUnlockedTechs {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Style {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -110,7 +120,8 @@ pub struct Style {
     pub unit_styles: UnitStyles,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitStyles {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -118,7 +129,8 @@ pub struct UnitStyles {
     pub unit_style: Vec<UnitStyle>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitStyle {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -130,7 +142,8 @@ pub struct UnitStyle {
     pub skin_styles: SkinStyles,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct SkinStyles {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -138,12 +151,14 @@ pub struct SkinStyles {
     pub skin_style: Vec<SkinStyle>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct SkinStyle {
     pub data: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerRoundRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -151,7 +166,8 @@ pub struct PlayerRoundRecords {
     pub player_round_record: Vec<PlayerRoundRecord>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerRoundRecord {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -162,7 +178,8 @@ pub struct PlayerRoundRecord {
     pub action_records: ActionRecords,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -193,7 +210,8 @@ pub struct PlayerData {
     pub is_special_supply: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Units {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -201,7 +219,8 @@ pub struct Units {
     pub new_unit_data: Vec<UnitsNewUnitData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitsNewUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -220,13 +239,16 @@ pub struct UnitsNewUnitData {
     pub position: PlayerDataUnitsNewUnitDataPosition,
     #[serde(rename = "EquipmentID")]
     pub equipment_id: String,
+    /// Newer replays: one entry per equipped item.
+    pub equipments: UnitEquipments,
     #[serde(rename = "IsRotate")]
     pub is_rotate: String,
     #[serde(rename = "SellSupply")]
     pub sell_supply: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerDataUnitsNewUnitDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -234,7 +256,8 @@ pub struct PlayerDataUnitsNewUnitDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Officers {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -242,7 +265,8 @@ pub struct Officers {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerDataCommanderSkills {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -250,7 +274,8 @@ pub struct PlayerDataCommanderSkills {
     pub commander_skill_data: Vec<CommanderSkillData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct CommanderSkillData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -264,10 +289,12 @@ pub struct CommanderSkillData {
     pub range_items: RangeItems,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct RangeItems {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActiveTechnologies {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -275,7 +302,8 @@ pub struct ActiveTechnologies {
     pub unit_data: Vec<ActiveTechnologiesUnitData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActiveTechnologiesUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -286,7 +314,8 @@ pub struct ActiveTechnologiesUnitData {
     pub unlocked_techs: ActiveTechnologiesUnitDataUnlockedTechs,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActiveTechnologiesUnitDataTechs {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -294,18 +323,22 @@ pub struct ActiveTechnologiesUnitDataTechs {
     pub tech: Vec<ActiveTechnologiesUnitDataTechsTech>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActiveTechnologiesUnitDataTechsTech {
     pub data: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActiveTechnologiesUnitDataUnlockedTechs {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Equipments {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Shop {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -321,7 +354,8 @@ pub struct Shop {
     pub unlock_count: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnlockedUnits {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -329,7 +363,8 @@ pub struct UnlockedUnits {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct LockedUnits {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -337,7 +372,8 @@ pub struct LockedUnits {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerDataContraptions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -345,7 +381,8 @@ pub struct PlayerDataContraptions {
     pub contraption_data: Vec<PlayerDataContraptionsContraptionData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerDataContraptionsContraptionData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -354,7 +391,8 @@ pub struct PlayerDataContraptionsContraptionData {
     pub position: PlayerDataContraptionsContraptionDataPosition,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerDataContraptionsContraptionDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -362,7 +400,8 @@ pub struct PlayerDataContraptionsContraptionDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Bluepints {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -370,14 +409,16 @@ pub struct Bluepints {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct EnergyTowerSkills {
     #[serde(rename = "$text")]
     pub text: Option<String>,
     pub int: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct TowerStrengthenLevels {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -385,7 +426,8 @@ pub struct TowerStrengthenLevels {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ActionRecords {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -393,7 +435,8 @@ pub struct ActionRecords {
     pub match_action_data: Vec<MatchActionData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MatchActionData {
     #[serde(rename = "type")]
     pub xsi_type: String,
@@ -431,7 +474,8 @@ pub struct MatchActionData {
     pub local_time: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ExtraPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -439,7 +483,8 @@ pub struct ExtraPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct PlayerRoundRecordActionRecordsMatchActionDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -447,7 +492,8 @@ pub struct PlayerRoundRecordActionRecordsMatchActionDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Positions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -455,7 +501,8 @@ pub struct Positions {
     pub map_vector: Vec<MapVector>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MapVector {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -463,7 +510,8 @@ pub struct MapVector {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MoveUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -471,7 +519,8 @@ pub struct MoveUnitDatas {
     pub move_unit_data: Vec<MoveUnitData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MoveUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -484,7 +533,8 @@ pub struct MoveUnitData {
     pub is_rotate: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MatchActionDataMoveUnitDatasMoveUnitDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -492,7 +542,8 @@ pub struct MatchActionDataMoveUnitDatasMoveUnitDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MatchDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -500,7 +551,8 @@ pub struct MatchDatas {
     pub match_snapshot_data: Vec<MatchSnapshotData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct MatchSnapshotData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -515,7 +567,8 @@ pub struct MatchSnapshotData {
     pub last_fight_result: Option<LastFightResult>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct RandomStateData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -523,7 +576,8 @@ pub struct RandomStateData {
     pub random_states: RandomStates,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct RandomStates {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -531,7 +585,8 @@ pub struct RandomStates {
     pub unsigned_long: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ReinforcePool {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -539,7 +594,8 @@ pub struct ReinforcePool {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitReinforceRounds {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -547,7 +603,8 @@ pub struct UnitReinforceRounds {
     pub int: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct LastFightResult {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -555,7 +612,8 @@ pub struct LastFightResult {
     pub reports: Reports,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Reports {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -563,7 +621,8 @@ pub struct Reports {
     pub fight_report: Vec<FightReport>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReport {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -585,7 +644,8 @@ pub struct FightReport {
     pub fight_record: FightRecord,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportContraptions {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -593,7 +653,8 @@ pub struct FightReportContraptions {
     pub contraption_data: Vec<FightReportContraptionsContraptionData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportContraptionsContraptionData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -602,7 +663,8 @@ pub struct FightReportContraptionsContraptionData {
     pub position: FightReportContraptionsContraptionDataPosition,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportContraptionsContraptionDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -610,7 +672,8 @@ pub struct FightReportContraptionsContraptionDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportUnitDatas {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -618,7 +681,8 @@ pub struct FightReportUnitDatas {
     pub new_unit_data: Vec<UnitDatasNewUnitData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct UnitDatasNewUnitData {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -637,13 +701,16 @@ pub struct UnitDatasNewUnitData {
     pub position: FightReportUnitDatasNewUnitDataPosition,
     #[serde(rename = "EquipmentID")]
     pub equipment_id: String,
+    /// Newer replays: one entry per equipped item.
+    pub equipments: UnitEquipments,
     #[serde(rename = "IsRotate")]
     pub is_rotate: String,
     #[serde(rename = "SellSupply")]
     pub sell_supply: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportUnitDatasNewUnitDataPosition {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -651,16 +718,20 @@ pub struct FightReportUnitDatasNewUnitDataPosition {
     pub y: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightReportCommanderSkills {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct FightRecord {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct ReinforceItems {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct BattleInfo {
     #[serde(rename = "$text")]
     pub text: Option<String>,
@@ -698,4 +769,25 @@ pub struct BattleInfo {
     pub close_unit_reinforce: String,
     #[serde(rename = "SurviveModeDifficulty")]
     pub survive_mode_difficulty: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct UnitEquipments {
+    pub equipment: Vec<UnitEquipment>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct UnitEquipment {
+    pub data: String,
+}
+
+impl UnitEquipments {
+    /// Equipment IDs from either the old single `EquipmentID` field or the newer list.
+    pub fn ids<'a>(&'a self, legacy_id: &'a str) -> impl Iterator<Item = &'a str> {
+        std::iter::once(legacy_id)
+            .chain(self.equipment.iter().map(|e| e.data.as_str()))
+            .filter(|id| !id.is_empty() && *id != "0")
+    }
 }

@@ -2,7 +2,7 @@
 
 mod cli_args;
 
-use cli_args::Args;
+use cli_args::{Args, Command};
 
 use clap::Parser;
 
@@ -15,6 +15,21 @@ use mechabellum_replay_parser::*;
 fn main() {
     env_logger::init();
     let args = Args::parse();
+
+    if let Some(Command::GenNames { game_dir, output }) = args.command {
+        let names =
+            GameNames::extract_from_install(&game_dir).expect("Unable to read game install");
+        let count: usize = names.categories.values().map(|ids| ids.len()).sum();
+        let json = serde_json::to_string_pretty(&names).expect("Unable to serialize names");
+        fs::write(&output, json).expect("Unable to write names file");
+        println!(
+            "Wrote {count} names from version {} to {}",
+            names.version,
+            output.display()
+        );
+        return;
+    }
+
     let file_or_dir = args
         .file_or_dir
         .expect("You need to pass a '-- <FILE>' in this mode");

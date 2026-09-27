@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use std::path::PathBuf;
 
@@ -7,6 +7,8 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, args_conflicts_with_subcommands = true)]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Command>,
     /// The replay file or directory containing replays
     pub file_or_dir: Option<PathBuf>,
     /// Path to output any parse errors to
@@ -15,4 +17,20 @@ pub struct Args {
     /// Save xml file to save some space
     #[arg(short, long = "delete-original")]
     pub delete_original: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Extract the ID -> name table from a Mechabellum install
+    GenNames {
+        /// Game install directory (contains Mechabellum_Data and ProjectDatas)
+        #[arg(
+            long,
+            default_value = r"C:\Program Files (x86)\Steam\steamapps\common\Mechabellum"
+        )]
+        game_dir: PathBuf,
+        /// Where to write the table
+        #[arg(short, long, default_value = "data/names.json")]
+        output: PathBuf,
+    },
 }

@@ -1,14 +1,18 @@
 use strum::{Display, EnumString};
 
+use super::names::{resolve, NameKind};
 use super::Item;
 use super::MapPoint;
+
+use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct UnitInstance {
     pub unit_type: Unit,
     pub xp: usize,
     pub position: MapPoint,
-    pub equipment: Option<Item>,
+    /// Older replays allow one item per unit; newer ones allow several.
+    pub equipment: Vec<Item>,
 }
 
 #[derive(Debug, Eq, PartialEq, Display, EnumString)]
@@ -80,20 +84,81 @@ pub enum Unit {
     Raiden,
     #[strum(serialize = "28", serialize = "Hound")]
     Hound,
+    #[strum(serialize = "29", serialize = "Abyss")]
+    Abyss,
+    #[strum(serialize = "30", serialize = "VoidEye", to_string = "Void Eye")]
+    VoidEye,
+    #[strum(serialize = "31", serialize = "Vortex")]
+    Vortex,
+    #[strum(serialize = "32", serialize = "Centurion")]
+    Centurion,
     #[strum(
         serialize = "2001",
         serialize = "DeathKnell",
         to_string = "Death Knell"
     )]
     DeathKnell,
+    #[strum(serialize = "2002", serialize = "Mountain")]
+    Mountain,
+    #[strum(
+        serialize = "4001",
+        serialize = "ExperimentalDeathKnell",
+        to_string = "Experimental Death Knell"
+    )]
+    ExperimentalDeathKnell,
     #[strum(default)]
     Unknown(String),
+}
+
+impl Unit {
+    /// Parse a unit ID as it appears in a replay. AsyncBattle mode uses its own copies of the
+    /// regular units (5001-5032 for 1-32, 5201-5203 for the giants), which are folded back into
+    /// the base unit so stats line up across modes.
+    pub fn from_replay_id(id: &str) -> Unit {
+        let id = id.trim();
+        let base = match id.parse::<u32>() {
+            Ok(n @ 5001..=5099) => (n - 5000).to_string(),
+            Ok(5201) => "2001".to_owned(),
+            Ok(5202) => "2002".to_owned(),
+            Ok(5203) => "4001".to_owned(),
+            _ => id.to_owned(),
+        };
+        // `Unknown` is the strum default, so this never fails.
+        Unit::from_str(&base).unwrap()
+    }
+
+    /// Display name, falling back to the game's name table for units this enum doesn't know.
+    pub fn display_name(&self) -> String {
+        match self {
+            Unit::Unknown(id) => resolve(NameKind::Unit, id)
+                .map(str::to_owned)
+                .unwrap_or_else(|| id.clone()),
+            known => known.to_string(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
+
+    #[test]
+    fn test_from_replay_id() {
+        assert_eq!(Unit::from_replay_id("5010"), Unit::Crawler);
+        assert_eq!(Unit::from_replay_id("5030"), Unit::VoidEye);
+        assert_eq!(Unit::from_replay_id("5202"), Unit::Mountain);
+        assert_eq!(Unit::from_replay_id("7"), Unit::Mustang);
+    }
+
+    #[test]
+    fn test_display_name() {
+        assert_eq!(Unit::VoidEye.display_name(), "Void Eye");
+        assert_eq!(
+            Unit::from_replay_id("53").display_name(),
+            "Experimental Vulcan"
+        );
+        assert_eq!(Unit::Unknown("999999".into()).display_name(), "999999");
+    }
 
     #[test]
     fn test_parse_units() {
@@ -184,6 +249,13 @@ mod tests {
             ("28", Unit::Hound),
             ("Hound", Unit::Hound),
             ("hound", Unit::Hound),
+            ("29", Unit::Abyss),
+            ("30", Unit::VoidEye),
+            ("void eye", Unit::VoidEye),
+            ("31", Unit::Vortex),
+            ("32", Unit::Centurion),
+            ("2002", Unit::Mountain),
+            ("4001", Unit::ExperimentalDeathKnell),
             ("2001", Unit::DeathKnell),
             ("DeathKnell", Unit::DeathKnell),
             ("death knell", Unit::DeathKnell),
