@@ -62,6 +62,15 @@ The presets cover a board code's `hp` per side and `map`.
 - **A real fight:** use **Switch Sides** and add units to the opponent's board, or the round
   is just units walking into an empty base (from the user).
 
+## How the controls work (from the user)
+
+- **Move a unit:** click it, then click where it goes. Sometimes it needs a double click.
+  **Right-click** deselects, and the unit snaps back to its last placement.
+- **Cards, techs, and supplies:** Testing Grounds Tools can give you any card (including
+  Redeployment, which lets you move units bought in earlier rounds), any tech, and money.
+- **The opponent's board:** Switch Sides shows the same interface for the other player: unlock,
+  buy, and place the same way.
+
 ## Plan
 
 1. **Driving:** a small Windows driver (the tester crate already has window lookup, clicks,

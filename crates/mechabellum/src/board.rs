@@ -46,7 +46,69 @@ pub struct Board {
 pub struct Side {
     pub name: Option<String>,
     pub hp: Option<i32>,
+    /// Which half of the board the side deploys on. Needed for anchored positions.
+    pub half: Option<Half>,
     pub units: Vec<BoardUnit>,
+}
+
+/// A half of the board. In replays, the south half has negative y.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Half {
+    South,
+    North,
+}
+
+impl Half {
+    fn name(self) -> &'static str {
+        match self {
+            Half::South => "south",
+            Half::North => "north",
+        }
+    }
+}
+
+// Deployment geometry, the same on every 2.0 map measured (82 games, 5 maps), in replay units
+// and a side's own frame: x to the side's right, y toward the middle ("forward"). Each side's
+// zone is 60 squares wide and 30 deep, ending 1 square short of the middle. From round 3,
+// flank columns 6 squares wide open along both edges of the opponent's half.
+const ZONE_HALF_WIDTH: i32 = 300;
+const ZONE_FRONT: i32 = -10;
+const ZONE_BACK: i32 = -310;
+const FLANK_CENTER_X: i32 = 330;
+const FLANK_NEAR: i32 = 10;
+const FLANK_OPENS_ROUND: u32 = 3;
+
+/// A named point on a side's half. `inward` says which way the unit extends from it, so a unit
+/// anchored to a corner sits flush in the corner rather than centered on it.
+struct Anchor {
+    x: i32,
+    y: i32,
+    inward: (i32, i32),
+}
+
+/// Anchor names, for error messages.
+const ANCHORS: &str = "center, front, back, left, right, front-left, front-right, back-left, \
+back-right, left-flank, right-flank";
+
+fn anchor(name: &str) -> Option<Anchor> {
+    let mid_y = (ZONE_FRONT + ZONE_BACK) / 2;
+    let (x, y, inward) = match name {
+        "center" => (0, 0, (0, 0)),
+        "front" => (0, ZONE_FRONT, (0, -1)),
+        "back" => (0, ZONE_BACK, (0, 1)),
+        "left" => (-ZONE_HALF_WIDTH, mid_y, (1, 0)),
+        "right" => (ZONE_HALF_WIDTH, mid_y, (-1, 0)),
+        "front-left" => (-ZONE_HALF_WIDTH, ZONE_FRONT, (1, -1)),
+        "front-right" => (ZONE_HALF_WIDTH, ZONE_FRONT, (-1, -1)),
+        "back-left" => (-ZONE_HALF_WIDTH, ZONE_BACK, (1, 1)),
+        "back-right" => (ZONE_HALF_WIDTH, ZONE_BACK, (-1, 1)),
+        // The near end of a flank column, just past the middle.
+        "left-flank" => (-FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
+        "right-flank" => (FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
+        _ => return None,
+    };
+    Some(Anchor { x, y, inward })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -347,6 +409,7 @@ impl Board {
                     let mut s = Side {
                         name: None,
                         hp: None,
+                        half: None,
                         units: Vec::new(),
                     };
                     if let Some(value) = tag.value {
@@ -358,6 +421,13 @@ impl Board {
                         match key.as_str() {
                             "name" => s.name = Some(text_value(&p, value, *at)?),
                             "hp" => s.hp = Some(number(&p, value, *at)?),
+                            "half" => {
+                                s.half = Some(match value.to_ascii_lowercase().as_str() {
+                                    "south" | "bottom" => Half::South,
+                                    "north" | "top" => Half::North,
+                                    _ => return Err(p.error(*at, "half is south or north")),
+                                })
+                            }
                             _ => return Err(p.error(*at, format!("[side] has no {key} attribute"))),
                         }
                     }
@@ -370,7 +440,8 @@ impl Board {
                             p.error(tag.at, format!("more than {MAX_UNITS_PER_SIDE} units"))
                         );
                     }
-                    s.units.push(parse_unit(&p, &tag, &units)?);
+                    let (half, round) = (s.half, board.round);
+                    s.units.push(parse_unit(&p, &tag, &units, half, round)?);
                 }
                 ("unit", false, None) => {
                     return Err(p.error(tag.at, "a [unit] must be inside a [side]"))
@@ -424,9 +495,15 @@ impl Board {
                             .collect(),
                     })
                     .collect();
+                let mut ys: Vec<i32> = side.units.iter().map(|u| u.y).collect();
+                ys.sort_unstable();
+                let half =
+                    ys.get(ys.len() / 2)
+                        .map(|&y| if y < 0 { Half::South } else { Half::North });
                 Some(Side {
                     name: Some(player.name.clone()),
                     hp: Some(side.hp),
+                    half,
                     units,
                 })
             })
@@ -445,6 +522,8 @@ fn parse_unit(
     p: &Parser,
     tag: &Tag,
     units: &BTreeMap<String, (u32, String)>,
+    half: Option<Half>,
+    round: Option<u32>,
 ) -> Result<BoardUnit, ParseError> {
     let name = tag
         .value
@@ -471,6 +550,9 @@ fn parse_unit(
         items: Vec::new(),
     };
     let mut placed = false;
+    let mut from: Option<(Anchor, usize)> = None;
+    // Squares right and forward of the anchor, in the side's own view.
+    let (mut right, mut forward) = (0, 0);
     for (key, value, at) in &tag.attrs {
         let at = *at;
         let need = || value.ok_or_else(|| p.error(at, format!("{key} needs a value")));
@@ -484,6 +566,23 @@ fn parse_unit(
                 unit.y = coordinate(p, y.trim(), at)?;
                 placed = true;
             }
+            "from" => {
+                let name = need()?.to_ascii_lowercase();
+                let a = anchor(&name).ok_or_else(|| {
+                    p.error(at, format!("unknown anchor {name:?}; use one of {ANCHORS}"))
+                })?;
+                if name.ends_with("-flank") && round.is_some_and(|r| r < FLANK_OPENS_ROUND) {
+                    return Err(p.error(
+                        at,
+                        format!("flank columns open in round {FLANK_OPENS_ROUND}"),
+                    ));
+                }
+                from = Some((a, at));
+            }
+            "right" => right += coordinate(p, need()?, at)?,
+            "left" => right -= coordinate(p, need()?, at)?,
+            "forward" => forward += coordinate(p, need()?, at)?,
+            "back" => forward -= coordinate(p, need()?, at)?,
             "level" => {
                 unit.level = number(p, need()?, at)?;
                 if !(1..=MAX_LEVEL).contains(&unit.level) {
@@ -501,8 +600,40 @@ fn parse_unit(
             _ => return Err(p.error(at, format!("[unit] has no {key} attribute"))),
         }
     }
-    if !placed {
-        return Err(p.error(tag.at, "every unit needs a position: at=x,y"));
+    match (placed, from) {
+        (true, Some((_, at))) => {
+            return Err(p.error(at, "give either at=x,y or from=anchor, not both"))
+        }
+        (true, None) if right != 0 || forward != 0 => {
+            return Err(p.error(tag.at, "left, right, forward, and back need from=anchor"))
+        }
+        (true, None) => {}
+        (false, None) => {
+            return Err(p.error(
+                tag.at,
+                "every unit needs a position: at=x,y, or from=anchor with left/right/forward/back",
+            ))
+        }
+        (false, Some((a, at))) => {
+            let half = half.ok_or_else(|| {
+                p.error(
+                    at,
+                    "anchors need the side's half: [side half=south] or half=north",
+                )
+            })?;
+            // Half the unit's size, so it lines up against the anchor's edges.
+            let (w, d) = crate::footprint(unit.unit_id).unwrap_or((2, 2));
+            let (w, d) = if unit.rotated { (d, w) } else { (w, d) };
+            let x = a.x + a.inward.0 * i32::from(w) * 5 + right;
+            let y = a.y + a.inward.1 * i32::from(d) * 5 + forward;
+            (unit.x, unit.y) = match half {
+                Half::South => (x, y),
+                Half::North => (-x, -y),
+            };
+            if unit.x.abs() > MAX_COORD || unit.y.abs() > MAX_COORD {
+                return Err(p.error(at, "that position is off the board"));
+            }
+        }
     }
     Ok(unit)
 }
@@ -551,6 +682,9 @@ impl fmt::Display for Board {
             }
             if let Some(hp) = side.hp {
                 write!(f, " hp={hp}")?;
+            }
+            if let Some(half) = side.half {
+                write!(f, " half={}", half.name())?;
             }
             writeln!(f, "]")?;
             for u in &side.units {
@@ -637,6 +771,45 @@ good luck"#;
         assert!(board.sides.iter().all(|s| !s.units.is_empty()));
         let code = board.to_string();
         assert_eq!(Board::parse(&code).unwrap(), board, "{code}");
+    }
+
+    #[test]
+    fn test_anchored_positions() {
+        let code = r#"[board round=4]
+[side half=south]
+[unit=Crawler from=front-left right=2 back=1]
+[unit=Crawler from=center]
+[unit=Crawler from=right-flank forward=3]
+[/side]
+[side half=north]
+[unit=Crawler from=front-left right=2 back=1]
+[/side]
+[/board]"#;
+        let board = Board::parse(code).unwrap();
+        let south = &board.sides[0].units;
+        // Crawler is 2 wide, 3 deep: flush in the front-left corner, then 2 right, 1 back.
+        assert_eq!((south[0].x, south[0].y), (-300 + 10 + 20, -10 - 15 - 10));
+        assert_eq!((south[1].x, south[1].y), (0, 0));
+        assert_eq!((south[2].x, south[2].y), (330, 10 + 15 + 30));
+        // The same code for the north half mirrors through the middle.
+        let north = &board.sides[1].units[0];
+        assert_eq!((north.x, north.y), (-south[0].x, -south[0].y));
+
+        let err = |text: &str| Board::parse(text).unwrap_err().message;
+        assert!(err("[board][side][unit=Crawler from=front][/side][/board]").contains("half"));
+        assert!(
+            err("[board][side half=south][unit=Crawler from=moon][/side][/board]")
+                .contains("unknown anchor")
+        );
+        assert!(err(
+            "[board round=2][side half=south][unit=Crawler from=left-flank][/side][/board]"
+        )
+        .contains("round 3"));
+        assert!(
+            err("[board][side half=south][unit=Crawler at=1,1 from=front][/side][/board]")
+                .contains("not both")
+        );
+        assert!(err("[board][side][unit=Crawler at=1,1 right=2][/side][/board]").contains("from"));
     }
 
     #[test]

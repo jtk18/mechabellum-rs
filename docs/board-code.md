@@ -34,6 +34,46 @@ replay, and (later) have the tester set it up in Testing Grounds.
 - **`techs`** and **`items`** are lists separated by commas or semicolons, up to 16 entries.
 - **Values** with spaces go in double quotes. Quotes can't appear inside a value.
 
+## Anchors: positions relative to landmarks
+
+Instead of `at=x,y`, a unit can be placed relative to a landmark on its own side's half:
+
+```text
+[board round=4]
+[side name="jtk18" half=south]
+[unit=Fortress from=front]
+[unit=Crawler from=front-left right=2 back=1]
+[unit=Marksman from=back-right left=3.5]
+[unit=Fang from=right-flank forward=4]
+[/side]
+[/board]
+```
+
+- **`half=south` or `half=north`** on the side says which half it deploys on (south is negative
+  `y` in replays). Anchors need it; codes copied from replays include it.
+- **Directions are the side's own view:** `right`/`left` across the board, `forward` toward the
+  middle, `back` toward its own edge. Values are squares, and halves are allowed. The same
+  code works for either half.
+- **Anchors** (the unit lines up flush against the anchor's edges, so a corner anchor puts it
+  in the corner, not centered on it):
+
+| Anchor | Where |
+|---|---|
+| `center` | the middle of the board (the unit's center sits on it) |
+| `front`, `back` | the middle of the deployment zone's front or back edge |
+| `left`, `right` | the middle of the zone's left or right edge |
+| `front-left`, `front-right`, `back-left`, `back-right` | the zone's corners |
+| `left-flank`, `right-flank` | the near end of a flank column, just past the middle; from round 3 |
+
+**Geometry** (the same on every 2.0 map measured, 82 games on 5 maps): each side's zone is 60
+squares wide and 30 deep, and its front edge stops 1 square short of the middle, so a 2-square
+strip separates the two boards. From round 3, flank columns 6 squares wide open along both edges
+of the opponent's half, running its full depth. That's the "front moves up" change mid-game. A
+flank anchor used with `round` below 3 is an error.
+
+**Not yet:** `command-center` and `research-center`. Their positions aren't in replays and differ
+by map; they'll come from Testing Grounds calibration.
+
 ## Limits
 
 Codes come from strangers, so the reader is strict and bounded:
