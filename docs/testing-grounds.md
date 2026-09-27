@@ -112,8 +112,10 @@ Findings for what's next:
   a right click "carries/removes", then Confirm. That's the Unit Modification loadout. Techs
   *researched* on a unit are bought from its card: the row of 4 priced buttons (e.g. 100, 250,
   250, 150 for a Crawler) under its stats. Setting a board code's `techs` means clicking those
-  by position, which needs each unit's loadout order (from GameData.grdb or the replay's
-  `unitDatas`).
+  by position. **The card's buttons are in the replay's `unitDatas` order** (checked on the
+  Crawler: Mechanical Rage 10510, Replicate 180110, Loose Formation 3510, Impact Drill 10710,
+  matching the icons left to right). GameData.grdb lists the same techs in a different order.
+  Not yet tried: whether clicking a button buys the tech in Testing Grounds.
 - **Hovering** a unit in the Squad list shows its equipped techs and stats.
 - Clicking a stack on the pad picks up the older unit. Keep the pad clear between spawns.
 
