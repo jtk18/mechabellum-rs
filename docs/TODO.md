@@ -61,7 +61,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 13. **CI:** a GitHub Actions matrix (Windows, macOS, Ubuntu) to build and test the workspace and
     the Tauri app.
 14. ~~Start on login, single instance~~ Done (Settings tab; a second launch focuses the first).
-    Still to do: bundles and installers (signing, updater).
+    Installers: `npx tauri build` makes an MSI and a setup.exe on Windows (verified); the
+    Release workflow builds all three platforms into a draft GitHub release on a `v*` tag.
+    Still to do: code signing (Windows SmartScreen, macOS notarization) and an updater.
 15. **Verify macOS and Linux (Proton and native)** replay and log folder detection with real
     installs.
 16. **Verify the Docker build** on the Ubuntu server.
