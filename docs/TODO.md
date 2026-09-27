@@ -34,7 +34,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Stats
 
-5. **Win rate by opponent MMR band.** Possible once ratings accumulate.
+5. ~~Win rate by opponent MMR band~~ Done: a Stats panel, opponent minus your MMR in five bands (1v1).
 6. **Group builds into seasons or patches** in the heatmap. Many builds have under 10 matches.
 7. **Tech icons in stats tables by (unit, tech ID)** instead of tech name. The same name can
    have different icons per unit.

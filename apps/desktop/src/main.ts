@@ -33,6 +33,16 @@ interface Stats {
   specialists: UsageStat[];
   picked_specialists: UsageStat[];
   granted_specialists: UsageStat[];
+  vs_rating: RatingBand[];
+}
+
+interface RatingBand {
+  name: string;
+  from: number | null;
+  to: number | null;
+  games: number;
+  wins: number;
+  win_rate: number;
 }
 
 interface Facets {
@@ -293,6 +303,47 @@ function renderUsage(
   }
 }
 
+/** Win rate against opponents rated lower, about the same, and higher. */
+function renderRatingBands(bands: RatingBand[]) {
+  const container = $("vs-rating");
+  const rated = bands.reduce((sum, b) => sum + b.games, 0);
+  const heads = [
+    ["", "Opponent"],
+    ["", "Share of games"],
+    ["", "Win rate"],
+    ["num", "Games"],
+  ].map(([cls, text]) => {
+    const head = el("div", `head ${cls}`, text);
+    head.setAttribute("role", "columnheader");
+    return head;
+  });
+  const rows = bands.map((band) => {
+    const row = el("div", band.games < SMALL_SAMPLE ? "row small" : "row");
+    row.setAttribute("role", "row");
+    row.append(
+      el("div", "name", band.name),
+      pickBar(rated ? band.games / rated : 0),
+      band.games ? winBar(band.win_rate) : el("div", "muted", "No games"),
+      el("div", "games", String(band.games)),
+    );
+    for (const cell of row.children) cell.setAttribute("role", "cell");
+    if (band.games) {
+      const tip: Tip = {
+        title: band.name,
+        lines: [`Won ${band.wins} of ${band.games} (${pct(band.win_rate)})`],
+        note: band.games < SMALL_SAMPLE ? `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.` : undefined,
+      };
+      row.dataset.tip = JSON.stringify(tip);
+    }
+    return row;
+  });
+  container.replaceChildren(...heads, ...rows);
+  $("vs-rating-note").textContent =
+    rated === 0
+      ? "Ratings come from the game's log while this app runs, so only games played since then have them."
+      : `${rated} rated ${rated === 1 ? "game" : "games"}. Ratings come from the game's log while this app runs.`;
+}
+
 let allMatches: MatchRow[] = [];
 /** The full list is only fetched once the Matches tab is opened. */
 let matchListLoaded = false;
@@ -445,6 +496,7 @@ async function refreshStats() {
     lastStats = stats;
     renderUsage($("units"), stats.units, stats.player_results, "unit", lastTechs);
     renderSpecialists();
+    renderRatingBands(stats.vs_rating);
     $("summary").textContent = `${stats.matches} matches · ${stats.player_results} player results`;
   });
   // Tech breakdowns arrive separately and fill in the unit rows' disclosure.

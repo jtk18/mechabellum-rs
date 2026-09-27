@@ -4,8 +4,9 @@
 mod store;
 
 pub use store::{
-    Facets, IngestOutcome, MatchRow, Rating, Rejection, Stats, StatsFilter, Store, SyncRejection,
-    TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
+    Facets, IngestOutcome, MatchRow, Rating, RatingBand, Rejection, Stats, StatsFilter, Store,
+    SyncRejection, TechStat, Trend, TrendCell, UnitTechStats, UploadKey, UsageStat, VersionTotals,
+    VersionTrends,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -332,6 +333,46 @@ mod tests {
             .conn()
             .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
+    }
+
+    #[test]
+    fn test_win_rate_by_opponent_rating() {
+        let store = Store::open_in_memory().unwrap();
+        store.ingest(&fixture(NEW), Path::new("a"), None).unwrap();
+        let battle = "20260924--67113734";
+        let rating = |player: &str, elo: i64| Rating {
+            player_id: player.into(),
+            elo: Some(elo),
+            rank_point: None,
+            level: None,
+            elo_games: None,
+        };
+        let mine = |store: &Store| {
+            store
+                .stats(&StatsFilter {
+                    player_id: Some(JTK18.into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .vs_rating
+        };
+        assert!(mine(&store).iter().all(|b| b.games == 0), "no ratings yet");
+
+        // The opponent was rated 100 higher.
+        store
+            .put_ratings(battle, &[rating(JTK18, 1400), rating(BOLSANO, 1500)])
+            .unwrap();
+        let bands = mine(&store);
+        let band = bands.iter().find(|b| b.games > 0).expect("one rated game");
+        assert_eq!((band.from, band.to), (Some(50), Some(150)));
+        assert_eq!(band.games, 1);
+        let won = store
+            .recent_matches(1)
+            .unwrap()
+            .remove(0)
+            .winners
+            .contains(&"jtk18".to_owned());
+        assert_eq!(band.wins, won as u64);
     }
 
     /// Text from replays and requests only ever reaches SQLite as bound parameters, so SQL in a

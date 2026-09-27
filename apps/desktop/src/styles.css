@@ -1433,3 +1433,14 @@ h1 {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+.panel-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.usage .muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}

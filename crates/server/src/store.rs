@@ -214,6 +214,59 @@ pub struct Stats {
     /// Specialists held at the end that were never picked: granted by the game, for example by
     /// the Research Center.
     pub granted_specialists: Vec<UsageStat>,
+    /// Win rate by how the opponent's MMR compared, in 1v1 games where both ratings are known.
+    pub vs_rating: Vec<RatingBand>,
+}
+
+/// Results against opponents whose MMR was within a range of the player's own.
+#[derive(Debug, Serialize)]
+pub struct RatingBand {
+    pub name: String,
+    /// Opponent's MMR minus the player's, inclusive lower bound; `None` is unbounded.
+    pub from: Option<i64>,
+    /// Exclusive upper bound; `None` is unbounded.
+    pub to: Option<i64>,
+    pub games: u64,
+    pub wins: u64,
+    pub win_rate: f64,
+}
+
+/// Edges between rating bands (opponent minus player).
+const RATING_EDGES: [i64; 4] = [-150, -50, 50, 150];
+
+fn rating_bands(differences: &[(i64, bool)]) -> Vec<RatingBand> {
+    let names = [
+        "Opponent 150+ lower",
+        "50 to 150 lower",
+        "Within 50",
+        "50 to 150 higher",
+        "Opponent 150+ higher",
+    ];
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let from = i.checked_sub(1).map(|j| RATING_EDGES[j]);
+            let to = RATING_EDGES.get(i).copied();
+            let inside = |d: i64| from.is_none_or(|f| d >= f) && to.is_none_or(|t| d < t);
+            let (games, wins) = differences
+                .iter()
+                .filter(|(d, _)| inside(*d))
+                .fold((0u64, 0u64), |(g, w), (_, won)| (g + 1, w + *won as u64));
+            RatingBand {
+                name: (*name).to_owned(),
+                from,
+                to,
+                games,
+                wins,
+                win_rate: if games == 0 {
+                    0.0
+                } else {
+                    wins as f64 / games as f64
+                },
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize)]
@@ -1165,9 +1218,23 @@ impl Store {
             Ok(rows)
         };
 
+        // Each counted result's MMR against its opponent's, for 1v1 games with both known.
+        let differences: Vec<(i64, bool)> = conn
+            .prepare(&format!(
+                "{scope} SELECT r2.elo - r1.elo, s.won FROM scope s
+                 JOIN matches m ON m.battle_id = s.battle_id AND m.match_mode = 'VS_1_1'
+                 JOIN player_ratings r1 ON r1.battle_id = s.battle_id AND r1.player_id = s.player_id
+                 JOIN players o ON o.battle_id = s.battle_id AND o.player_id != s.player_id
+                 JOIN player_ratings r2 ON r2.battle_id = o.battle_id AND r2.player_id = o.player_id
+                 WHERE r1.elo IS NOT NULL AND r2.elo IS NOT NULL"
+            ))?
+            .query_map(args, |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+
         Ok(Stats {
             matches,
             player_results,
+            vs_rating: rating_bands(&differences),
             units: usage("player_units", "unit")?,
             specialists: usage("player_specialists", "specialist")?,
             picked_specialists: usage(
