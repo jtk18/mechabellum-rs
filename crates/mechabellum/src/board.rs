@@ -80,6 +80,9 @@ const ZONE_BACK: i32 = -310;
 const FLANK_CENTER_X: i32 = 330;
 const FLANK_NEAR: i32 = 10;
 const FLANK_OPENS_ROUND: u32 = 3;
+/// Command Center and Research Center: the same place on every 2.0 map, mirrored left and right.
+const TOWER_X: i32 = 140;
+const TOWER_Y: i32 = -175;
 
 /// A named point on a side's half. `inward` says which way the unit extends from it, so a unit
 /// anchored to a corner sits flush in the corner rather than centered on it.
@@ -91,7 +94,7 @@ struct Anchor {
 
 /// Anchor names, for error messages.
 const ANCHORS: &str = "center, front, back, left, right, front-left, front-right, back-left, \
-back-right, left-flank, right-flank";
+back-right, left-flank, right-flank, command-center, research-center";
 
 fn anchor(name: &str) -> Option<Anchor> {
     let mid_y = (ZONE_FRONT + ZONE_BACK) / 2;
@@ -108,6 +111,11 @@ fn anchor(name: &str) -> Option<Anchor> {
         // The near end of a flank column, just past the middle.
         "left-flank" => (-FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
         "right-flank" => (FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
+        // Tower centers; a unit is centered on the offset from them, since the tower itself
+        // takes the spot. Measured in Testing Grounds on every 2.0 map (2026-09-28), within
+        // half a square.
+        "command-center" => (-TOWER_X, TOWER_Y, (0, 0)),
+        "research-center" => (TOWER_X, TOWER_Y, (0, 0)),
         _ => return None,
     };
     Some(Anchor { x, y, inward })
@@ -782,6 +790,7 @@ good luck"#;
 [unit=Crawler from=front-left right=2 back=1]
 [unit=Crawler from=center]
 [unit=Crawler from=right-flank forward=3]
+[unit=Fang from=command-center forward=4]
 [/side]
 [side half=north]
 [unit=Crawler from=front-left right=2 back=1]
@@ -793,6 +802,7 @@ good luck"#;
         assert_eq!((south[0].x, south[0].y), (-300 + 15 + 20, -10 - 10 - 10));
         assert_eq!((south[1].x, south[1].y), (0, 0));
         assert_eq!((south[2].x, south[2].y), (330, 10 + 10 + 30));
+        assert_eq!((south[3].x, south[3].y), (-140, -175 + 40));
         // The same code for the north half mirrors through the middle.
         let north = &board.sides[1].units[0];
         assert_eq!((north.x, north.y), (-south[0].x, -south[0].y));

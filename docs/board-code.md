@@ -64,6 +64,7 @@ Instead of `at=x,y`, a unit can be placed relative to a landmark on its own side
 | `left`, `right` | the middle of the zone's left or right edge |
 | `front-left`, `front-right`, `back-left`, `back-right` | the zone's corners |
 | `left-flank`, `right-flank` | the near end of a flank column, just past the middle; from round 3 |
+| `command-center`, `research-center` | the towers' centers (see below); use an offset |
 
 **Geometry** (the same on every 2.0 map measured, 82 games on 5 maps): each side's zone is 60
 squares wide and 30 deep, and its front edge stops 1 square short of the middle, so a 2-square
@@ -71,8 +72,11 @@ strip separates the two boards. From round 3, flank columns 6 squares wide open 
 of the opponent's half, running its full depth. That's the "front moves up" change mid-game. A
 flank anchor used with `round` below 3 is an error.
 
-**Not yet:** `command-center` and `research-center`. Their positions aren't in replays and differ
-by map; they'll come from Testing Grounds calibration.
+**Towers:** the Command Center stands at about (-14, -17.5) and the Research Center at about
+(14, -17.5) in a side's own frame, on every 2.0 map. They were measured in Testing Grounds,
+since replays don't record them. Give an offset (e.g. `from=command-center forward=5`): the unit
+is centered at the offset, and the game nudges units off a tower's footprint (about a square
+or two).
 
 ## Limits
 

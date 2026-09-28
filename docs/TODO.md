@@ -108,7 +108,7 @@ Commit each step once it's verified.
       Done: all five maps pass verify (Railway Town, Forest Eye, Training Base measured; Dusk
       and Night share Railway Town's). Forest Eye's camera faces the other way, so each map
       needs its own. The tool relaunches the game after a crash and tidies its own replays.
-- [ ] T3. Tower anchors: record Command Center and Research Center positions per map;
+- [x] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
 - [ ] T4. Items: how the tools grant cards; apply equipment.
 - [ ] T5. Replay real rounds from the user's replays and compare the outcome.

@@ -66,6 +66,22 @@ impl Projection {
         Some(Projection { h })
     }
 
+    /// Board point (squares) under a screen position: the inverse of `to_screen`.
+    pub fn to_board(&self, u: f64, v: f64) -> (f64, f64) {
+        let h = &self.h;
+        // Invert the 3x3 matrix [h0 h1 h2; h3 h4 h5; h6 h7 1] by cofactors.
+        let (a, b, c, d, e, f, g, hh) = (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
+        let m = [
+            [e - f * hh, c * hh - b, b * f - c * e],
+            [f * g - d, a - c * g, c * d - a * f],
+            [d * hh - e * g, b * g - a * hh, a * e - b * d],
+        ];
+        let x = m[0][0] * u + m[0][1] * v + m[0][2];
+        let y = m[1][0] * u + m[1][1] * v + m[1][2];
+        let w = m[2][0] * u + m[2][1] * v + m[2][2];
+        (x / w, y / w)
+    }
+
     /// Screen position of a board point, in squares.
     pub fn to_screen(&self, x: f64, y: f64) -> Px {
         let h = &self.h;
@@ -528,6 +544,16 @@ mod tests {
         for (x, y, u, v) in RAILWAY_TOWN_NORTH {
             let (su, sv) = north.to_screen(x, y);
             assert!((su - u).hypot(sv - v) < 15.0);
+        }
+    }
+
+    #[test]
+    fn test_to_board_inverts_to_screen() {
+        let p = Projection::fit(&RAILWAY_TOWN_SOUTH).unwrap();
+        for (x, y) in [(0.0, -10.0), (-20.0, -25.0), (15.5, -3.0)] {
+            let (u, v) = p.to_screen(x, y);
+            let (bx, by) = p.to_board(u, v);
+            assert!((bx - x).abs() < 1e-6 && (by - y).abs() < 1e-6, "{bx},{by}");
         }
     }
 

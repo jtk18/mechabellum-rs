@@ -39,12 +39,26 @@ enum Command {
         #[arg(long)]
         fresh: bool,
     },
+    /// Open Testing Grounds on a map (fresh session)
+    Go {
+        #[arg(long)]
+        map: String,
+    },
     /// Remove every unit on both sides
     Clear,
     /// Leave the sandbox for the Testing Grounds presets
     Lobby,
     /// Delete the practice replays this tool saved, except the newest
     Tidy,
+    /// Board squares under screen points (reference pixels, "x,y"), for a map and half
+    Where {
+        #[arg(long, default_value = "Railway Town")]
+        map: String,
+        #[arg(long)]
+        north: bool,
+        #[arg(value_parser = parse_point, required = true)]
+        points: Vec<(u32, u32)>,
+    },
     /// Measure a map's screen positions for both halves and save them
     Calibrate {
         /// Map name as the game shows it, e.g. "Forest Eye"
@@ -169,6 +183,18 @@ fn main() -> Result<()> {
                 println!("{c:?} x{n}");
             }
         }
+        Command::Where { map, north, points } => {
+            let (s, n) = mechabellum_grounds::calibration::Calibrations::load(
+                &mechabellum_grounds::calibration::default_path(),
+            )
+            .projections(&map)
+            .with_context(|| format!("{map} isn't calibrated"))?;
+            let p = if north { n } else { s };
+            for (x, y) in points {
+                let (bx, by) = p.to_board(f64::from(x), f64::from(y));
+                println!("{x},{y} -> board {bx:.1},{by:.1}");
+            }
+        }
         Command::Color { pngs, rect } => {
             for png in pngs {
                 let img = image::open(&png)?.to_rgb8();
@@ -245,6 +271,11 @@ fn main() -> Result<()> {
             mechabellum_grounds::flow::leave_to_lobby(&mut game)?;
         }
         #[cfg(windows)]
+        Command::Go { map } => {
+            let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+            mechabellum_grounds::flow::enter_map(&mut game, &map)?;
+        }
+        #[cfg(windows)]
         Command::Clear => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             mechabellum_grounds::flow::clear_both(&mut game)?;
@@ -287,6 +318,7 @@ fn main() -> Result<()> {
         | Command::Drop { .. }
         | Command::Enter { .. }
         | Command::Clear
+        | Command::Go { .. }
         | Command::Lobby
         | Command::Tidy
         | Command::Calibrate { .. }
