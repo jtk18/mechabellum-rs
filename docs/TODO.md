@@ -118,7 +118,12 @@ Commit each step once it's verified.
       it can't place, and items, then compares each half's result and HP lost. Runs end to end
       on Railway Town (see docs/testing-grounds.md). Open: Testing Grounds refuses drops right
       beside the towers that ranked games allow, so tight formations there get nudged and the
-      outcome can differ; try other rounds and maps.
+      outcome can differ. Forest Eye round 2: all 14 units away from the towers landed
+      exactly; all 6 beside them were nudged. Replays don't record tower positions.
+- [ ] T6. Buildings: replays record player-built constructions per round
+      (`constructionSnapshotDatas`: ID, index, position in replay units, durability), but board
+      codes and `Board::from_round` leave them out. Add a `[building=...]` tag, and place them
+      from the Testing Grounds Buildings tab.
 
 ## Housekeeping
 
