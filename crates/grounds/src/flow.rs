@@ -20,6 +20,18 @@ const LOBBY_SOLO_TAB: Px = (843.0, 69.0);
 const SOLO_TESTING_GROUNDS: Px = (2176.0, 768.0);
 /// Presets: "Enter the Testing Grounds".
 const ENTER_TESTING_GROUNDS: Px = (2284.0, 1475.0);
+/// Presets: the map dropdown, and its entries top to bottom.
+const MAP_DROPDOWN: Px = (2260.0, 1172.0);
+pub const MAPS: [&str; 5] = [
+    "Railway Town",
+    "Forest Eye",
+    "Training Base",
+    "Railway Town - Dusk",
+    "Railway Town - Night",
+];
+const MAP_ENTRY_X: f64 = 2211.0;
+const MAP_ENTRY_FIRST_Y: f64 = 1224.0;
+const MAP_ENTRY_STEP: f64 = 49.9;
 /// In-game menu: "Return to lobby".
 const MENU_RETURN_TO_LOBBY: Px = (1280.0, 739.0);
 /// Tools, bottom left: "Clear all", and its confirmation.
@@ -76,10 +88,47 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
     bail!("couldn't get into Testing Grounds")
 }
 
+/// Choose the map in the Testing Grounds presets. Must be on the presets screen.
+pub fn select_map(game: &mut Game, name: &str) -> Result<()> {
+    let key = |s: &str| s.to_lowercase().replace([' ', '-'], "");
+    let Some(i) = MAPS.iter().position(|m| key(m) == key(name)) else {
+        bail!(
+            "unknown map {name:?}; Testing Grounds has {}",
+            MAPS.join(", ")
+        );
+    };
+    if current(game)? != Screen::Lobby {
+        bail!("not on the Testing Grounds presets");
+    }
+    game.click(MAP_DROPDOWN, 1200);
+    game.click(
+        (MAP_ENTRY_X, MAP_ENTRY_FIRST_Y + MAP_ENTRY_STEP * i as f64),
+        1200,
+    );
+    Ok(())
+}
+
+/// Get into Testing Grounds on a given map, starting fresh.
+pub fn enter_map(game: &mut Game, name: &str) -> Result<()> {
+    match current(game)? {
+        Screen::Deploying | Screen::Battle | Screen::Menu => leave_to_lobby(game)?,
+        Screen::Lobby => {}
+        _ => {
+            // Get to the presets by way of the sandbox route, then leave.
+            enter(game, false)?;
+            leave_to_lobby(game)?;
+        }
+    }
+    select_map(game, name)?;
+    enter(game, false)
+}
+
 /// Menu, Return to lobby.
 pub fn leave_to_lobby(game: &mut Game) -> Result<()> {
-    if current(game)? == Screen::Battle {
-        wait_for(game, Screen::Deploying, Duration::from_secs(200))?;
+    match current(game)? {
+        Screen::Lobby => return Ok(()),
+        Screen::Battle => wait_for(game, Screen::Deploying, Duration::from_secs(200))?,
+        _ => {}
     }
     game.right_click(ui::NEUTRAL, 400);
     game.click(ui::MENU, 1500);
@@ -148,4 +197,25 @@ pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf>
         std::thread::sleep(Duration::from_millis(500));
     }
     bail!("no replay was saved in {}", replay_dir.display())
+}
+
+/// Delete the Testing Grounds replays saved since `since`, except the newest: that one records
+/// the loadouts that researching techs needs. Returns how many were removed.
+pub fn tidy_replays(replay_dir: &Path, since: SystemTime) -> usize {
+    let mut made: Vec<(PathBuf, SystemTime)> = std::fs::read_dir(replay_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| crate::is_testing_grounds_replay(p))
+        .filter_map(|p| {
+            let t = std::fs::metadata(&p).ok()?.modified().ok()?;
+            (t >= since).then_some((p, t))
+        })
+        .collect();
+    made.sort_by_key(|(_, t)| *t);
+    made.pop();
+    made.iter()
+        .filter(|(p, _)| std::fs::remove_file(p).is_ok())
+        .count()
 }

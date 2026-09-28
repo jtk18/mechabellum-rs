@@ -4,6 +4,7 @@
 //! are on screen, and how board squares map to screen pixels. The Windows driver is in `win`.
 //! See docs/testing-grounds.md.
 
+pub mod calibration;
 pub mod compare;
 #[cfg(windows)]
 pub mod flow;

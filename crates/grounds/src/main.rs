@@ -41,6 +41,17 @@ enum Command {
     },
     /// Remove every unit on both sides
     Clear,
+    /// Leave the sandbox for the Testing Grounds presets
+    Lobby,
+    /// Measure a map's screen positions for both halves and save them
+    Calibrate {
+        /// Map name as the game shows it, e.g. "Forest Eye"
+        #[arg(long)]
+        map: String,
+        /// Keep the replay it saves (normally deleted after reading)
+        #[arg(long)]
+        keep: bool,
+    },
     /// Set up a board code, fight the round, save the replay, and check it matches the code
     Verify {
         code: PathBuf,
@@ -96,18 +107,17 @@ fn load(path: &PathBuf) -> Result<Board> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let south = Projection::fit(&RAILWAY_TOWN_SOUTH).context("calibration")?;
-    let north = Projection::fit(&RAILWAY_TOWN_NORTH).context("calibration")?;
-    let projection_for = |half: Option<Half>| {
-        if half == Some(Half::North) {
-            north
-        } else {
-            south
-        }
-    };
     match cli.command {
         Command::Plan { code } => {
             let board = load(&code)?;
+            let (south, north) = projections(&board)?;
+            let projection_for = |half: Option<Half>| {
+                if half == Some(Half::North) {
+                    north
+                } else {
+                    south
+                }
+            };
             for side in &board.sides {
                 println!(
                     "{} ({} half):",
@@ -214,9 +224,16 @@ fn main() -> Result<()> {
         }
         #[cfg(windows)]
         Command::Enter { fresh } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
             mechabellum_grounds::flow::enter(&mut game, fresh)?;
             println!("in Testing Grounds");
+        }
+        #[cfg(windows)]
+        Command::Calibrate { map, keep } => calibrate(&map, keep)?,
+        #[cfg(windows)]
+        Command::Lobby => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            mechabellum_grounds::flow::leave_to_lobby(&mut game)?;
         }
         #[cfg(windows)]
         Command::Clear => {
@@ -226,7 +243,10 @@ fn main() -> Result<()> {
         #[cfg(windows)]
         Command::Verify { code, fresh } => {
             let board = load(&code)?;
+            let (south, north) = projections(&board)?;
+            let started = std::time::SystemTime::now();
             let problems = verify(&board, &south, &north, fresh)?;
+            mechabellum_grounds::flow::tidy_replays(&replay_dir(), started);
             if problems.is_empty() {
                 println!("OK: the replay matches the code");
             } else {
@@ -249,7 +269,9 @@ fn main() -> Result<()> {
             unlocked,
         } => {
             let _ = unlocked;
-            place(&load(&code)?, &south, &north, limit)?
+            let board = load(&code)?;
+            let (south, north) = projections(&board)?;
+            place(&board, &south, &north, limit)?
         }
         #[cfg(not(windows))]
         Command::Shot { .. }
@@ -257,11 +279,29 @@ fn main() -> Result<()> {
         | Command::Drop { .. }
         | Command::Enter { .. }
         | Command::Clear
+        | Command::Lobby
+        | Command::Calibrate { .. }
         | Command::Verify { .. } => {
             bail!("driving the game needs Windows")
         }
     }
     Ok(())
+}
+
+/// The map a board code names; Railway Town (Testing Grounds' default) when it names none.
+fn board_map(board: &Board) -> &str {
+    board.map.as_deref().unwrap_or("Railway Town")
+}
+
+/// Screen projections (south, north) for the board's map.
+fn projections(board: &Board) -> Result<(Projection, Projection)> {
+    use mechabellum_grounds::calibration::{default_path, Calibrations};
+    let map = board_map(board);
+    Calibrations::load(&default_path())
+        .projections(map)
+        .with_context(|| {
+            format!("{map} isn't calibrated yet; run: grounds calibrate --map \"{map}\"")
+        })
 }
 
 fn replay_dir() -> PathBuf {
@@ -282,10 +322,15 @@ fn verify(
     fresh: bool,
 ) -> Result<Vec<String>> {
     use mechabellum_grounds::flow;
-    let mut game = mechabellum_grounds::win::Game::find()?;
-    flow::enter(&mut game, fresh)?;
-    if !fresh {
-        flow::clear_both(&mut game)?;
+    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    // A code for a named map starts a fresh session on that map; otherwise use what's open.
+    if board.map.is_some() {
+        flow::enter_map(&mut game, board_map(board))?;
+    } else {
+        flow::enter(&mut game, fresh)?;
+        if !fresh {
+            flow::clear_both(&mut game)?;
+        }
     }
     // Researching techs needs each side's loadout, which only a Testing Grounds replay records.
     // Without one, fight an empty round to make one.
@@ -316,6 +361,114 @@ fn verify(
 {recorded}"
     );
     Ok(mechabellum_grounds::compare::differences(board, &recorded))
+}
+
+/// Board squares to drop calibration units at, in a side's own frame (x right, y toward the
+/// middle; the south half's coordinates). Spread over the zone, and deliberately not symmetric,
+/// so a fit can't match them rotated.
+const CALIBRATION_TARGETS: [(f64, f64); 7] = [
+    (-22.0, -6.0),
+    (18.0, -9.0),
+    (-4.0, -3.0),
+    (-25.0, -27.0),
+    (24.0, -22.0),
+    (7.0, -28.0),
+    (-12.0, -14.0),
+];
+
+/// Drop Crawlers across both halves of `map`, fight a round, read where the replay recorded
+/// them, and save a fitted calibration for the map.
+#[cfg(windows)]
+fn calibrate(map: &str, keep: bool) -> Result<()> {
+    use mechabellum_grounds::calibration::{
+        default_path, match_points, Calibrations, MapCalibration,
+    };
+    use mechabellum_grounds::{flow, ui};
+
+    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    flow::enter_map(&mut game, map)?;
+    flow::clear_both(&mut game)?;
+    // First guesses at screen positions: Railway Town's calibration. The real map's layout is
+    // similar enough that these land inside its zones; the fit uses where they actually land.
+    let guess_south = Projection::fit(&RAILWAY_TOWN_SOUTH).context("calibration")?;
+    let guess_north = Projection::fit(&RAILWAY_TOWN_NORTH).context("calibration")?;
+    let mut dropped = [Vec::new(), Vec::new()];
+    let mut current = Half::South;
+    for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
+        switch_to(&mut game, half, &mut current)?;
+        let guess = if half == Half::North {
+            &guess_north
+        } else {
+            &guess_south
+        };
+        for &(x, y) in &CALIBRATION_TARGETS {
+            let (bx, by) = if half == Half::North {
+                (-x, -y)
+            } else {
+                (x, y)
+            };
+            let target = guess.to_screen(bx, by);
+            if !mechabellum_grounds::clickable(target) {
+                continue;
+            }
+            match spawn_and_place(&mut game, "Crawler", target, false) {
+                Ok(true) => dropped[i].push(target),
+                Ok(false) => {
+                    // Refused (a building, the zone's edge): the unit may still be carried.
+                    game.right_click(ui::NEUTRAL, 600);
+                    println!("  drop at {:.0},{:.0} was refused", target.0, target.1);
+                }
+                Err(e) => println!("  drop at {:.0},{:.0}: {e:#}", target.0, target.1),
+            }
+        }
+        println!("{half:?}: {} units placed", dropped[i].len());
+    }
+    switch_to(&mut game, Half::South, &mut current)?;
+    let file = flow::run_round_and_save(&mut game, &replay_dir())?;
+    let record = mechabellum::BattleRecord::new_from_file(&file, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
+    if !keep {
+        let _ = std::fs::remove_file(&file);
+    }
+    let detail = record.match_detail();
+    let last = detail
+        .rounds
+        .len()
+        .checked_sub(1)
+        .context("the replay has no rounds")?;
+    let board = Board::from_round(&detail, last).context("no board in the replay")?;
+    let recorded = |half: Half| -> Vec<(f64, f64)> {
+        board
+            .sides
+            .iter()
+            .filter(|s| s.half == Some(half))
+            .flat_map(|s| &s.units)
+            .map(|u| (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0))
+            .collect()
+    };
+    let mut result = MapCalibration::default();
+    for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
+        let (points, err) = match_points(&dropped[i], &recorded(half))
+            .with_context(|| format!("{half:?}: too few units to fit (need 4)"))?;
+        println!(
+            "{half:?}: fit from {} points, worst error {err:.1} px",
+            points.len()
+        );
+        if err > 25.0 {
+            bail!("{half:?}: the fit is poor ({err:.0} px); not saving");
+        }
+        match half {
+            Half::South => result.south = points,
+            Half::North => result.north = points,
+        }
+    }
+    let path = default_path();
+    let mut all = Calibrations::load(&path);
+    all.maps.insert(map.to_owned(), result);
+    all.save(&path)?;
+    println!("saved {map} to {}", path.display());
+    flow::clear_both(&mut game)?;
+    Ok(())
 }
 
 /// Which side the game currently lets you edit: the name in the top-left box.

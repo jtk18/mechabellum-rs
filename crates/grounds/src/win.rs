@@ -65,6 +65,34 @@ impl Game {
         }
     }
 
+    /// Find the game window, starting the game through Steam if it isn't running (it can
+    /// crash). Waits up to 3 minutes for it to reach a screen with a known layout.
+    pub fn find_or_launch() -> Result<Game> {
+        if let Ok(game) = Game::find() {
+            return Ok(game);
+        }
+        eprintln!("Mechabellum isn't running; starting it through Steam");
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "steam://rungameid/669330"])
+            .status()?;
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_secs(180) {
+            ms(5000);
+            if let Ok(mut game) = Game::find() {
+                // Let the main menu finish loading.
+                for _ in 0..24 {
+                    if crate::screen::classify(&game.screenshot()?) != crate::screen::Screen::Other
+                    {
+                        return Ok(game);
+                    }
+                    ms(5000);
+                }
+                return Ok(game);
+            }
+        }
+        bail!("Mechabellum didn't start")
+    }
+
     pub fn client_size(&self) -> (i32, i32) {
         self.size
     }

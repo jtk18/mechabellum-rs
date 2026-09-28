@@ -3081,6 +3081,8 @@ dependencies = [
  "clap",
  "image 0.25.10",
  "mechabellum",
+ "serde",
+ "serde_json",
  "windows 0.58.0",
 ]
 
