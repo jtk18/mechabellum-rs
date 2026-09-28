@@ -34,6 +34,8 @@ const MAP_ENTRY_FIRST_Y: f64 = 1224.0;
 const MAP_ENTRY_STEP: f64 = 49.9;
 /// In-game menu: "Return to lobby".
 const MENU_RETURN_TO_LOBBY: Px = (1280.0, 739.0);
+/// Somewhere with nothing to hover over on any screen: below the board, above the hints.
+const HOVER_CLEAR: Px = (1280.0, 1380.0);
 /// Tools, bottom left: "Clear all", and its confirmation.
 const TOOLS_CLEAR_ALL: Px = (298.0, 1498.0);
 const CLEAR_CONFIRM: Px = (1116.0, 956.0);
@@ -87,8 +89,13 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
                 game.click(LOBBY_SOLO_TAB, 2500);
                 game.click(SOLO_TESTING_GROUNDS, 3000);
             }
-            // Loading, a dialog, or something unknown: wait rather than click blindly.
-            Screen::Other => std::thread::sleep(Duration::from_secs(3)),
+            // Loading, a dialog, or something unknown: wait rather than click blindly. The
+            // cursor may be resting on the tools list, whose hover card covers the banner, so
+            // move it (without clicking) to open ground below the board first.
+            Screen::Other => {
+                game.glide(HOVER_CLEAR);
+                std::thread::sleep(Duration::from_secs(3));
+            }
         }
     }
     bail!("couldn't get into Testing Grounds")

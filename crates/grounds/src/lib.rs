@@ -6,6 +6,7 @@
 
 pub mod calibration;
 pub mod compare;
+pub mod equipment;
 #[cfg(windows)]
 pub mod flow;
 pub mod screen;
@@ -145,6 +146,12 @@ pub mod ui {
     pub const TOOLS_CLOSE_LEFT: Px = (358.0, 296.0);
     pub const TOOLS_CLOSE_RIGHT: Px = (2534.0, 317.0);
     pub const TOOLS_SQUAD_TAB: Px = (2099.0, 448.0);
+    /// The Equipment tab: every item, by rank (see `equipment`).
+    pub const TOOLS_EQUIPMENT_TAB: Px = (2099.0, 896.0);
+    /// Where a granted item waits in your inventory, top left. Click it, then a unit.
+    pub const INVENTORY_ITEM: Px = (64.0, 365.0);
+    /// Left tools panel: empties the item inventory (equipped items stay on their units).
+    pub const TOOLS_CLEAR_EQUIPMENT: Px = (192.0, 870.0);
     pub const TOOLS_UPGRADE: Px = (118.0, 1203.0);
     pub const TOOLS_SUPPLIES_1000: Px = (116.0, 745.0);
     /// The researchable tech buttons on a selected unit's card, left to right. They follow the
@@ -455,6 +462,14 @@ pub fn mean_color(img: &image::RgbImage, (l, t, r, b): (u32, u32, u32, u32)) -> 
         }
     }
     sum.map(|s| s / n.max(1.0))
+}
+
+/// Whether an item waits in the inventory, top left: its icon's frame is blue-grey, where the
+/// ground behind it has little blue (measured: 105 to 113 with an item, 30 without on Railway
+/// Town). Only meaningful with the tools closed, since the left panel covers the spot.
+pub fn inventory_has_item(img: &image::RgbImage) -> bool {
+    let [_, _, b] = mean_color(img, (30, 335, 100, 400));
+    b > 90.0
 }
 
 /// Whether the right-hand Testing Grounds Tools panel is open: its header is dark navy.

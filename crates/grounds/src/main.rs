@@ -58,6 +58,20 @@ enum Command {
     Lobby,
     /// Delete the practice replays this tool saved, except the newest
     Tidy,
+    /// Put an item from the Equipment tab in your inventory, by item ID
+    Grant { id: u32 },
+    /// Equip catalog items on units, fight, and check each item's ID in the replay
+    ItemsCheck {
+        /// First catalog cell to check (0-based, top to bottom)
+        #[arg(long, default_value_t = 0)]
+        from: usize,
+        /// How many cells to check in one fight (at most 13)
+        #[arg(long, default_value_t = 13)]
+        count: usize,
+        /// The unit to equip; some items only fit some units (Laser Sights won't go on a Crawler)
+        #[arg(long, default_value = "Fortress")]
+        unit: String,
+    },
     /// Board squares under screen points (reference pixels, "x,y"), for a map and half
     Where {
         #[arg(long, default_value = "Railway Town")]
@@ -290,6 +304,14 @@ fn main() -> Result<()> {
         #[cfg(windows)]
         Command::Replay { file, round } => replay(&file, round)?,
         #[cfg(windows)]
+        Command::Grant { id } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            grant(&mut game, id)?;
+            println!("granted {id}; it's in your inventory, top left");
+        }
+        #[cfg(windows)]
+        Command::ItemsCheck { from, count, unit } => items_check(from, count, &unit)?,
+        #[cfg(windows)]
         Command::Clear => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             mechabellum_grounds::flow::clear_both(&mut game)?;
@@ -336,6 +358,8 @@ fn main() -> Result<()> {
         | Command::Go { .. }
         | Command::Lobby
         | Command::Tidy
+        | Command::Grant { .. }
+        | Command::ItemsCheck { .. }
         | Command::Calibrate { .. }
         | Command::Verify { .. } => {
             bail!("driving the game needs Windows")
@@ -440,6 +464,157 @@ const CALIBRATION_TARGETS: [(f64, f64); 14] = [
     (-9.0, -29.0),
     (15.0, -27.0),
 ];
+
+/// Put an item in your inventory from the tools' Equipment tab, and close the tools.
+#[cfg(windows)]
+fn grant(game: &mut mechabellum_grounds::win::Game, id: u32) -> Result<()> {
+    use mechabellum_grounds::ui;
+    let cell = mechabellum_grounds::equipment::cell(id)
+        .with_context(|| format!("item {id} isn't in the Equipment tab"))?;
+    game.right_click(ui::NEUTRAL, 400);
+    let mut opened = false;
+    for _ in 0..3 {
+        if mechabellum_grounds::tools_open(&game.screenshot()?) {
+            opened = true;
+            break;
+        }
+        game.click(ui::TOOLS, 1200);
+    }
+    if !opened {
+        bail!("couldn't open Testing Grounds Tools");
+    }
+    game.click(ui::TOOLS_EQUIPMENT_TAB, 800);
+    // To the top, then down to the cell's row. Only scroll with the list under the cursor.
+    game.wheel_at(ui::PALETTE_SCROLL, 150);
+    if cell.scroll_down_steps > 0 {
+        game.wheel_at(ui::PALETTE_SCROLL, -cell.scroll_down_steps);
+    }
+    game.click(cell.at, 900);
+    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+    Ok(())
+}
+
+/// Equip catalog cells `from..from + count` on units across your half, fight, and compare
+/// each unit's item in the replay with the cell's ID.
+#[cfg(windows)]
+fn items_check(from: usize, count: usize, unit: &str) -> Result<()> {
+    use mechabellum_grounds::{equipment, flow, ui};
+
+    let cells: Vec<_> = equipment::cells()
+        .into_iter()
+        .skip(from)
+        .take(count)
+        .collect();
+    if cells.is_empty() {
+        bail!("no catalog cells from {from}");
+    }
+    // Railway Town refuses drops at (-4,-3), right in front of the pad.
+    let targets: Vec<(f64, f64)> = CALIBRATION_TARGETS
+        .iter()
+        .copied()
+        .filter(|&t| t != (-4.0, -3.0))
+        .take(cells.len())
+        .collect();
+    let map = "Railway Town";
+    let (south, _) = mechabellum_grounds::calibration::Calibrations::load(
+        &mechabellum_grounds::calibration::default_path(),
+    )
+    .projections(map)
+    .context("Railway Town isn't calibrated")?;
+
+    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    flow::enter_map(&mut game, map)?;
+    flow::clear_both(&mut game)?;
+    let mut placed = Vec::new();
+    let mut refused = Vec::new();
+    for (cell, &(x, y)) in cells.iter().zip(&targets) {
+        let at = south.to_screen(x, y);
+        match spawn_and_place(&mut game, unit, &[at], false) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                println!("  {unit} at {x},{y} wasn't placed; skipping {}", cell.name);
+                continue;
+            }
+            Err(e) => {
+                println!("  {unit} at {x},{y}: {e:#}; skipping {}", cell.name);
+                game.right_click(ui::NEUTRAL, 600);
+                continue;
+            }
+        }
+        grant(&mut game, cell.id)?;
+        game.click(ui::INVENTORY_ITEM, 700);
+        game.click(at, 900);
+        game.right_click(ui::NEUTRAL, 600);
+        // A unit that can't wear the item leaves it in the inventory, where it would be picked
+        // up again next time; clear it.
+        if mechabellum_grounds::inventory_has_item(&game.screenshot()?) {
+            refused.push(*cell);
+            game.click(ui::TOOLS, 1200);
+            game.click(ui::TOOLS_CLEAR_EQUIPMENT, 800);
+            game.click(ui::TOOLS_CLOSE_LEFT, 500);
+            game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+            continue;
+        }
+        placed.push((cell, (x, y)));
+    }
+    for cell in &refused {
+        println!(
+            "  a {unit} can't wear rank {} {} ({})",
+            cell.rank, cell.name, cell.id
+        );
+    }
+    let file = flow::run_round_and_save(&mut game, &replay_dir())?;
+    let record = mechabellum::BattleRecord::new_from_file(&file, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
+    let detail = record.match_detail();
+    let last = detail.rounds.len().checked_sub(1).context("no rounds")?;
+    let units: Vec<&mechabellum::PlacedUnit> = detail.rounds[last]
+        .sides
+        .iter()
+        .flatten()
+        .flat_map(|s| &s.units)
+        .filter(|u| u.y < 0)
+        .collect();
+    let (mut ok, mut wrong) = (0, 0);
+    for (cell, (x, y)) in placed {
+        let near = units.iter().min_by(|a, b| {
+            let d = |u: &&&mechabellum::PlacedUnit| {
+                (f64::from(u.x) / 10.0 - x).hypot(f64::from(u.y) / 10.0 - y)
+            };
+            d(a).total_cmp(&d(b))
+        });
+        let worn: Vec<String> = near
+            .map(|u| u.equipment.iter().map(|e| e.id.clone()).collect())
+            .unwrap_or_default();
+        let label = format!("rank {} {} ({})", cell.rank, cell.name, cell.id);
+        if worn.iter().any(|id| id.trim() == cell.id.to_string()) {
+            ok += 1;
+            println!("  confirmed {label}");
+        } else {
+            wrong += 1;
+            let names: Vec<String> = worn
+                .iter()
+                .map(|id| {
+                    let name = mechabellum::resolve_name(mechabellum::NameKind::Equipment, id)
+                        .unwrap_or("?");
+                    format!("{name} ({id})")
+                })
+                .collect();
+            println!(
+                "  MISMATCH {label}: the {unit} wore {}",
+                if names.is_empty() {
+                    "nothing".to_owned()
+                } else {
+                    names.join(", ")
+                }
+            );
+        }
+    }
+    println!("{ok} confirmed, {wrong} not");
+    flow::tidy_replays();
+    Ok(())
+}
 
 /// The worst distance, in pixels, between measured points and a fit through them.
 fn worst_error(points: &mechabellum_grounds::calibration::Points) -> Option<f64> {
