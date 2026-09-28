@@ -282,9 +282,9 @@ pub fn extract(
                 match assets.cut(sprite, &texture) {
                     Ok(image) => image::save_buffer(
                         art_dir.join(format!("{}.png", sprite.name)),
-                        &image.rgba,
-                        image.width,
-                        image.height,
+                        image.rgba(),
+                        image.width(),
+                        image.height(),
                         image::ColorType::Rgba8,
                     )
                     .with_context(|| format!("writing {}.png", sprite.name))?,
