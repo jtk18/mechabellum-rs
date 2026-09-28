@@ -39,9 +39,9 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
             (1305013, "Photon Coating"),
         ],
         &[
-            (1309001, "Absorption Module"),
+            (1309002, "Absorption Module"),
             (13040001, "Deployment Module"),
-            (1307001, "Barrier"),
+            (1307003, "Barrier"),
         ],
         &[
             (13150001, "Advanced HE Shells"),
@@ -49,11 +49,11 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
             (13150003, "Improved Burst Ammunition"),
         ],
         &[
-            (13020001, "Nano Repair Kit"),
-            (13010001, "Portable Shield"),
+            (13020002, "Nano Repair Kit"),
+            (13010002, "Portable Shield"),
             (1308001, "Anti-Interference Module"),
         ],
-        &[(13130001, "Optical Camouflage")],
+        &[(13130002, "Optical Camouflage")],
     ],
     // Rank 2
     &[
@@ -84,16 +84,16 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
         ],
         &[
             (1306004, "Abyss Beacon"),
-            (1306001, "Tank Production Line"),
-            (1306002, "Mustang Production Line"),
+            (1306005, "Tank Production Line"),
+            (1306006, "Mustang Production Line"),
         ],
         &[
-            (1306003, "Steel Ball Production Line"),
+            (1306007, "Steel Ball Production Line"),
             (13110001, "Splitter Core"),
             (13120001, "Emergency Capacitor"),
         ],
         &[
-            (13130002, "Optical Camouflage"),
+            (13130001, "Optical Camouflage"),
             (13100001, "Experimental Mountain Armor"),
             (13140001, "Heavy Targeting System"),
         ],
@@ -113,15 +113,15 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
         &[
             (1305001, "Charged Ammo"),
             (1305011, "Charged Ammo"),
-            (1309002, "Absorption Module"),
+            (1309001, "Absorption Module"),
         ],
         &[
-            (1307003, "Barrier"),
+            (1307001, "Barrier"),
             (13150101, "Explosive Ammo"),
-            (13020002, "Nano Repair Kit"),
+            (13020001, "Nano Repair Kit"),
         ],
         &[
-            (13010002, "Portable Shield"),
+            (13010001, "Portable Shield"),
             (13130101, "Optical Camouflage"),
         ],
     ],
@@ -143,9 +143,9 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
             (1305012, "Parasitic Ammo"),
         ],
         &[
-            (1306005, "Tank Production Line"),
-            (1306006, "Mustang Production Line"),
-            (1306007, "Steel Ball Production Line"),
+            (1306001, "Tank Production Line"),
+            (1306002, "Mustang Production Line"),
+            (1306003, "Steel Ball Production Line"),
         ],
         &[
             (13020003, "Improved Nano Repair Kit"),
@@ -159,9 +159,16 @@ pub const CATALOG: [&[&[(u32, &str)]]; 4] = [
 /// IDs checked against a replay by equipping them from their catalog cell. The rest are the
 /// best reading of the catalog.
 pub const CONFIRMED: &[u32] = &[
-    // 2026-09-28, on Fortresses: rank 1's first 13 cells (Amplifying Core not placed).
+    // 2026-09-28, on Fortresses.
+    // Rank 1.
     13030005, 13030012, 13030013, 13030014, 13030015, 13030016, 13030020, 13030021, 13030022,
-    13030023, 13030024, 13030029,
+    13030023, 13030024, 13030029, 1305003, 1305013, 1309002, 13040001, 1307003, 13150001, 13150003,
+    13010002, 1308001, 13130002, // Rank 2.
+    13030001, 13030002, 13030003, 13030011, 13030017, 13030019, 1305004, 1305006, 1305007, 1305008,
+    1305009, 1305010, 1307002, 1306004, 1306005, 1306006, 1306007, 13110001, 13130001, 13100001,
+    13140001, // Rank 3.
+    13030007, 13030010, 13030521, 13030522, 13030523, 1305001, 1305011, 1309001, 1307001, 13150101,
+    13010001,
 ];
 
 /// Cell centers across the panel.
@@ -236,6 +243,9 @@ mod tests {
                 "{}",
                 c.id
             );
+        }
+        for id in CONFIRMED {
+            assert!(cell(*id).is_some(), "confirmed {id} isn't in the catalog");
         }
         let mut ids: Vec<u32> = cells.iter().map(|c| c.id).collect();
         ids.sort_unstable();

@@ -509,11 +509,11 @@ fn items_check(from: usize, count: usize, unit: &str) -> Result<()> {
     if cells.is_empty() {
         bail!("no catalog cells from {from}");
     }
-    // Railway Town refuses drops at (-4,-3), right in front of the pad.
+    // Railway Town refuses drops at (-4,-3), and a Fortress at (9,-4), both near the pad.
     let targets: Vec<(f64, f64)> = CALIBRATION_TARGETS
         .iter()
         .copied()
-        .filter(|&t| t != (-4.0, -3.0))
+        .filter(|&t| t != (-4.0, -3.0) && t != (9.0, -4.0))
         .take(cells.len())
         .collect();
     let map = "Railway Town";
