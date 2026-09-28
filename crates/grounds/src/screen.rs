@@ -45,7 +45,8 @@ pub fn classify(img: &image::RgbImage) -> Screen {
     let mode_button = mean_color(img, (60, 40, 500, 100));
     let main_caption = mean_color(img, (90, 700, 960, 760));
     if banner_gold(banner) {
-        if navy(tools_label) {
+        // The open tools panel covers the label, and it only opens while deploying.
+        if navy(tools_label) || crate::tools_open(img) {
             Screen::Deploying
         } else {
             Screen::Battle

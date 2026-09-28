@@ -66,6 +66,10 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
     for _ in 0..8 {
         match current(game)? {
             Screen::Deploying => {
+                if crate::tools_open(&game.screenshot()?) {
+                    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+                    game.click(ui::TOOLS_CLOSE_RIGHT, 800);
+                }
                 game.right_click(ui::NEUTRAL, 400);
                 game.wheel(-60);
                 return Ok(());

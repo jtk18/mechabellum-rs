@@ -251,10 +251,14 @@ fn main() -> Result<()> {
             let mut game = mechabellum_grounds::win::Game::find()?;
             for (x, y) in points {
                 let target = (f64::from(x), f64::from(y));
-                let ok = spawn_and_place(&mut game, &unit, target, false)?;
+                let ok = spawn_and_place(&mut game, &unit, &[target], false)?;
                 println!(
                     "{unit} to {x},{y}: {}",
-                    if ok { "placed" } else { "NOT confirmed" }
+                    if ok.is_some() {
+                        "placed"
+                    } else {
+                        "NOT confirmed"
+                    }
                 );
             }
         }
@@ -463,9 +467,9 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
             if !mechabellum_grounds::clickable(target) {
                 continue;
             }
-            match spawn_and_place(&mut game, "Crawler", target, false) {
-                Ok(true) => dropped[i].push(target),
-                Ok(false) => {
+            match spawn_and_place(&mut game, "Crawler", &[target], false) {
+                Ok(Some(_)) => dropped[i].push(target),
+                Ok(None) => {
                     // Refused (a building, the zone's edge): the unit may still be carried.
                     game.right_click(ui::NEUTRAL, 600);
                     println!("  drop at {:.0},{:.0} was refused", target.0, target.1);
@@ -760,12 +764,29 @@ fn place(
                 break;
             }
             placed += 1;
-            let landed = spawn_and_place(&mut game, &step.name, step.screen, unit.rotated)
+            // The north half's own frame is the board turned half a turn.
+            let flip = if half == Half::North { -1.0 } else { 1.0 };
+            let spots: Vec<(f64, f64)> = NUDGES
+                .iter()
+                .map(|(dx, dy)| (step.board.0 + dx * flip, step.board.1 + dy * flip))
+                .filter(|&(x, y)| {
+                    // Stay in the side's zone and in view.
+                    (x * flip).abs() <= 30.0
+                        && (-40.0..=-1.0).contains(&(y * flip))
+                        && mechabellum_grounds::clickable(projection.to_screen(x, y))
+                })
+                .collect();
+            let screens: Vec<_> = spots
+                .iter()
+                .map(|&(x, y)| projection.to_screen(x, y))
+                .collect();
+            let landed = spawn_and_place(&mut game, &step.name, &screens, unit.rotated)
                 .with_context(|| format!("{} at {},{}", step.name, step.board.0, step.board.1))?;
+            let at = landed.map_or(step.screen, |i| screens[i]);
             // Techs: select it (a click picks it up), click its card's buttons, then put it back.
             let techs = buttons.next().unwrap_or_default();
             if !techs.is_empty() {
-                game.click(step.screen, 900);
+                game.click(at, 900);
                 for b in &techs {
                     game.click(ui::CARD_TECHS[*b], 900);
                 }
@@ -773,7 +794,7 @@ fn place(
             }
             // Level: select it, then Upgrade in the tools, once per level.
             if unit.level > 1 {
-                game.click(step.screen, 700);
+                game.click(at, 700);
                 game.click(ui::TOOLS, 1200);
                 for _ in 1..unit.level {
                     game.click(ui::TOOLS_UPGRADE, 500);
@@ -788,10 +809,10 @@ fn place(
                 step.board.0,
                 step.board.1,
                 unit.level,
-                if landed {
-                    "placed"
-                } else {
-                    "NOT confirmed (check the screen)"
+                match landed.map(|i| spots[i]) {
+                    Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
+                    Some((x, y)) => format!("refused there; placed at {x:.1},{y:.1}"),
+                    None => "NOT confirmed (check the screen)".to_owned(),
                 }
             );
         }
@@ -819,15 +840,20 @@ fn half_name(half: Half) -> &'static str {
     }
 }
 
-/// Spawn a unit from the Squad list and move it to `target`. Returns whether a unit was seen
-/// there afterwards.
+/// Board offsets (squares, in the side's own frame: +y toward the middle) to try when the game
+/// refuses a drop, e.g. when a tower's model is in front of the spot. A refused unit would sit
+/// on the spawn pad and block the next spawn, so a nearby spot beats none.
+const NUDGES: [(f64, f64); 5] = [(0.0, 0.0), (0.0, 2.0), (-3.0, 0.0), (3.0, 0.0), (0.0, 4.0)];
+
+/// Spawn a unit from the Squad list and move it to the first of `targets` the game accepts.
+/// Returns the index of the target it landed on, if a unit was seen there afterwards.
 #[cfg(windows)]
 fn spawn_and_place(
     game: &mut mechabellum_grounds::win::Game,
     name: &str,
-    target: mechabellum_grounds::Px,
+    targets: &[mechabellum_grounds::Px],
     rotated: bool,
-) -> Result<bool> {
+) -> Result<Option<usize>> {
     use mechabellum_grounds::{green_blobs, ui, Px};
 
     let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
@@ -873,14 +899,26 @@ fn spawn_and_place(
             .unwrap_or(0);
         *w as i64 - old as i64
     };
+    // A big unit's model hides much of its tile, splitting it into small pieces, so add up the
+    // growth over the whole pad and take its weighted center.
+    let pad_growth = |after: &[(Px, usize)]| -> Option<Px> {
+        let grown: Vec<(Px, f64)> = after
+            .iter()
+            .filter(|b| near(b.0, ui::SPAWN_PAD, 170.0))
+            .map(|b| (b.0, growth(b).max(0) as f64))
+            .filter(|(_, g)| *g > 0.0)
+            .collect();
+        let total: f64 = grown.iter().map(|(_, g)| g).sum();
+        (total > 100.0).then(|| {
+            let x = grown.iter().map(|(p, g)| p.0 * g).sum::<f64>() / total;
+            let y = grown.iter().map(|(p, g)| p.1 * g).sum::<f64>() / total;
+            (x, y)
+        })
+    };
     // Units can take a moment to appear.
     let mut found = None;
     for _ in 0..4 {
-        found = after
-            .iter()
-            .filter(|b| growth(b) > 100 && near(b.0, ui::SPAWN_PAD, 170.0))
-            .max_by_key(|b| growth(b))
-            .map(|b| b.0);
+        found = pad_growth(&after);
         if found.is_some() {
             break;
         }
@@ -903,7 +941,12 @@ fn spawn_and_place(
             .unwrap_or(0)
     };
     let grown = spawn_weight(&after);
-    for _ in 0..3 {
+    // Each target gets two tries; the first gets three, as a drop sometimes just doesn't take.
+    let attempts = targets
+        .iter()
+        .enumerate()
+        .flat_map(|(i, t)| std::iter::repeat_n((i, *t), if i == 0 { 3 } else { 2 }));
+    for (i, target) in attempts {
         game.click(spawn, 700);
         game.click(target, 700);
         // Between the first click at the spot and the confirming double click, a middle click
@@ -914,12 +957,14 @@ fn spawn_and_place(
         game.double_click(target, 700);
         game.right_click(target, 900);
         let now = green_blobs(&game.screenshot()?);
-        let left_spawn = (spawn_weight(&now) as f64) < grown as f64 * 0.8;
+        // A target on the pad itself can't show the unit leaving it.
+        let left_spawn =
+            near(target, spawn, 60.0) || (spawn_weight(&now) as f64) < grown as f64 * 0.8;
         let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
         if left_spawn && at_target {
-            return Ok(true);
+            return Ok(Some(i));
         }
         game.right_click(ui::NEUTRAL, 600);
     }
-    Ok(false)
+    Ok(None)
 }
