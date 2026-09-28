@@ -44,6 +44,14 @@ enum Command {
         #[arg(long)]
         map: String,
     },
+    /// Re-fight a round from a real replay in Testing Grounds and compare the outcome
+    Replay {
+        /// A .grbr replay
+        file: PathBuf,
+        /// 1-based round; the last round by default
+        #[arg(long)]
+        round: Option<usize>,
+    },
     /// Remove every unit on both sides
     Clear,
     /// Leave the sandbox for the Testing Grounds presets
@@ -276,6 +284,8 @@ fn main() -> Result<()> {
             mechabellum_grounds::flow::enter_map(&mut game, &map)?;
         }
         #[cfg(windows)]
+        Command::Replay { file, round } => replay(&file, round)?,
+        #[cfg(windows)]
         Command::Clear => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             mechabellum_grounds::flow::clear_both(&mut game)?;
@@ -318,6 +328,7 @@ fn main() -> Result<()> {
         | Command::Drop { .. }
         | Command::Enter { .. }
         | Command::Clear
+        | Command::Replay { .. }
         | Command::Go { .. }
         | Command::Lobby
         | Command::Tidy
@@ -509,6 +520,137 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
     all.save(&path)?;
     println!("saved {map} to {}", path.display());
     flow::clear_both(&mut game)?;
+    Ok(())
+}
+
+/// Each side's fight result in one round, and the HP it lost when the next round records it:
+/// (half, result, hp lost).
+fn outcome(detail: &mechabellum::MatchDetail, index: usize) -> Vec<(Half, String, Option<i32>)> {
+    let hp_after = |s: usize| {
+        detail
+            .rounds
+            .get(index + 1)
+            .and_then(|r| r.sides.get(s))
+            .and_then(Option::as_ref)
+            .map(|side| side.hp)
+    };
+    detail.rounds[index]
+        .sides
+        .iter()
+        .enumerate()
+        .filter_map(|(s, side)| {
+            let side = side.as_ref()?;
+            let mut ys: Vec<i32> = side.units.iter().map(|u| u.y).collect();
+            ys.sort_unstable();
+            let half = if ys.get(ys.len() / 2).is_some_and(|&y| y > 0) {
+                Half::North
+            } else {
+                Half::South
+            };
+            let lost = hp_after(s).map(|after| side.hp - after);
+            Some((half, side.result.clone(), lost))
+        })
+        .collect()
+}
+
+/// Set up a round of a real match and fight it again; report how the outcome compares.
+#[cfg(windows)]
+fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
+    let record = mechabellum::BattleRecord::new_from_file(file, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
+    let detail = record.match_detail();
+    let index = match round {
+        Some(r) => r.checked_sub(1).context("rounds start at 1")?,
+        None => detail
+            .rounds
+            .len()
+            .checked_sub(1)
+            .context("the replay has no rounds")?,
+    };
+    let mut board = Board::from_round(&detail, index).context("that round isn't in the replay")?;
+    let (south, north) = projections(&board)?;
+
+    // Keep what Testing Grounds can reproduce, and say what was left out.
+    let (mine, theirs) = mechabellum_grounds::loadouts(&replay_dir()).unwrap_or_default();
+    let mut dropped = Vec::new();
+    for side in &mut board.sides {
+        let north_half = side.half == Some(Half::North);
+        let projection = if north_half { north } else { south };
+        let loadout = if north_half { &theirs } else { &mine };
+        side.units.retain(|u| {
+            let screen = projection.to_screen(f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
+            let ok = mechabellum_grounds::clickable(screen)
+                && mechabellum_grounds::ui::palette(&u.name).is_some();
+            if !ok {
+                dropped.push(format!(
+                    "{} at {:.1},{:.1} (can't be placed)",
+                    u.name,
+                    f64::from(u.x) / 10.0,
+                    f64::from(u.y) / 10.0
+                ));
+            }
+            ok
+        });
+        for u in &mut side.units {
+            let equipped = loadout.get(&u.unit_id).map(Vec::as_slice).unwrap_or(&[]);
+            let before = u.techs.len();
+            u.techs.retain(|t| {
+                mechabellum_grounds::tech_buttons(&u.name, std::slice::from_ref(t), equipped)
+                    .is_ok()
+            });
+            if u.techs.len() < before {
+                dropped.push(format!(
+                    "some techs on {} (not in the Testing Grounds loadout)",
+                    u.name
+                ));
+            }
+            if !u.items.is_empty() {
+                dropped.push(format!("items on {}: {}", u.name, u.items.join(", ")));
+                u.items.clear();
+            }
+        }
+    }
+    println!(
+        "round {} of {}:
+{board}",
+        index + 1,
+        file.display()
+    );
+    dropped.sort();
+    dropped.dedup();
+    for d in &dropped {
+        println!("left out: {d}");
+    }
+
+    let started_problems = verify(&board, &south, &north, true)?;
+    for p in &started_problems {
+        println!("setup differs: {p}");
+    }
+    mechabellum_grounds::flow::tidy_replays();
+
+    // The fight just saved is the newest practice replay.
+    let newest = std::fs::read_dir(replay_dir())?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| mechabellum_grounds::is_testing_grounds_replay(p))
+        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+        .context("no practice replay saved")?;
+    let again = mechabellum::BattleRecord::new_from_file(&newest, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", newest.display()))?
+        .match_detail();
+    let real = outcome(&detail, index);
+    let redo = outcome(&again, again.rounds.len() - 1);
+    println!("\n{:<8} {:>18} {:>18}", "half", "real", "testing grounds");
+    for half in [Half::South, Half::North] {
+        let r = real.iter().find(|o| o.0 == half);
+        let t = redo.iter().find(|o| o.0 == half);
+        let show = |o: Option<&(Half, String, Option<i32>)>| match o {
+            Some((_, result, Some(lost))) => format!("{result} (-{lost} HP)"),
+            Some((_, result, None)) => result.clone(),
+            None => "-".to_owned(),
+        };
+        println!("{:<8} {:>18} {:>18}", half_name(half), show(r), show(t));
+    }
     Ok(())
 }
 

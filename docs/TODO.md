@@ -110,8 +110,14 @@ Commit each step once it's verified.
       needs its own. The tool relaunches the game after a crash and tidies its own replays.
 - [x] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
-- [ ] T4. Items: how the tools grant cards; apply equipment.
-- [ ] T5. Replay real rounds from the user's replays and compare the outcome.
+- [x] T4. Items: explored; not automatable yet. No Testing Grounds tool grants a chosen item.
+      Items only come from the shop's random reinforcement cards. The presets' "Select
+      Reinforcement" option hasn't been tried. `grounds replay` leaves items out and says so.
+- [ ] T5. Replay real rounds from the user's replays and compare the outcome. `grounds replay
+      FILE --round N` is written: it leaves out techs not in the Testing Grounds loadout, units
+      it can't place, and items, then compares each half's result and HP lost. No run has
+      finished yet: the first try (Railway Town, round 2) timed out because the Stats window
+      was covering the game.
 
 ## Housekeeping
 
