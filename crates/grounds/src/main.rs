@@ -384,10 +384,10 @@ fn verify(
         flow::enter_map(&mut game, board_map(board))?;
     } else {
         flow::enter(&mut game, fresh)?;
-        if !fresh {
-            flow::clear_both(&mut game)?;
-        }
     }
+    // Clearing also switches sides and back, which settles your own side's camera where
+    // calibration measured it: straight after entering, it sits about a square off.
+    flow::clear_both(&mut game)?;
     // Researching techs needs each side's loadout, which only a Testing Grounds replay records.
     // Without one, fight an empty round to make one.
     let wants_techs = board
@@ -421,33 +421,65 @@ fn verify(
 
 /// Board squares to drop calibration units at, in a side's own frame (x right, y toward the
 /// middle; the south half's coordinates). Spread over the zone, and deliberately not symmetric,
-/// so a fit can't match them rotated.
-const CALIBRATION_TARGETS: [(f64, f64); 7] = [
+/// so a fit can't match them rotated. They keep clear of the towers (about ±14,-17.5) and the
+/// spawn pad (the middle), where drops are refused. Each drop snaps to the grid, so a fit needs
+/// many points to average that out.
+const CALIBRATION_TARGETS: [(f64, f64); 14] = [
     (-22.0, -6.0),
     (18.0, -9.0),
     (-4.0, -3.0),
     (-25.0, -27.0),
     (24.0, -22.0),
     (7.0, -28.0),
-    (-12.0, -14.0),
+    (-6.0, -10.0),
+    (9.0, -4.0),
+    (-27.0, -15.0),
+    (27.0, -12.0),
+    (-17.0, -25.0),
+    (3.0, -23.0),
+    (-9.0, -29.0),
+    (15.0, -27.0),
 ];
+
+/// The worst distance, in pixels, between measured points and a fit through them.
+fn worst_error(points: &mechabellum_grounds::calibration::Points) -> Option<f64> {
+    let p = Projection::fit(points)?;
+    Some(
+        points
+            .iter()
+            .map(|&(x, y, u, v)| {
+                let (su, sv) = p.to_screen(x, y);
+                (su - u).hypot(sv - v)
+            })
+            .fold(0.0, f64::max),
+    )
+}
 
 /// Drop Crawlers across both halves of `map`, fight a round, read where the replay recorded
 /// them, and save a fitted calibration for the map.
 #[cfg(windows)]
 fn calibrate(map: &str, keep: bool) -> Result<()> {
     use mechabellum_grounds::calibration::{
-        default_path, match_points, Calibrations, MapCalibration,
+        default_path, match_by_guess, match_points, Calibrations, MapCalibration,
     };
     use mechabellum_grounds::{flow, ui};
 
     let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
-    // First guesses at screen positions: Railway Town's calibration. The real map's layout is
-    // similar enough that these land inside its zones; the fit uses where they actually land.
-    let guess_south = Projection::fit(&RAILWAY_TOWN_SOUTH).context("calibration")?;
-    let guess_north = Projection::fit(&RAILWAY_TOWN_NORTH).context("calibration")?;
+    // First guesses at screen positions: the map's own calibration if it has one, else Railway
+    // Town's. Other maps' layouts are similar enough that these land inside their zones; the
+    // fit uses where they actually land.
+    let (guess_south, guess_north) = match Calibrations::load(&default_path()).projections(map) {
+        Some(p) => p,
+        None => (
+            Projection::fit(&RAILWAY_TOWN_SOUTH).context("calibration")?,
+            Projection::fit(&RAILWAY_TOWN_NORTH).context("calibration")?,
+        ),
+    };
+    let known = Calibrations::load(&default_path())
+        .projections(map)
+        .is_some();
     let mut dropped = [Vec::new(), Vec::new()];
     let mut current = Half::South;
     for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
@@ -502,9 +534,25 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
             .map(|u| (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0))
             .collect()
     };
+    let path = default_path();
+    let mut all = Calibrations::load(&path);
+    // Earlier runs' points for this map, pooled with this run's so grid snapping averages out.
+    let earlier = all.maps.get(map).cloned().unwrap_or_default();
     let mut result = MapCalibration::default();
     for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
-        let (points, err) = match_points(&dropped[i], &recorded(half))
+        // With a close calibration already, match each drop to the unit recorded nearest where
+        // it predicts; else rely on placement order.
+        let guess = if half == Half::North {
+            &guess_north
+        } else {
+            &guess_south
+        };
+        let by_guess = known
+            .then(|| match_by_guess(&dropped[i], &recorded(half), guess))
+            .flatten()
+            .filter(|(_, e)| *e <= 25.0);
+        let (mut points, err) = by_guess
+            .or_else(|| match_points(&dropped[i], &recorded(half)))
             .with_context(|| format!("{half:?}: too few units to fit (need 4)"))?;
         println!(
             "{half:?}: fit from {} points, worst error {err:.1} px",
@@ -513,13 +561,28 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
         if err > 25.0 {
             bail!("{half:?}: the fit is poor ({err:.0} px); not saving");
         }
+        let old = match half {
+            Half::South => &earlier.south,
+            Half::North => &earlier.north,
+        };
+        let mut pooled = old.clone();
+        pooled.extend_from_slice(&points);
+        let pooled_err = worst_error(&pooled);
+        if !old.is_empty() && pooled_err.is_some_and(|e| e <= 25.0) {
+            println!(
+                "{half:?}: pooled with {} earlier points, worst error {:.1} px",
+                old.len(),
+                pooled_err.unwrap_or_default()
+            );
+            points = pooled;
+        } else if !old.is_empty() {
+            println!("{half:?}: earlier points disagree; replacing them");
+        }
         match half {
             Half::South => result.south = points,
             Half::North => result.north = points,
         }
     }
-    let path = default_path();
-    let mut all = Calibrations::load(&path);
     all.maps.insert(map.to_owned(), result);
     all.save(&path)?;
     println!("saved {map} to {}", path.display());
@@ -689,6 +752,23 @@ fn place(
     if board.sides.is_empty() {
         bail!("the code has no sides");
     }
+    // Units spawn on a pad in the middle of the zone, and one standing there hides the next
+    // spawn and blocks it. So place the units farthest from the pad first.
+    let mut board = board.clone();
+    for side in &mut board.sides {
+        let projection = if side.half == Some(Half::North) {
+            north
+        } else {
+            south
+        };
+        let from_pad = |u: &mechabellum::board::BoardUnit| {
+            let (x, y) = projection.to_screen(f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
+            (x - ui::SPAWN_PAD.0).hypot(y - ui::SPAWN_PAD.1)
+        };
+        side.units
+            .sort_by(|a, b| from_pad(b).total_cmp(&from_pad(a)));
+    }
+    let board = &board;
     // Check every side fits before touching the game.
     for side in &board.sides {
         if side.half.is_none() && board.sides.len() > 1 {

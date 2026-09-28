@@ -171,6 +171,52 @@ pub fn match_points(screen: &[(f64, f64)], recorded: &[(f64, f64)]) -> Option<(P
     best
 }
 
+/// Match drops to recorded units using a calibration that's already close: each drop takes the
+/// nearest unrecorded unit where `guess` puts it, then the fit is redone and the matching
+/// repeated once with it. Needs the drops spaced well apart compared with the guess's error.
+pub fn match_by_guess(
+    screen: &[(f64, f64)],
+    recorded: &[(f64, f64)],
+    guess: &Projection,
+) -> Option<(Points, f64)> {
+    let assign = |p: &Projection| -> Points {
+        let mut taken = vec![false; recorded.len()];
+        let mut pts = Points::new();
+        for &(u, v) in screen {
+            let nearest = recorded
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !taken[*i])
+                .map(|(i, &(x, y))| {
+                    let (su, sv) = p.to_screen(x, y);
+                    (i, (su - u).hypot(sv - v))
+                })
+                .min_by(|a, b| a.1.total_cmp(&b.1));
+            // Farther than about three squares is a refused drop, not a match.
+            if let Some((i, _)) = nearest.filter(|(_, d)| *d < 60.0) {
+                taken[i] = true;
+                pts.push((recorded[i].0, recorded[i].1, u, v));
+            }
+        }
+        pts
+    };
+    let first = assign(guess);
+    let refit = Projection::fit(&first)?;
+    let pts = assign(&refit);
+    if pts.len() < 4 {
+        return None;
+    }
+    let p = Projection::fit(&pts)?;
+    let err = pts
+        .iter()
+        .map(|&(x, y, u, v)| {
+            let (su, sv) = p.to_screen(x, y);
+            (su - u).hypot(sv - v)
+        })
+        .fold(0.0, f64::max);
+    Some((pts, err))
+}
+
 /// Every set of `k` indices below `n` (k is 0, 1, or 2 here).
 fn skip_sets(n: usize, k: usize) -> Vec<Vec<usize>> {
     match k {
@@ -225,6 +271,27 @@ mod tests {
         let (pts, err) = match_points(&screen, &recorded).unwrap();
         assert!(err < 1.0, "{err}");
         assert_eq!(pts.len(), 5);
+    }
+
+    #[test]
+    fn test_match_by_guess_handles_many_points_out_of_order() {
+        let truth = Projection::fit(&RAILWAY_TOWN_SOUTH).unwrap();
+        // A guess about a square off.
+        let shifted: Points = RAILWAY_TOWN_SOUTH
+            .iter()
+            .map(|&(x, y, u, v)| (x, y, u + 12.0, v - 10.0))
+            .collect();
+        let guess = Projection::fit(&shifted).unwrap();
+        let board: Vec<(f64, f64)> = (0..14)
+            .map(|i| (-26.0 + 4.0 * i as f64, -3.0 - 2.0 * (i % 7) as f64 * 3.5))
+            .collect();
+        let screen: Vec<(f64, f64)> = board.iter().map(|&(x, y)| truth.to_screen(x, y)).collect();
+        // Recorded in another order, and one drop was refused (never recorded).
+        let mut recorded: Vec<(f64, f64)> = board.iter().rev().copied().collect();
+        recorded.remove(5);
+        let (pts, err) = match_by_guess(&screen, &recorded, &guess).unwrap();
+        assert_eq!(pts.len(), 13);
+        assert!(err < 1.0, "{err}");
     }
 
     #[test]

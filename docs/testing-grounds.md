@@ -115,11 +115,38 @@ Rotation and techs (verified 2026-09-27, same replay check):
 - Hovering a unit in the Squad list shows its equipped techs and stats.
 
 Items: the hexagon slot left of a unit's tech buttons shows equipment, but clicking it does
-nothing. Items come from cards, which Testing Grounds Tools can grant; not explored yet.
+nothing. No tool grants a chosen item; items only come from the shop's random reinforcement
+cards. The presets' "Select Reinforcement" option hasn't been tried.
 
-Still to do: items, other maps (each
-needs its 6 calibration points, gathered with `grounds drop x,y ...` and read back from the replay),
-and a Command Center anchor per map.
+Placement details learned re-fighting real rounds (2026-09-28):
+- **Camera after entering:** straight after entering, your own side's camera sits about a square
+  off from where it is after switching sides and back. Calibration and verify both clear the
+  board first, which does that round trip, so they see the same view.
+- **Calibration:** `grounds calibrate --map NAME` drops 14 Crawlers per side, clear of the
+  towers and the spawn pad. Each drop snaps to the grid, so a fit needs many points. When the map
+  already has a calibration, it matches each drop to the unit recorded nearest where that
+  calibration predicts (placement order breaks down with many units), and pools the points with
+  earlier runs.
+- **Spawn pad:** units are placed farthest from the pad first. A unit standing on the pad hides
+  the next spawn (and a big model splits its green tile into pieces, so detection adds up all the
+  green that appeared over the pad).
+- **Towers:** Testing Grounds refuses drops right beside a tower (e.g. an Arclight at -14,-15 on
+  the south half, or ±12,17 on the north), though ranked replays have units there. Either
+  Testing Grounds blocks more around its towers, or the tower's model catches the click. A
+  refused drop tries nearby spots (2 forward, 3 sideways, 4 forward) and reports where it went.
+
+## Re-fighting real rounds
+
+`grounds replay FILE --round N` sets up round N of a real match (the last by default) on a
+fresh Testing Grounds board on the same map, fights it, and prints each half's result next to
+the real one. It leaves out, and lists, what Testing Grounds can't reproduce: techs not in the
+Testing Grounds loadout, units it can't click to, and items. Then it lists every unit that
+landed somewhere other than planned.
+
+First runs (Railway Town, round 2, 10 units against 9): your half lands exactly except
+units beside the towers. The opponent's half packs units edge to edge in front of its towers,
+so a few get nudged, and the outcome flipped. A setup that close still isn't the same fight:
+Testing Grounds HP is 50000 per side, so only the winner is compared, not the damage.
 
 ## Plan
 
