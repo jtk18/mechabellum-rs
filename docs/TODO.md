@@ -94,6 +94,22 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     `replay-parse board` / `check-board`. Next: map board squares to screen positions in Testing
     Grounds, then place units, set levels and techs (needs the game running).
 
+### Overnight Testing Grounds plan (2026-09-28, /loop)
+
+Rules: Solo, Testing Grounds only (never Multiplayer or Play); never type in chat; delete the
+practice replays each run creates (names contain `__` and `VS[Bot]`, made during the run).
+Commit each step once it's verified.
+
+- [x] T1. `grounds verify code.txt`: place, Start, save the replay, diff the round against the
+      code (positions within the snap, level, rotation, techs). `grounds clear` and
+      `grounds enter [--map NAME]` to make runs repeatable from the main menu or the lobby.
+- [ ] T2. `grounds calibrate --map NAME`: drop units at known screen points on both halves, save,
+      fit the projection, and write per-map calibration (a data file, not constants).
+- [ ] T3. Tower anchors: record Command Center and Research Center positions per map;
+      `from=command-center` / `from=research-center`.
+- [ ] T4. Items: how the tools grant cards; apply equipment.
+- [ ] T5. Replay real rounds from the user's replays and compare the outcome.
+
 ## Housekeeping
 
 23. Delete the merged `version-compat` and `workspace` branches, locally and on GitHub.

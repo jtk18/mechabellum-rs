@@ -4,6 +4,10 @@
 //! are on screen, and how board squares map to screen pixels. The Windows driver is in `win`.
 //! See docs/testing-grounds.md.
 
+pub mod compare;
+#[cfg(windows)]
+pub mod flow;
+pub mod screen;
 #[cfg(windows)]
 pub mod win;
 
@@ -306,21 +310,31 @@ pub mod ui {
     }
 }
 
+/// A replay saved from Testing Grounds (or another offline game against the bot): its battle
+/// ID is a timestamp (`26-09-27__12-10-57-082`) and the opponent is "Bot".
+pub fn is_testing_grounds_replay(path: &std::path::Path) -> bool {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
+    path.extension().is_some_and(|x| x == "grbr") && name.contains("__") && name.contains("VS[Bot]")
+}
+
 /// Equipped techs per unit type, in card order.
 pub type Loadout = std::collections::BTreeMap<u32, Vec<(u32, String)>>;
 
 /// Each player's equipped techs in card order, from the newest replay in `replay_dir`: yours
 /// first, then the other side (in Testing Grounds, "Bot", which has its own loadout).
 pub fn loadouts(replay_dir: &std::path::Path) -> anyhow::Result<(Loadout, Loadout)> {
+    // Only Testing Grounds replays: a ranked match lists every unlocked tech, while Testing
+    // Grounds lists the equipped four in card order.
     let newest = std::fs::read_dir(replay_dir)?
         .flatten()
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|x| x == "grbr" || x == "xml")
-        })
+        .filter(|e| is_testing_grounds_replay(&e.path()))
         .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
-        .ok_or_else(|| anyhow::anyhow!("no replays in {}", replay_dir.display()))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("no Testing Grounds replay in {} yet", replay_dir.display())
+        })?;
     let record = mechabellum::BattleRecord::new_from_file(newest.path(), false)
         .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", newest.path().display()))?;
     let detail = record.match_detail();

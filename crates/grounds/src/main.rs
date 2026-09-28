@@ -33,6 +33,21 @@ enum Command {
         #[arg(long, value_delimiter = ',')]
         unlocked: Vec<String>,
     },
+    /// Get into the Testing Grounds sandbox from the main menu, the lobby, or a round
+    Enter {
+        /// Leave and re-enter first: a clean board, round 1, and a reset camera
+        #[arg(long)]
+        fresh: bool,
+    },
+    /// Remove every unit on both sides
+    Clear,
+    /// Set up a board code, fight the round, save the replay, and check it matches the code
+    Verify {
+        code: PathBuf,
+        /// Start from a fresh Testing Grounds session
+        #[arg(long)]
+        fresh: bool,
+    },
     /// Spawn a unit and drop it at each screen point (reference pixels, "x,y"), for calibration
     Drop {
         #[arg(long, default_value = "Crawler")]
@@ -42,6 +57,18 @@ enum Command {
     },
     /// Print whether the tools panel is open in a screenshot
     Panel { png: PathBuf },
+    /// Print which screen each screenshot shows
+    Which {
+        #[arg(required = true)]
+        pngs: Vec<PathBuf>,
+    },
+    /// Mean color of rectangles (left,top,right,bottom) in screenshots, for tuning
+    Color {
+        #[arg(required = true)]
+        pngs: Vec<PathBuf>,
+        #[arg(long, value_delimiter = ';')]
+        rect: Vec<String>,
+    },
     /// Save a screenshot of the game window
     Shot { out: PathBuf },
     /// List green blobs (units bought this round) in a screenshot
@@ -130,6 +157,35 @@ fn main() -> Result<()> {
                 println!("{c:?} x{n}");
             }
         }
+        Command::Color { pngs, rect } => {
+            for png in pngs {
+                let img = image::open(&png)?.to_rgb8();
+                let cols: Vec<String> = rect
+                    .iter()
+                    .map(|r| {
+                        let v: Vec<u32> =
+                            r.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                        let c = mechabellum_grounds::mean_color(&img, (v[0], v[1], v[2], v[3]));
+                        format!("{:>3.0},{:>3.0},{:>3.0}", c[0], c[1], c[2])
+                    })
+                    .collect();
+                println!(
+                    "{:<14} {}",
+                    png.file_stem().unwrap().to_string_lossy(),
+                    cols.join("  |  ")
+                );
+            }
+        }
+        Command::Which { pngs } => {
+            for png in pngs {
+                let img = image::open(&png)?.to_rgb8();
+                println!(
+                    "{:<14} {:?}",
+                    png.file_stem().unwrap().to_string_lossy(),
+                    mechabellum_grounds::screen::classify(&img)
+                );
+            }
+        }
         Command::Panel { png } => {
             let img = image::open(&png)?.to_rgb8();
             println!(
@@ -157,6 +213,30 @@ fn main() -> Result<()> {
             }
         }
         #[cfg(windows)]
+        Command::Enter { fresh } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            mechabellum_grounds::flow::enter(&mut game, fresh)?;
+            println!("in Testing Grounds");
+        }
+        #[cfg(windows)]
+        Command::Clear => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            mechabellum_grounds::flow::clear_both(&mut game)?;
+        }
+        #[cfg(windows)]
+        Command::Verify { code, fresh } => {
+            let board = load(&code)?;
+            let problems = verify(&board, &south, &north, fresh)?;
+            if problems.is_empty() {
+                println!("OK: the replay matches the code");
+            } else {
+                for p in &problems {
+                    println!("MISMATCH {p}");
+                }
+                std::process::exit(2);
+            }
+        }
+        #[cfg(windows)]
         Command::Shot { out } => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             game.screenshot()?.save(&out)?;
@@ -172,11 +252,70 @@ fn main() -> Result<()> {
             place(&load(&code)?, &south, &north, limit)?
         }
         #[cfg(not(windows))]
-        Command::Shot { .. } | Command::Place { .. } | Command::Drop { .. } => {
+        Command::Shot { .. }
+        | Command::Place { .. }
+        | Command::Drop { .. }
+        | Command::Enter { .. }
+        | Command::Clear
+        | Command::Verify { .. } => {
             bail!("driving the game needs Windows")
         }
     }
     Ok(())
+}
+
+fn replay_dir() -> PathBuf {
+    mechabellum::install::find_replay_dir().unwrap_or_else(|| {
+        mechabellum::install::default_game_dir()
+            .join("ProjectDatas")
+            .join("Replay")
+    })
+}
+
+/// Set up `board` on a clean Testing Grounds board, fight the round, and compare the saved
+/// replay with the code. Returns the differences.
+#[cfg(windows)]
+fn verify(
+    board: &Board,
+    south: &Projection,
+    north: &Projection,
+    fresh: bool,
+) -> Result<Vec<String>> {
+    use mechabellum_grounds::flow;
+    let mut game = mechabellum_grounds::win::Game::find()?;
+    flow::enter(&mut game, fresh)?;
+    if !fresh {
+        flow::clear_both(&mut game)?;
+    }
+    // Researching techs needs each side's loadout, which only a Testing Grounds replay records.
+    // Without one, fight an empty round to make one.
+    let wants_techs = board
+        .sides
+        .iter()
+        .flat_map(|s| &s.units)
+        .any(|u| !u.techs.is_empty());
+    if wants_techs && mechabellum_grounds::loadouts(&replay_dir()).is_err() {
+        println!("no Testing Grounds replay yet; running an empty round to record the loadouts");
+        flow::run_round_and_save(&mut game, &replay_dir())?;
+    }
+    place(board, south, north, None)?;
+    let mut game = mechabellum_grounds::win::Game::find()?;
+    let file = flow::run_round_and_save(&mut game, &replay_dir())?;
+    println!("saved {}", file.display());
+    let record = mechabellum::BattleRecord::new_from_file(&file, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
+    let detail = record.match_detail();
+    let last = detail
+        .rounds
+        .len()
+        .checked_sub(1)
+        .context("the replay has no rounds")?;
+    let recorded = Board::from_round(&detail, last).context("no board in the last round")?;
+    println!(
+        "recorded:
+{recorded}"
+    );
+    Ok(mechabellum_grounds::compare::differences(board, &recorded))
 }
 
 /// Which side the game currently lets you edit: the name in the top-left box.
@@ -231,11 +370,7 @@ fn place(
     }
 
     // Techs are clicked by position on each unit's card, in loadout order.
-    let replays = mechabellum::install::find_replay_dir().unwrap_or_else(|| {
-        mechabellum::install::default_game_dir()
-            .join("ProjectDatas")
-            .join("Replay")
-    });
+    let replays = replay_dir();
     let replays = replays.as_path();
     let wants_techs = board
         .sides
