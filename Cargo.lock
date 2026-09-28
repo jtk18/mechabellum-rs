@@ -5925,7 +5925,7 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 [[package]]
 name = "unity-bundle-assets"
 version = "0.1.0"
-source = "git+ssh://git@github.com/jtk18/unity-bundle-assets.git#7d4f5a7e419114e4aa0df7aca51e2be00a3690b5"
+source = "git+ssh://git@github.com/jtk18/unity-bundle-assets.git#3c382d6bad9982708e420a4a1f9839e5baf8777f"
 dependencies = [
  "lzma-rs",
  "thiserror 2.0.21",
