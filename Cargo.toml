@@ -4,7 +4,7 @@ members = ["crates/*", "apps/desktop/src-tauri"]
 
 # Art extraction decodes and re-encodes hundreds of images; unoptimized it takes a minute
 # instead of a second. Optimize just those crates in dev builds.
-[profile.dev.package.unity-sprites]
+[profile.dev.package.unity-bundle-assets]
 opt-level = 3
 [profile.dev.package.image]
 opt-level = 3

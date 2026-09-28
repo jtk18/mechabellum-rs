@@ -1,3 +1,3 @@
-# Fetch git dependencies with the git CLI, so private ones (unity-sprites) use your SSH keys.
+# Fetch git dependencies with the git CLI, so private ones (unity-bundle-assets) use your SSH keys.
 [net]
 git-fetch-with-cli = true

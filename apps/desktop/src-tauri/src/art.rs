@@ -1,8 +1,8 @@
 //! Game art, extracted on this machine from the player's own Mechabellum install. Nothing here
 //! is shipped with the app or kept in the repository.
 //!
-//! Sprites are read straight out of the game's Unity files by the `unity-sprites` crate (pure
-//! Rust, no .NET, nothing downloaded or run). The one exception to "nothing shipped" is the
+//! Sprites are read straight out of the game's Unity files by the `unity-bundle-assets` crate
+//! (pure Rust, no .NET, nothing downloaded or run). The one exception to "nothing shipped" is the
 //! background: the "clean" key art from the official press kit
 //! (Mechabellum_Keyart_16x9_Clean.png), bundled at 1920 px so first run needs no network.
 
@@ -231,12 +231,12 @@ pub fn extract(
     })?;
     progress(Progress::new(0.02, 0, "Reading sharedassets0.assets"));
     std::fs::create_dir_all(art_dir)?;
-    let assets = unity_sprites::Assets::open(&data.join("sharedassets0.assets"))
+    let assets = unity_bundle_assets::Assets::open(&data.join("sharedassets0.assets"))
         .context("reading sharedassets0.assets")?;
 
     // Names repeat occasionally; the first sprite of a name wins.
     let mut seen = BTreeSet::new();
-    let mut by_texture: BTreeMap<i64, Vec<unity_sprites::Sprite>> = BTreeMap::new();
+    let mut by_texture: BTreeMap<i64, Vec<unity_bundle_assets::Sprite>> = BTreeMap::new();
     for sprite in assets.sprites(wanted)? {
         if !seen.insert(sprite.name.clone()) {
             continue;

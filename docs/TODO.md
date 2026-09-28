@@ -54,8 +54,8 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Platform and distribution
 
-12. ~~Art extraction without .NET~~ Done: the `unity-sprites` crate (pure Rust, its own repo,
-    jtk18/unity-sprites) reads Sprite/Texture2D/SpriteAtlas with hard-coded 2022.3 layouts and
+12. ~~Art extraction without .NET~~ Done: the `unity-bundle-assets` crate (pure Rust, its own repo,
+    jtk18/unity-bundle-assets, developed as `unity-sprites`) reads Sprite/Texture2D/SpriteAtlas with hard-coded 2022.3 layouts and
     decodes DXT1/DXT5/RGBA. Nothing is downloaded or run. Checked on macOS: 422 sprites, 37 units,
     765 techs, 218 specialists. Not yet compared pixel-for-pixel against an AssetStudio
     extraction.
