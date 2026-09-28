@@ -231,13 +231,21 @@ pub fn extract(
     })?;
     progress(Progress::new(0.02, 0, "Reading sharedassets0.assets"));
     std::fs::create_dir_all(art_dir)?;
-    let assets = unity_bundle_assets::Assets::open(&data.join("sharedassets0.assets"))
+    let assets = unity_bundle_assets::Assets::open(data.join("sharedassets0.assets"))
         .context("reading sharedassets0.assets")?;
 
     // Names repeat occasionally; the first sprite of a name wins.
     let mut seen = BTreeSet::new();
     let mut by_texture: BTreeMap<i64, Vec<unity_bundle_assets::Sprite>> = BTreeMap::new();
-    for sprite in assets.sprites(wanted)? {
+    let list = assets.sprites(wanted);
+    for skipped in &list.skipped {
+        log::warn!(
+            "art: sprite {}: {}",
+            skipped.name.as_deref().unwrap_or("?"),
+            skipped.error
+        );
+    }
+    for sprite in list.sprites {
         if !seen.insert(sprite.name.clone()) {
             continue;
         }
