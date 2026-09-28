@@ -254,11 +254,7 @@ function sortUsage(rows: UsageStat[], key: SortKey, desc: boolean): UsageStat[] 
     key === "win" ? s.win_rate : key === "pick" ? s.pick_rate : key === "games" ? s.picks : 0;
   return [...rows].sort((a, b) => {
     if (key === "name") return dir * a.name.localeCompare(b.name);
-    // By win rate, a handful of games says little: keep those below the rest.
-    if (key === "win") {
-      const small = Number(a.picks < SMALL_SAMPLE) - Number(b.picks < SMALL_SAMPLE);
-      if (small !== 0) return small;
-    }
+    // Ties go to the one with more games.
     return dir * (value(a) - value(b)) || b.picks - a.picks || a.name.localeCompare(b.name);
   });
 }
@@ -288,10 +284,7 @@ function renderUsage(
     head.setAttribute("aria-sort", active ? (sort.desc ? "descending" : "ascending") : "none");
     const button = el("button", `sort${active ? " active" : ""}`, text) as HTMLButtonElement;
     button.type = "button";
-    button.title =
-      key === "win"
-        ? `Sort by win rate (fewer than ${SMALL_SAMPLE} games go last)`
-        : `Sort by ${text.toLowerCase()}`;
+    button.title = `Sort by ${text.toLowerCase()}`;
     if (active) button.append(el("span", "sort-arrow", sort.desc ? " ▾" : " ▴"));
     button.addEventListener("click", () => {
       // Names read best A to Z first; numbers highest first.
