@@ -110,9 +110,11 @@ Commit each step once it's verified.
       needs its own. The tool relaunches the game after a crash and tidies its own replays.
 - [x] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
-- [x] T4. Items: explored; not automatable yet. No Testing Grounds tool grants a chosen item.
-      Items only come from the shop's random reinforcement cards. The presets' "Select
-      Reinforcement" option hasn't been tried. `grounds replay` leaves items out and says so.
+- [ ] T4. Items: the tools' Equipment tab grants any item into your inventory; click it there,
+      then a unit (see docs/testing-grounds.md). Still to do: map catalog cells to item IDs by
+      equipping a dozen at a time and reading the replay, then equip items in `place`.
+      (An earlier note here said items couldn't be granted; that was wrong: the tab I took
+      for buildings is Equipment.)
 - [ ] T5. Replay real rounds from the user's replays and compare the outcome. `grounds replay
       FILE --round N` is written: it leaves out techs not in the Testing Grounds loadout, units
       it can't place, and items, then compares each half's result and HP lost. Runs end to end
@@ -122,8 +124,8 @@ Commit each step once it's verified.
       exactly; all 6 beside them were nudged. Replays don't record tower positions.
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
-- [ ] T7. Place buildings in Testing Grounds from the Buildings tab (`grounds replay` lists
-      them as left out for now).
+- [ ] T7. Place buildings in Testing Grounds. The tools have no buildings tab; they may come
+      from reinforcement cards. (`grounds replay` lists them as left out for now.)
 
 ## Housekeeping
 

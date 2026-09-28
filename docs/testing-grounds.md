@@ -114,9 +114,18 @@ Rotation and techs (verified 2026-09-27, same replay check):
   not research on a unit.
 - Hovering a unit in the Squad list shows its equipped techs and stats.
 
-Items: the hexagon slot left of a unit's tech buttons shows equipment, but clicking it does
-nothing. No tool grants a chosen item; items only come from the shop's random reinforcement
-cards. The presets' "Select Reinforcement" option hasn't been tried.
+Tools tabs (right panel, top to bottom at screen x 2099): Squad (448), Specialists (560),
+unit specialists (675), commander skills (783; Missile Strike, Shield Airdrop, Redeployment,
+...), and Equipment (896). There is no buildings tab; the left panel only has "Clear all
+buildings".
+
+Items (verified 2026-09-28): the Equipment tab lists every item, grouped by rank, and it
+scrolls. Clicking one puts it in your item inventory at the top left (screen 64,365). Click
+it there, then click a unit, and the unit wears it (a badge shows over the unit). The same name
+can appear in several ranks as different game IDs (Heavy Armor is in ranks 1 and 2), so
+placing a code's items needs a map from catalog cell to item ID. That can be measured the way
+calibration is: equip a different cell on each of a dozen units, fight, and read the IDs from
+the replay. The hexagon slot on a unit's card shows its item; clicking it does nothing.
 
 Placement details learned re-fighting real rounds (2026-09-28):
 - **Camera after entering:** straight after entering, your own side's camera sits about a square
