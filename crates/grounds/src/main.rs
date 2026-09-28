@@ -43,6 +43,8 @@ enum Command {
     Clear,
     /// Leave the sandbox for the Testing Grounds presets
     Lobby,
+    /// Delete the practice replays this tool saved, except the newest
+    Tidy,
     /// Measure a map's screen positions for both halves and save them
     Calibrate {
         /// Map name as the game shows it, e.g. "Forest Eye"
@@ -231,6 +233,13 @@ fn main() -> Result<()> {
         #[cfg(windows)]
         Command::Calibrate { map, keep } => calibrate(&map, keep)?,
         #[cfg(windows)]
+        Command::Tidy => {
+            println!(
+                "removed {} practice replays",
+                mechabellum_grounds::flow::tidy_replays()
+            );
+        }
+        #[cfg(windows)]
         Command::Lobby => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             mechabellum_grounds::flow::leave_to_lobby(&mut game)?;
@@ -244,9 +253,8 @@ fn main() -> Result<()> {
         Command::Verify { code, fresh } => {
             let board = load(&code)?;
             let (south, north) = projections(&board)?;
-            let started = std::time::SystemTime::now();
             let problems = verify(&board, &south, &north, fresh)?;
-            mechabellum_grounds::flow::tidy_replays(&replay_dir(), started);
+            mechabellum_grounds::flow::tidy_replays();
             if problems.is_empty() {
                 println!("OK: the replay matches the code");
             } else {
@@ -280,6 +288,7 @@ fn main() -> Result<()> {
         | Command::Enter { .. }
         | Command::Clear
         | Command::Lobby
+        | Command::Tidy
         | Command::Calibrate { .. }
         | Command::Verify { .. } => {
             bail!("driving the game needs Windows")
@@ -650,6 +659,8 @@ fn spawn_and_place(
     let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
     let cell = ui::palette(name).with_context(|| format!("{name} isn't in the Squad list"))?;
 
+    // Keep the known camera view: zooming all the way out is harmless if it already is.
+    game.wheel(-60);
     // Spawn it, and find it: the only new green blob.
     let before = green_blobs(&game.screenshot()?);
     // Open the tools (the button toggles), and never scroll unless the list is under the cursor:

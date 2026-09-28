@@ -75,6 +75,8 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
             Screen::Lobby => {
                 game.click(ENTER_TESTING_GROUNDS, 3000);
                 wait_for(game, Screen::Deploying, Duration::from_secs(60))?;
+                // The camera flies in after loading; zooming out before it settles gets undone.
+                std::thread::sleep(Duration::from_secs(6));
             }
             Screen::MainMenu => game.click(MAIN_STANDARD_VERSUS, 3000),
             Screen::ModeTabs => {
@@ -191,6 +193,7 @@ pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf>
     while start.elapsed() < Duration::from_secs(20) {
         if let Some((path, when)) = newest_replay(replay_dir) {
             if when + Duration::from_secs(1) >= before {
+                remember(&path);
                 return Ok(path);
             }
         }
@@ -199,23 +202,47 @@ pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf>
     bail!("no replay was saved in {}", replay_dir.display())
 }
 
-/// Delete the Testing Grounds replays saved since `since`, except the newest: that one records
-/// the loadouts that researching techs needs. Returns how many were removed.
-pub fn tidy_replays(replay_dir: &Path, since: SystemTime) -> usize {
-    let mut made: Vec<(PathBuf, SystemTime)> = std::fs::read_dir(replay_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
+/// The list of replays this tool saved, so tidying never touches the player's own.
+fn ledger() -> PathBuf {
+    std::env::temp_dir().join("mechabellum-grounds-replays.txt")
+}
+
+fn remember(path: &Path) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ledger())
+    {
+        let _ = writeln!(f, "{}", path.display());
+    }
+}
+
+/// Delete the replays this tool saved, except the newest: that one records the loadouts that
+/// researching techs needs. Returns how many were removed.
+pub fn tidy_replays() -> usize {
+    let text = std::fs::read_to_string(ledger()).unwrap_or_default();
+    let mut saved: Vec<(PathBuf, SystemTime)> = text
+        .lines()
+        .map(PathBuf::from)
         .filter(|p| crate::is_testing_grounds_replay(p))
         .filter_map(|p| {
             let t = std::fs::metadata(&p).ok()?.modified().ok()?;
-            (t >= since).then_some((p, t))
+            Some((p, t))
         })
         .collect();
-    made.sort_by_key(|(_, t)| *t);
-    made.pop();
-    made.iter()
+    saved.sort_by_key(|(_, t)| *t);
+    saved.dedup_by(|a, b| a.0 == b.0);
+    let newest = saved.pop();
+    let removed = saved
+        .iter()
         .filter(|(p, _)| std::fs::remove_file(p).is_ok())
-        .count()
+        .count();
+    let _ = std::fs::write(
+        ledger(),
+        newest
+            .map(|(p, _)| format!("{}\n", p.display()))
+            .unwrap_or_default(),
+    );
+    removed
 }

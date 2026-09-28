@@ -103,8 +103,11 @@ Commit each step once it's verified.
 - [x] T1. `grounds verify code.txt`: place, Start, save the replay, diff the round against the
       code (positions within the snap, level, rotation, techs). `grounds clear` and
       `grounds enter [--map NAME]` to make runs repeatable from the main menu or the lobby.
-- [ ] T2. `grounds calibrate --map NAME`: drop units at known screen points on both halves, save,
+- [x] T2. `grounds calibrate --map NAME`: drop units at known screen points on both halves, save,
       fit the projection, and write per-map calibration (a data file, not constants).
+      Done: all five maps pass verify (Railway Town, Forest Eye, Training Base measured; Dusk
+      and Night share Railway Town's). Forest Eye's camera faces the other way, so each map
+      needs its own. The tool relaunches the game after a crash and tidies its own replays.
 - [ ] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
 - [ ] T4. Items: how the tools grant cards; apply equipment.
