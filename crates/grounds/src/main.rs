@@ -71,6 +71,9 @@ enum Command {
         /// The unit to equip; some items only fit some units (Laser Sights won't go on a Crawler)
         #[arg(long, default_value = "Fortress")]
         unit: String,
+        /// Only cells whose IDs aren't confirmed yet (`from` counts among those)
+        #[arg(long)]
+        unconfirmed: bool,
     },
     /// Board squares under screen points (reference pixels, "x,y"), for a map and half
     Where {
@@ -310,7 +313,12 @@ fn main() -> Result<()> {
             println!("granted {id}; it's in your inventory, top left");
         }
         #[cfg(windows)]
-        Command::ItemsCheck { from, count, unit } => items_check(from, count, &unit)?,
+        Command::ItemsCheck {
+            from,
+            count,
+            unit,
+            unconfirmed,
+        } => items_check(from, count, &unit, unconfirmed)?,
         #[cfg(windows)]
         Command::Clear => {
             let mut game = mechabellum_grounds::win::Game::find()?;
@@ -498,11 +506,12 @@ fn grant(game: &mut mechabellum_grounds::win::Game, id: u32) -> Result<()> {
 /// Equip catalog cells `from..from + count` on units across your half, fight, and compare
 /// each unit's item in the replay with the cell's ID.
 #[cfg(windows)]
-fn items_check(from: usize, count: usize, unit: &str) -> Result<()> {
+fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Result<()> {
     use mechabellum_grounds::{equipment, flow, ui};
 
     let cells: Vec<_> = equipment::cells()
         .into_iter()
+        .filter(|c| !unconfirmed || !equipment::CONFIRMED.contains(&c.id))
         .skip(from)
         .take(count)
         .collect();
