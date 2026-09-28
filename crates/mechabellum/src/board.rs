@@ -28,6 +28,7 @@ use std::fmt;
 pub const MAX_INPUT: usize = 64 * 1024;
 const MAX_SIDES: usize = 8;
 const MAX_UNITS_PER_SIDE: usize = 300;
+const MAX_BUILDINGS_PER_SIDE: usize = 50;
 const MAX_LIST: usize = 16;
 const MAX_TEXT: usize = 80;
 const MAX_LEVEL: u32 = 20;
@@ -49,6 +50,19 @@ pub struct Side {
     /// Which half of the board the side deploys on. Needed for anchored positions.
     pub half: Option<Half>,
     pub units: Vec<BoardUnit>,
+    /// Buildings the side has put up: walls, cannons, barricades.
+    pub buildings: Vec<BoardBuilding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BoardBuilding {
+    /// A `ConstructionData` ID.
+    pub building_id: u32,
+    /// The building's name as the game shows it.
+    pub name: String,
+    /// Center, in replay units (10 per grid square).
+    pub x: i32,
+    pub y: i32,
 }
 
 /// A half of the board. In replays, the south half has negative y.
@@ -354,10 +368,15 @@ fn list(p: &Parser, value: &str, at: usize) -> Result<Vec<String>, ParseError> {
 /// Unit names (as the game shows them, case and spacing ignored) and IDs. Where a name has
 /// several IDs (Star Expedition copies), the regular unit's (lowest) ID wins.
 fn unit_lookup() -> BTreeMap<String, (u32, String)> {
+    name_lookup(NameKind::Unit)
+}
+
+/// Names and IDs of one kind of thing; where a name has several IDs, the lowest wins.
+fn name_lookup(kind: NameKind) -> BTreeMap<String, (u32, String)> {
     let names = GameNames::bundled();
     let mut map = BTreeMap::new();
-    for id in names.ids(NameKind::Unit) {
-        if let Some(name) = names.resolve(NameKind::Unit, id) {
+    for id in names.ids(kind) {
+        if let Some(name) = names.resolve(kind, id) {
             map.entry(normalize(name))
                 .or_insert((id as u32, name.to_owned()));
         }
@@ -385,6 +404,7 @@ impl Board {
         };
         p.pos = start;
         let units = unit_lookup();
+        let buildings = name_lookup(NameKind::Construction);
 
         let open = p.tag()?;
         if open.name != "board" || open.closing {
@@ -421,6 +441,7 @@ impl Board {
                         hp: None,
                         half: None,
                         units: Vec::new(),
+                        buildings: Vec::new(),
                     };
                     if let Some(value) = tag.value {
                         s.name = Some(text_value(&p, value, tag.at)?);
@@ -455,6 +476,18 @@ impl Board {
                 }
                 ("unit", false, None) => {
                     return Err(p.error(tag.at, "a [unit] must be inside a [side]"))
+                }
+                ("building", false, Some(s)) => {
+                    if s.buildings.len() == MAX_BUILDINGS_PER_SIDE {
+                        return Err(p.error(
+                            tag.at,
+                            format!("more than {MAX_BUILDINGS_PER_SIDE} buildings"),
+                        ));
+                    }
+                    s.buildings.push(parse_building(&p, &tag, &buildings)?);
+                }
+                ("building", false, None) => {
+                    return Err(p.error(tag.at, "a [building] must be inside a [side]"))
                 }
                 ("side", false, Some(_)) => {
                     return Err(p.error(tag.at, "close the previous side with [/side] first"))
@@ -510,11 +543,22 @@ impl Board {
                 let half = ys
                     .get(ys.len() / 2)
                     .map(|&y| if y < 0 { Half::South } else { Half::North });
+                let buildings = side
+                    .buildings
+                    .iter()
+                    .map(|b| BoardBuilding {
+                        building_id: b.id,
+                        name: b.name.clone().unwrap_or_else(|| b.id.to_string()),
+                        x: b.x,
+                        y: b.y,
+                    })
+                    .collect();
                 Some(Side {
                     name: Some(player.name.clone()),
                     hp: Some(side.hp),
                     half,
                     units,
+                    buildings,
                 })
             })
             .collect();
@@ -648,6 +692,58 @@ fn parse_unit(
     Ok(unit)
 }
 
+fn parse_building(
+    p: &Parser,
+    tag: &Tag,
+    buildings: &BTreeMap<String, (u32, String)>,
+) -> Result<BoardBuilding, ParseError> {
+    let name = tag.value.ok_or_else(|| {
+        p.error(
+            tag.at,
+            "say which building: [building=\"Defensive Wall\" ...]",
+        )
+    })?;
+    // An ID keeps the exact variant (several IDs share a name); a name takes the lowest ID.
+    let (building_id, name) = match name.parse::<u32>() {
+        Ok(id) => {
+            let name = GameNames::bundled()
+                .resolve(NameKind::Construction, u64::from(id))
+                .ok_or_else(|| p.error(tag.at, format!("unknown building ID {id}")))?;
+            (id, name.to_owned())
+        }
+        Err(_) => buildings
+            .get(&normalize(name))
+            .cloned()
+            .ok_or_else(|| p.error(tag.at, format!("unknown building {name:?}")))?,
+    };
+    let mut building = BoardBuilding {
+        building_id,
+        name,
+        x: 0,
+        y: 0,
+    };
+    let mut placed = false;
+    for (key, value, at) in &tag.attrs {
+        let at = *at;
+        let value = value.ok_or_else(|| p.error(at, format!("{key} needs a value")))?;
+        match key.as_str() {
+            "at" => {
+                let (x, y) = value
+                    .split_once(',')
+                    .ok_or_else(|| p.error(at, "at needs x,y in squares, e.g. at=-14,-5.5"))?;
+                building.x = coordinate(p, x.trim(), at)?;
+                building.y = coordinate(p, y.trim(), at)?;
+                placed = true;
+            }
+            _ => return Err(p.error(at, format!("[building] has no {key} attribute"))),
+        }
+    }
+    if !placed {
+        return Err(p.error(tag.at, "every building needs a position: at=x,y"));
+    }
+    Ok(building)
+}
+
 fn squares(units: i32) -> String {
     let sign = if units < 0 { "-" } else { "" };
     let (whole, rest) = (units.abs() / 10, units.abs() % 10);
@@ -719,6 +815,18 @@ impl fmt::Display for Board {
                 }
                 writeln!(f, "]")?;
             }
+            for b in &side.buildings {
+                // Several IDs share a name; write the name only when it picks the same one.
+                let by_name = name_lookup(NameKind::Construction)
+                    .get(&normalize(&b.name))
+                    .is_some_and(|(id, _)| *id == b.building_id);
+                let what = if by_name {
+                    quoted(&b.name)
+                } else {
+                    b.building_id.to_string()
+                };
+                writeln!(f, "[building={what} at={},{}]", squares(b.x), squares(b.y))?;
+            }
             writeln!(f, "[/side]")?;
         }
         write!(f, "[/board]")
@@ -759,6 +867,48 @@ good luck"#;
         assert!(fortress.rotated);
         assert_eq!(board.sides[1].name.as_deref(), Some("Opponent"));
         assert_eq!(board.sides[1].units[0].y, 225);
+    }
+
+    #[test]
+    fn test_buildings() {
+        let code = r#"[board][side half=south]
+[unit=Crawler at=0,-20]
+[building="defensive wall" at=-14,-5.5]
+[building=3 at=10,-8]
+[/side][/board]"#;
+        let board = Board::parse(code).unwrap();
+        let b = &board.sides[0].buildings;
+        assert_eq!(
+            (b[0].building_id, b[0].name.as_str(), b[0].x, b[0].y),
+            (1, "Defensive Wall", -140, -55)
+        );
+        assert_eq!(
+            (b[1].building_id, b[1].name.as_str()),
+            (3, "Rapid-Fire Cannon")
+        );
+        assert_eq!(Board::parse(&board.to_string()).unwrap(), board);
+        // A variant that shares its name with a lower ID keeps its ID through a round trip.
+        let variant = Board::parse("[board][side][building=5 at=0,-3][/side][/board]").unwrap();
+        assert_eq!(Board::parse(&variant.to_string()).unwrap(), variant);
+
+        for (bad, why) in [
+            ("[board][building=1 at=0,0][/board]", "inside a [side]"),
+            (
+                "[board][side][building=Moat at=0,0][/side][/board]",
+                "unknown building",
+            ),
+            (
+                "[board][side][building=1][/side][/board]",
+                "needs a position",
+            ),
+            (
+                "[board][side][building=1 at=0,0 level=2][/side][/board]",
+                "no level",
+            ),
+        ] {
+            let e = Board::parse(bad).unwrap_err();
+            assert!(e.message.contains(why), "{bad}: {e}");
+        }
     }
 
     #[test]

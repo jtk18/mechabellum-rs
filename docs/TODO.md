@@ -120,10 +120,10 @@ Commit each step once it's verified.
       beside the towers that ranked games allow, so tight formations there get nudged and the
       outcome can differ. Forest Eye round 2: all 14 units away from the towers landed
       exactly; all 6 beside them were nudged. Replays don't record tower positions.
-- [ ] T6. Buildings: replays record player-built constructions per round
-      (`constructionSnapshotDatas`: ID, index, position in replay units, durability), but board
-      codes and `Board::from_round` leave them out. Add a `[building=...]` tag, and place them
-      from the Testing Grounds Buildings tab.
+- [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
+      (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
+- [ ] T7. Place buildings in Testing Grounds from the Buildings tab (`grounds replay` lists
+      them as left out for now).
 
 ## Housekeeping
 

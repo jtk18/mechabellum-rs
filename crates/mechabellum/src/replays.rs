@@ -22,8 +22,8 @@ pub use anonymize::{hide_other_names, HIDDEN_NAME};
 pub use battle_record::BattleRecord;
 pub use detail::unit_id_in_name;
 pub use detail::{
-    CardRef, MatchDetail, NamedRef, PlacedUnit, PlayerInfo, RoundLayout, SideLayout, Structure,
-    TechRef, UnitTechs,
+    CardRef, MatchDetail, NamedRef, PlacedBuilding, PlacedUnit, PlayerInfo, RoundLayout,
+    SideLayout, Structure, TechRef, UnitTechs,
 };
 pub use game_data::{footprint, xp_to_next_level, GRID_SQUARE};
 pub use items::Item;

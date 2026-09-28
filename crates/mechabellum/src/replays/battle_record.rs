@@ -208,6 +208,28 @@ pub struct PlayerData {
     pub tower_strengthen_levels: TowerStrengthenLevels,
     #[serde(rename = "IsSpecialSupply")]
     pub is_special_supply: String,
+    /// Buildings the player has put up (walls, cannons, barricades).
+    #[serde(rename = "constructionSnapshotDatas")]
+    pub construction_snapshot_datas: ConstructionSnapshotDatas,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct ConstructionSnapshotDatas {
+    #[serde(rename = "ConstructionSnapshotData", default)]
+    pub construction_snapshot_data: Vec<ConstructionSnapshotData>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct ConstructionSnapshotData {
+    #[serde(rename = "Index")]
+    pub index: String,
+    /// A `ConstructionData` ID.
+    #[serde(rename = "ID")]
+    pub id: String,
+    #[serde(rename = "Position")]
+    pub position: PlayerDataUnitsNewUnitDataPosition,
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -23,6 +23,7 @@ replay, and (later) have the tester set it up in Testing Grounds.
 | `[board]` … `[/board]` | `version`, `map`, `round` (all optional) | One per code. Text before and after it is ignored. |
 | `[side]` … `[/side]` | `name`, `hp` (optional). `[side=Name]` is short for `name`. | Up to 8 sides. |
 | `[unit=Name]` | `at` (required), `level`, `rotated`, `techs`, `items` | No closing tag. Up to 300 per side. |
+| `[building=Name]` | `at` (required) | A wall, cannon, or barricade. No closing tag. Up to 50 per side. |
 
 - **Unit names** are the game's English names, matched without regard to case, spaces, or
   punctuation (`fire badger` finds Firebadger). A unit's number also works (`[unit=10 ...]`).
@@ -77,6 +78,18 @@ flank anchor used with `round` below 3 is an error.
 since replays don't record them. Give an offset (e.g. `from=command-center forward=5`): the unit
 is centered at the offset, and the game nudges units off a tower's footprint (about a square
 or two).
+
+## Buildings
+
+`[building="Defensive Wall" at=-14,-5.5]` is a building the side has put up: Defensive Wall,
+Anti-Armor Cannon, Rapid-Fire Cannon, or Magnetic Barricade. Several game IDs share a name, so
+the variant's ID can stand in for the name (`[building=5 at=0,-3]`). Codes copied from replays
+use the ID whenever the name alone would pick a different variant.
+
+In every replay checked (60 games, 2.0), buildings stand only in fixed sockets, lined up with the
+towers: x = ±14, with walls at y = ∓5.5 and cannons at y = ∓10 (the south half's signs).
+Replays record buildings as they stood for each fight; for the last round, only those standing
+as its deployment began.
 
 ## Limits
 

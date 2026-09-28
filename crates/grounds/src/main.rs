@@ -676,6 +676,14 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
                 u.items.clear();
             }
         }
+        for b in side.buildings.drain(..) {
+            dropped.push(format!(
+                "{} at {},{} (buildings aren't placed yet)",
+                b.name,
+                f64::from(b.x) / 10.0,
+                f64::from(b.y) / 10.0
+            ));
+        }
     }
     println!(
         "round {} of {}:
@@ -909,6 +917,15 @@ fn place(
         .collect();
     if !skipped.is_empty() {
         println!("Not set yet (items): {}", skipped.join(", "));
+    }
+    let buildings: Vec<&str> = board
+        .sides
+        .iter()
+        .flat_map(|s| &s.buildings)
+        .map(|b| b.name.as_str())
+        .collect();
+    if !buildings.is_empty() {
+        println!("Not set yet (buildings): {}", buildings.join(", "));
     }
     Ok(())
 }

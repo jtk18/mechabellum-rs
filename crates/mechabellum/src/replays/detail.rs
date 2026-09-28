@@ -104,9 +104,22 @@ pub struct SideLayout {
     pub cards_chosen: Vec<CardRef>,
     pub command_center: Structure,
     pub research_center: Structure,
+    /// Buildings standing for the fight (walls, cannons, barricades). For the last round,
+    /// those standing as its deployment began: ones built during it aren't recorded.
+    pub buildings: Vec<PlacedBuilding>,
     /// The units were rebuilt by replaying the round's actions (the last round, which has no
     /// snapshot after it) rather than read from a snapshot.
     pub rebuilt: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PlacedBuilding {
+    /// A `ConstructionData` ID.
+    pub id: u32,
+    pub name: Option<String>,
+    /// Center, in replay units (10 per grid square).
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -427,6 +440,20 @@ impl BattleRecord {
                         .parse()
                         .unwrap_or(0),
                     units: units.iter().filter_map(placed_unit).collect(),
+                    buildings: data
+                        .construction_snapshot_datas
+                        .construction_snapshot_data
+                        .iter()
+                        .filter_map(|b| {
+                            Some(PlacedBuilding {
+                                id: b.id.trim().parse().ok()?,
+                                name: resolve(NameKind::Construction, b.id.trim())
+                                    .map(str::to_owned),
+                                x: b.position.x.trim().parse().ok()?,
+                                y: b.position.y.trim().parse().ok()?,
+                            })
+                        })
+                        .collect(),
                     enabled_techs: enabled_techs(&data.active_technologies.unit_data),
                     specialists: data
                         .officers
