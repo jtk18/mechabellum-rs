@@ -269,6 +269,8 @@ pub fn extract(
                 }
             };
             for sprite in sprites {
+                // The name comes from the game file, but `wanted` only passes letters, digits
+                // and `_`, so it is one safe path component (pinned by a test below).
                 match assets.cut(sprite, &texture) {
                     Ok(image) => image::save_buffer(
                         art_dir.join(format!("{}.png", sprite.name)),
@@ -399,6 +401,34 @@ mod tests {
         ] {
             assert!(!wanted(name), "{name}");
         }
+    }
+
+    /// Sprite names become file names, so nothing `wanted` accepts may leave the art folder.
+    #[test]
+    fn test_wanted_never_passes_a_path() {
+        let prefixes = [
+            "Mech_Default_",
+            "Mech_Portrait_",
+            "Mech_Portrait_Research_Center_",
+            "UT_",
+            "O_",
+            "RC_",
+            "TD_",
+            "E_",
+        ];
+        let hostile = [
+            "../x", "..\\x", "a/b", "a\\b", "..", ".", "C:x", "a b", "x\0",
+        ];
+        for prefix in prefixes {
+            for tail in hostile {
+                for suffix in ["", "_1", "_SBUI"] {
+                    let name = format!("{prefix}{tail}{suffix}");
+                    assert!(!wanted(&name), "{name:?}");
+                }
+            }
+        }
+        // Control: the same loop does accept safe names under these prefixes.
+        assert!(prefixes.iter().any(|p| wanted(&format!("{p}Rage_SBUI"))));
     }
 
     #[test]
