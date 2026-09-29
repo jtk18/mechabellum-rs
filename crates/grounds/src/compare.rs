@@ -3,8 +3,8 @@
 use mechabellum::board::{Board, BoardBuilding, BoardUnit, Half, Side};
 
 /// Largest distance between a unit's planned and recorded center, in replay units (10 per
-/// square). The game snaps centers to half squares and nudges units off each other.
-const TOLERANCE: i32 = 10;
+/// square): half a square, for the snap of a center to the grid. More means it landed elsewhere.
+const TOLERANCE: i32 = 5;
 
 const MISSILE_INTERCEPTOR: u32 = 30001;
 

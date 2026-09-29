@@ -170,14 +170,20 @@ fn clear_side(game: &mut Game) -> Result<()> {
     Ok(())
 }
 
-/// Clear both sides and come back to your own, zoomed out.
-pub fn clear_both(game: &mut Game) -> Result<()> {
+/// Clear both sides and come back to your own, zoomed out. Returns each half's empty view
+/// (south, north), as a reference for where the camera sits when placements land exactly.
+pub fn clear_both(game: &mut Game) -> Result<(image::RgbImage, image::RgbImage)> {
     clear_side(game)?;
     game.click(ui::SWITCH_SIDES, 2500);
     clear_side(game)?;
+    game.wheel(-60);
+    std::thread::sleep(Duration::from_millis(800));
+    let north = game.screenshot()?;
     game.click(ui::SWITCH_SIDES, 2500);
     game.wheel(-60);
-    Ok(())
+    std::thread::sleep(Duration::from_millis(800));
+    let south = game.screenshot()?;
+    Ok((south, north))
 }
 
 /// The newest replay file in `dir` and when it was written.

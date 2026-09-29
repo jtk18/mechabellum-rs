@@ -266,7 +266,8 @@ fn main() -> Result<()> {
         Command::Shift { reference, now } => {
             let a = image::open(&reference)?.to_rgb8();
             let b = image::open(&now)?.to_rgb8();
-            let ((dx, dy), s) = mechabellum_grounds::camera_shift(&a, &b);
+            let ((dx, dy), s) =
+                mechabellum_grounds::camera_shift(&a, &b, &mechabellum_grounds::OPEN_GROUND);
             println!("the map moved {dx},{dy} px (mean difference {s:.1})");
         }
         Command::Blobs { png, at: None } => {
@@ -386,7 +387,7 @@ fn main() -> Result<()> {
             let _ = unlocked;
             let board = load(&code)?;
             let (south, north) = projections(&board)?;
-            place(&board, &south, &north, limit)?
+            place(&board, &south, &north, limit, None)?
         }
         #[cfg(not(windows))]
         Command::Shot { .. }
@@ -453,7 +454,7 @@ fn verify(
     }
     // Clearing also switches sides and back, which settles your own side's camera where
     // calibration measured it: straight after entering, it sits about a square off.
-    flow::clear_both(&mut game)?;
+    let reference = flow::clear_both(&mut game)?;
     // Researching techs needs each side's loadout, which only a Testing Grounds replay records.
     // Without one, fight an empty round to make one.
     let wants_techs = board
@@ -477,9 +478,11 @@ fn verify(
             flow::run_round(&mut game)?;
         }
     }
-    // Empty fights leave the camera where calibration measured it (checked 2026-09-29: a
-    // round-2 board placed exactly, and correcting for a measured "pan" made it worse).
-    place(board, south, north, None)?;
+    // Fights and side switches move the camera by about a square (measured 2026-09-29 on
+    // Railway Town: after fights one half's units landed a square toward the middle, the
+    // other's exactly, and which one changed with the switching). place() lines each half up
+    // with its view from just after clearing, when placements land exactly.
+    place(board, south, north, None, Some(&reference))?;
     let mut game = mechabellum_grounds::win::Game::find()?;
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
     println!("saved {}", file.display());
@@ -1170,6 +1173,7 @@ fn place(
     south: &Projection,
     north: &Projection,
     limit: Option<usize>,
+    reference: Option<&(image::RgbImage, image::RgbImage)>,
 ) -> Result<()> {
     use mechabellum_grounds::ui;
     use mechabellum_grounds::win::Game;
@@ -1287,6 +1291,41 @@ fn place(
         let half = side.half.unwrap_or(Half::South);
         switch_to(&mut game, half, &mut current)?;
         let projection = if half == Half::North { north } else { south };
+        // Where the camera sits drifts by a square or so with fights and side switches. Line
+        // up the towers and the spawn pad with this half's reference view (where placements
+        // land exactly), and aim that much off.
+        let corrected;
+        let projection = match reference {
+            Some((ref_south, ref_north)) => {
+                let reference = if half == Half::North {
+                    ref_north
+                } else {
+                    ref_south
+                };
+                let flip = if half == Half::North { -1.0 } else { 1.0 };
+                let landmarks = [
+                    projection.to_screen(-TOWER.0, TOWER.1 * flip),
+                    projection.to_screen(TOWER.0, TOWER.1 * flip),
+                    ui::SPAWN_PAD,
+                ];
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                let ((dx, dy), fit) =
+                    mechabellum_grounds::camera_shift(reference, &game.screenshot()?, &landmarks);
+                if dx.hypot(dy) > 80.0 {
+                    println!("  (camera seems {dx},{dy} px off, too far to trust; not correcting)");
+                    projection
+                } else {
+                    if dx != 0.0 || dy != 0.0 {
+                        println!(
+                            "  (camera {dx},{dy} px off its reference, match {fit:.1}; correcting)"
+                        );
+                    }
+                    corrected = projection.translated(dx, dy);
+                    &corrected
+                }
+            }
+            None => projection,
+        };
         // Research costs supplies, and each side has its own; add plenty.
         if side.units.iter().any(|u| !u.techs.is_empty()) {
             game.click(ui::TOOLS, 1200);
@@ -1429,6 +1468,10 @@ fn half_name(half: Half) -> &'static str {
     }
 }
 
+/// Command Center and Research Center on the south half, in squares (the same on every 2.0 map;
+/// mirrored for the north). They look the same every round, so they anchor camera matching.
+const TOWER: (f64, f64) = (14.0, -17.5);
+
 /// Board offsets (squares, in the side's own frame: +y toward the middle) to try when the game
 /// refuses a drop, e.g. when a tower's model is in front of the spot. A refused unit would sit
 /// on the spawn pad and block the next spawn, so a nearby spot beats none.
@@ -1551,9 +1594,9 @@ fn spawn_and_place(
         game.double_click(target, 700);
         game.right_click(target, 900);
         let now = green_blobs(&game.screenshot()?);
-        // A target on the pad itself can't show the unit leaving it.
+        // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
         let left_spawn =
-            near(target, spawn, 60.0) || (spawn_weight(&now) as f64) < grown as f64 * 0.8;
+            near(target, spawn, 120.0) || (spawn_weight(&now) as f64) < grown as f64 * 0.8;
         let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
         if left_spawn && at_target {
             return Ok(Some(i));

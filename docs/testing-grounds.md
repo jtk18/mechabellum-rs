@@ -141,9 +141,14 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
 - **The zone grows with the round:** in round 1 its front stops about 5 squares from the middle
   (a drop at y=-3 is refused, y=-6 is fine); from round 2 it reaches the front line, and flank
   columns open in round 3. Ranked round 1 already reaches the front line, so `verify` (and
-  `replay`) fight empty rounds up to the code's `round` before placing. Empty fights leave the
-  camera where calibration measured it; correcting for a "pan" measured from screenshots made
-  placements worse, so there's no correction (`grounds shift` still measures one).
+  `replay`) fight empty rounds up to the code's `round` before placing.
+- **The camera drifts by about a square** with fights and side switches, differently per half
+  (2026-09-29: after empty fights one half's units all landed a square toward the middle, the
+  other's exactly, and which half changed with the switching). It hid behind `verify`'s old
+  one-square tolerance, now half a square. So `verify` keeps each half's empty view from just
+  after clearing, and before placing on a half it lines up patches around the two towers and
+  the spawn pad with that view (`camera_shift`) and aims that many pixels off. Matching the
+  whole screen doesn't work: the lit zone grows by round, and it read a 13,22 px move as 168,18.
 - **The front edge is 2 squares from the middle,** one farther back than ranked allows (checked
   2026-09-29 in rounds 2 and 3: a Fang aimed at y=-2 went to -3, and at y=2 on the north it was
   refused). A turned unit that pokes past it isn't pushed back on the north half: the game puts

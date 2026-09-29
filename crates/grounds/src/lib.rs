@@ -93,6 +93,25 @@ impl Projection {
         )
     }
 
+    /// The same projection aiming at the board point (dx, dy) squares away: `to_screen(x, y)`
+    /// gives what this one gives for (x + dx, y + dy).
+    pub fn board_shifted(&self, dx: f64, dy: f64) -> Projection {
+        let h = self.h;
+        let k = 1.0 + h[6] * dx + h[7] * dy;
+        Projection {
+            h: [
+                h[0] / k,
+                h[1] / k,
+                (h[2] + h[0] * dx + h[1] * dy) / k,
+                h[3] / k,
+                h[4] / k,
+                (h[5] + h[3] * dx + h[4] * dy) / k,
+                h[6] / k,
+                h[7] / k,
+            ],
+        }
+    }
+
     /// The same projection with the whole view moved by (dx, dy) pixels, for when the camera
     /// has panned since calibration.
     pub fn translated(&self, dx: f64, dy: f64) -> Projection {
@@ -540,13 +559,32 @@ pub fn inventory_has_item(img: &image::RgbImage) -> bool {
     b > 90.0
 }
 
+/// Patches of open map on both sides of the board, clear of the HUD and tools (centers).
+pub const OPEN_GROUND: [Px; 4] = [
+    (680.0, 530.0),
+    (1580.0, 530.0),
+    (780.0, 1080.0),
+    (1580.0, 1080.0),
+];
+
 /// How far the map in `now` has moved from where it was in `reference` (same camera zoom), in
-/// reference pixels: the offset that best lines up a few patches of ground away from the UI.
+/// reference pixels: the offset that best lines up square patches of ground centered on
+/// `centers`. Pick things that look the same every round (towers, the spawn pad): the zone's
+/// lit area grows by round and throws a whole-screen match off.
 /// Also returns the match's mean difference per sample, lower being better.
-pub fn camera_shift(reference: &image::RgbImage, now: &image::RgbImage) -> (Px, f64) {
-    // Patches of open map on both sides of the board, clear of the HUD and tools.
-    const PATCHES: [(u32, u32); 4] = [(600, 450), (1500, 450), (700, 1000), (1500, 1000)];
+pub fn camera_shift(
+    reference: &image::RgbImage,
+    now: &image::RgbImage,
+    centers: &[Px],
+) -> (Px, f64) {
     const SIZE: u32 = 160;
+    let patches: Vec<(u32, u32)> = centers
+        .iter()
+        .map(|&(x, y)| {
+            let half = f64::from(SIZE / 2);
+            ((x - half).max(0.0) as u32, (y - half).max(0.0) as u32)
+        })
+        .collect();
     const STEP: u32 = 4;
     let grey = |img: &image::RgbImage, x: i64, y: i64| -> Option<f64> {
         if x < 0 || y < 0 || x >= i64::from(img.width()) || y >= i64::from(img.height()) {
@@ -557,7 +595,7 @@ pub fn camera_shift(reference: &image::RgbImage, now: &image::RgbImage) -> (Px, 
     };
     let score = |dx: i64, dy: i64| -> f64 {
         let (mut sum, mut n) = (0.0, 0.0);
-        for &(px, py) in &PATCHES {
+        for &(px, py) in &patches {
             for y in (0..SIZE).step_by(STEP as usize) {
                 for x in (0..SIZE).step_by(STEP as usize) {
                     let (rx, ry) = (i64::from(px + x), i64::from(py + y));
@@ -705,7 +743,7 @@ mod tests {
                 image::Rgb([v, v / 2, v / 3])
             })
         };
-        let (shift, score) = camera_shift(&make(0, 0), &make(dx, dy));
+        let (shift, score) = camera_shift(&make(0, 0), &make(dx, dy), &OPEN_GROUND);
         assert_eq!(shift, (21.0, -21.0), "score {score}");
         assert!(score < 1.0, "{score}");
     }
@@ -717,6 +755,16 @@ mod tests {
         for (x, y) in [(0.0, -10.0), (-25.0, -28.0), (20.0, -3.0)] {
             let (a, b) = (p.to_screen(x, y), q.to_screen(x, y));
             assert!((b.0 - a.0 - 21.0).abs() < 1e-6 && (b.1 - a.1 + 21.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_board_shifted_projection_aims_elsewhere() {
+        let p = Projection::fit(&RAILWAY_TOWN_SOUTH).unwrap();
+        let q = p.board_shifted(0.5, -1.0);
+        for (x, y) in [(0.0, -10.0), (-25.0, -28.0), (20.0, -3.0)] {
+            let (a, b) = (p.to_screen(x + 0.5, y - 1.0), q.to_screen(x, y));
+            assert!((a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6);
         }
     }
 
