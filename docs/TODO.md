@@ -125,6 +125,15 @@ Commit each step once it's verified.
       exactly; all 6 beside them were nudged. Replays don't record tower positions.
       2026-09-29, with items and buildings placed too: Forest Eye round 2 now fights out the
       same as the real round (both walls built; only the 5 tower-side units differ).
+      2026-09-29, advancing to the code's round (cb7b2b9): a round-2 test board matched
+      exactly, front line and turned units included. Still open, from the 5-round batch:
+      - Round 3 (two empty fights) placed units 1 to 5 squares off, with levels on the wrong
+        units. One empty fight doesn't move the camera; two may. Check with a round-3 board.
+      - Turned units on the north half (Fangs on the front line, Dusk round 2) stayed
+        unturned, while the south half's turned fine. Check the turn spot's direction there.
+      - The game lost its network connection partway (a "Network disconnected" dialog), so the
+        last three rounds didn't run. The tool doesn't recognize that dialog yet.
+      Batch so far: of 7 completed re-fights, 3 matched the real result.
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
 - [x] T7. Place buildings in Testing Grounds: the Squad tab's Building section, then a click on
