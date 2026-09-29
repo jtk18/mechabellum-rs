@@ -126,14 +126,17 @@ Commit each step once it's verified.
       2026-09-29, with items and buildings placed too: Forest Eye round 2 now fights out the
       same as the real round (both walls built; only the 5 tower-side units differ).
       2026-09-29, advancing to the code's round (cb7b2b9): a round-2 test board matched
-      exactly, front line and turned units included. Still open, from the 5-round batch:
-      - Round 3 (two empty fights) placed units 1 to 5 squares off, with levels on the wrong
-        units. One empty fight doesn't move the camera; two may. Check with a round-3 board.
-      - Turned units on the north half (Fangs on the front line, Dusk round 2) stayed
-        unturned, while the south half's turned fine. Check the turn spot's direction there.
-      - The game lost its network connection partway (a "Network disconnected" dialog), so the
-        last three rounds didn't run. The tool doesn't recognize that dialog yet.
-      Batch so far: of 7 completed re-fights, 3 matched the real result.
+      exactly, front line and turned units included.
+      2026-09-29 afternoon (game version 2326): the front edge is 2 squares from the middle,
+      not 1, so front units (and the ones packed behind them) move back a square; the camera
+      drifts about a square with fights and side switches, so each half is lined up with its
+      view from just after clearing; the check now allows half a square, not one (which hid
+      the drift). The 5-round batch: all 5 re-fights came out as the real rounds did.
+      Still open:
+      - Units right in front of the towers are refused (see above).
+      - Dusk's view differs from Railway Town's by a square. Dusk now has its own calibration
+        (fit within 17 px, not yet checked with verify); Night still borrows Railway Town's.
+      - The tool doesn't recognize the "Network disconnected" dialog.
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
 - [x] T7. Place buildings in Testing Grounds: the Squad tab's Building section, then a click on
