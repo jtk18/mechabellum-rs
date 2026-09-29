@@ -471,9 +471,31 @@ pub fn tech_buttons(
 #[derive(Debug, Clone)]
 pub struct PlanStep {
     pub name: String,
+    /// Where it goes: the code's spot, or moved back behind [`FRONT_EDGE`].
     pub board: (f64, f64),
     pub screen: Px,
     pub clickable: bool,
+    /// Squares it was moved back to stay behind the front edge.
+    pub moved_back: f64,
+}
+
+/// How close to the middle a unit may stand in Testing Grounds, in squares: one square farther
+/// back than ranked games allow (measured 2026-09-29 on Railway Town - Dusk: a Fang aimed at 2
+/// was moved to 3 or refused, and a turned one on the front line was put down unturned).
+pub const FRONT_EDGE: f64 = 2.0;
+
+/// A unit's spot moved straight back, if needed, so its footprint stays behind [`FRONT_EDGE`].
+/// Returns the spot and how far it moved.
+pub fn behind_front(u: &mechabellum::board::BoardUnit) -> ((f64, f64), f64) {
+    let (x, y) = (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
+    let (w, d) = mechabellum::footprint(u.unit_id).unwrap_or((2, 2));
+    let depth = f64::from(if u.rotated { w } else { d });
+    let short = FRONT_EDGE - (y.abs() - depth / 2.0);
+    if short > 0.0 && y != 0.0 {
+        ((x, y + short * y.signum()), short)
+    } else {
+        ((x, y), 0.0)
+    }
 }
 
 /// Screen targets for a side's units, under a calibration.
@@ -481,13 +503,14 @@ pub fn plan(side: &mechabellum::board::Side, projection: &Projection) -> Vec<Pla
     side.units
         .iter()
         .map(|u| {
-            let board = (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
+            let (board, moved_back) = behind_front(u);
             let screen = projection.to_screen(board.0, board.1);
             PlanStep {
                 name: u.name.clone(),
                 board,
                 screen,
                 clickable: clickable(screen),
+                moved_back,
             }
         })
         .collect()
@@ -647,6 +670,22 @@ pub fn green_blobs(img: &image::RgbImage) -> Vec<(Px, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_behind_front() {
+        let board = mechabellum::board::Board::parse(
+            "[board version=2326]\n[side half=north]\n\
+             [unit=Fang at=5,3.5 rotated]\n[unit=Fang at=5.5,2]\n[unit=Fang at=5.5,3]\n\
+             [/side]\n[side half=south]\n[unit=Fang at=14,-3.5 rotated]\n[/side]\n[/board]",
+        )
+        .unwrap();
+        let [north, south] = [&board.sides[0], &board.sides[1]];
+        // A turned Fang is 5 deep: at 3.5 it reaches 1, so it goes back to 4.5.
+        assert_eq!(behind_front(&north.units[0]), ((5.0, 4.5), 1.0));
+        assert_eq!(behind_front(&north.units[1]), ((5.5, 3.0), 1.0));
+        assert_eq!(behind_front(&north.units[2]), ((5.5, 3.0), 0.0));
+        assert_eq!(behind_front(&south.units[0]), ((14.0, -4.5), 1.0));
+    }
 
     #[test]
     fn test_camera_shift_finds_a_pan() {

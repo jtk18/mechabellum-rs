@@ -144,6 +144,11 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   `replay`) fight empty rounds up to the code's `round` before placing. Empty fights leave the
   camera where calibration measured it; correcting for a "pan" measured from screenshots made
   placements worse, so there's no correction (`grounds shift` still measures one).
+- **The front edge is 2 squares from the middle,** one farther back than ranked allows (checked
+  2026-09-29 in rounds 2 and 3: a Fang aimed at y=-2 went to -3, and at y=2 on the north it was
+  refused). A turned unit that pokes past it isn't pushed back on the north half: the game puts
+  it down unturned. So `place` moves a unit straight back until its footprint clears the edge,
+  and `verify` compares against the moved spot and prints a note.
 - **Turning:** a middle click turns a carried unit, but it's a toggle, and a refused drop keeps
   the turn. So a unit is turned once, 4 squares behind its spot (where the unturned footprint
   fits even on the front line), then dropped. Turning it at the spot itself failed for a

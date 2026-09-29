@@ -496,7 +496,26 @@ fn verify(
         "recorded:
 {recorded}"
     );
-    Ok(mechabellum_grounds::compare::differences(board, &recorded))
+    // Compare with where the units were meant to go here: moved back behind the front edge.
+    let mut meant = board.clone();
+    let mut notes = Vec::new();
+    for side in &mut meant.sides {
+        for u in &mut side.units {
+            let ((_, y), moved) = mechabellum_grounds::behind_front(u);
+            if moved > 0.0 {
+                notes.push(format!(
+                    "{}{} at {:.1},{:.1} was moved {moved:.1} back, behind Testing Grounds' front edge",
+                    mechabellum_grounds::compare::NOTE,
+                    u.name,
+                    f64::from(u.x) / 10.0,
+                    f64::from(u.y) / 10.0
+                ));
+                u.y = (y * 10.0).round() as i32;
+            }
+        }
+    }
+    notes.extend(mechabellum_grounds::compare::differences(&meant, &recorded));
+    Ok(notes)
 }
 
 /// Board squares to drop calibration units at, in a side's own frame (x right, y toward the
@@ -1365,6 +1384,10 @@ fn place(
                 step.board.1,
                 unit.level,
                 match landed.map(|i| spots[i]) {
+                    Some((x, y)) if (x, y) == step.board && step.moved_back > 0.0 => format!(
+                        "placed {:.1} back, at {x:.1},{y:.1} (the front edge is farther back here)",
+                        step.moved_back
+                    ),
                     Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
                     Some((x, y)) => format!("refused there; placed at {x:.1},{y:.1}"),
                     None => "NOT confirmed (check the screen)".to_owned(),
