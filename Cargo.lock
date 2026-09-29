@@ -5927,7 +5927,8 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 [[package]]
 name = "unity-bundle-assets"
 version = "0.1.0"
-source = "git+ssh://git@github.com/jtk18/unity-bundle-assets.git#83bc80863f1366eddf882a44c878cbe9553c5f9a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "130acc38f9c5900c88bf9884c63e8586cda523f3baecbc1a04370df510a4d184"
 dependencies = [
  "lzma-rs",
  "thiserror 2.0.21",

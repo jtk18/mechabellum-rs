@@ -18,7 +18,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 mechabellum = { path = "../../../crates/mechabellum" }
 mechabellum-server = { path = "../../../crates/server" }
-unity-bundle-assets = { git = "ssh://git@github.com/jtk18/unity-bundle-assets.git" }
+unity-bundle-assets = "0.1.0"
 anyhow = "1.0"
 axum = "0.8"
 log = "0.4"
