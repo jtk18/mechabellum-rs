@@ -5,3 +5,6 @@
 *.db-shm
 *.db-wal
 .env
+
+# Screenshots the scratch click helper saves in the working directory.
+/game.png
