@@ -503,26 +503,54 @@ pub struct PlanStep {
 /// was moved to 3 or refused, and a turned one on the front line was put down unturned).
 pub const FRONT_EDGE: f64 = 2.0;
 
-/// A unit's spot moved straight back, if needed, so its footprint stays behind [`FRONT_EDGE`].
-/// Returns the spot and how far it moved.
-pub fn behind_front(u: &mechabellum::board::BoardUnit) -> ((f64, f64), f64) {
-    let (x, y) = (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
-    let (w, d) = mechabellum::footprint(u.unit_id).unwrap_or((2, 2));
-    let depth = f64::from(if u.rotated { w } else { d });
-    let short = FRONT_EDGE - (y.abs() - depth / 2.0);
-    if short > 0.0 && y != 0.0 {
-        ((x, y + short * y.signum()), short)
-    } else {
-        ((x, y), 0.0)
+/// Each unit's spot, moved straight back where needed so every footprint stays behind
+/// [`FRONT_EDGE`], with how far it moved. A unit moved back pushes the ones right behind it
+/// (overlapping it across) back too, so a packed formation keeps its shape instead of the game
+/// shoving the overlapping units aside.
+pub fn behind_front(units: &[mechabellum::board::BoardUnit]) -> Vec<((f64, f64), f64)> {
+    // Across (x), distance from the middle (t), width, depth.
+    let boxes: Vec<(f64, f64, f64, f64)> = units
+        .iter()
+        .map(|u| {
+            let (w, d) = mechabellum::footprint(u.unit_id).unwrap_or((2, 2));
+            let (w, d) = if u.rotated { (d, w) } else { (w, d) };
+            let (x, y) = (f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
+            (x, y.abs(), f64::from(w), f64::from(d))
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..units.len()).collect();
+    order.sort_by(|&a, &b| boxes[a].1.total_cmp(&boxes[b].1));
+    let mut t = vec![0.0; units.len()];
+    for (k, &i) in order.iter().enumerate() {
+        let (x, ti, w, d) = boxes[i];
+        let mut want = ti.max(FRONT_EDGE + d / 2.0);
+        for &j in &order[..k] {
+            let (xj, tj, wj, dj) = boxes[j];
+            let across = (x - xj).abs() < (w + wj) / 2.0 - 1e-6;
+            let was_behind = ti - d / 2.0 >= tj + dj / 2.0 - 1e-6;
+            if across && was_behind {
+                want = want.max(t[j] + (d + dj) / 2.0);
+            }
+        }
+        t[i] = want;
     }
+    units
+        .iter()
+        .zip(&boxes)
+        .zip(t)
+        .map(|((u, &(x, ti, _, _)), t)| {
+            let sign = if u.y < 0 { -1.0 } else { 1.0 };
+            ((x, t * sign), t - ti)
+        })
+        .collect()
 }
 
 /// Screen targets for a side's units, under a calibration.
 pub fn plan(side: &mechabellum::board::Side, projection: &Projection) -> Vec<PlanStep> {
     side.units
         .iter()
-        .map(|u| {
-            let (board, moved_back) = behind_front(u);
+        .zip(behind_front(&side.units))
+        .map(|(u, (board, moved_back))| {
             let screen = projection.to_screen(board.0, board.1);
             PlanStep {
                 name: u.name.clone(),
@@ -713,16 +741,25 @@ mod tests {
     fn test_behind_front() {
         let board = mechabellum::board::Board::parse(
             "[board version=2326]\n[side half=north]\n\
-             [unit=Fang at=5,3.5 rotated]\n[unit=Fang at=5.5,2]\n[unit=Fang at=5.5,3]\n\
-             [/side]\n[side half=south]\n[unit=Fang at=14,-3.5 rotated]\n[/side]\n[/board]",
+             [unit=Fang at=5,3.5 rotated]\n[unit=Fang at=5.5,2]\n[unit=Fang at=5.5,4]\n\
+             [/side]\n[side half=south]\n[unit=Fang at=14,-3.5 rotated]\n\
+             [unit=Vortex at=20,-5]\n[unit=Vortex at=14,-7]\n[/side]\n[/board]",
         )
         .unwrap();
-        let [north, south] = [&board.sides[0], &board.sides[1]];
+        let [north, south] = [
+            behind_front(&board.sides[0].units),
+            behind_front(&board.sides[1].units),
+        ];
         // A turned Fang is 5 deep: at 3.5 it reaches 1, so it goes back to 4.5.
-        assert_eq!(behind_front(&north.units[0]), ((5.0, 4.5), 1.0));
-        assert_eq!(behind_front(&north.units[1]), ((5.5, 3.0), 1.0));
-        assert_eq!(behind_front(&north.units[2]), ((5.5, 3.0), 0.0));
-        assert_eq!(behind_front(&south.units[0]), ((14.0, -4.5), 1.0));
+        assert_eq!(north[0], ((5.0, 4.5), 1.0));
+        // Two Fangs one behind the other, the front one short of the edge: both move back.
+        assert_eq!(north[1], ((5.5, 3.0), 1.0));
+        assert_eq!(north[2], ((5.5, 5.0), 1.0));
+        assert_eq!(south[0], ((14.0, -4.5), 1.0));
+        // Not in the way of the moved Fang: stays.
+        assert_eq!(south[1], ((20.0, -5.0), 0.0));
+        // Right behind it (as on Dusk round 2): pushed back with it.
+        assert_eq!(south[2], ((14.0, -8.0), 1.0));
     }
 
     #[test]

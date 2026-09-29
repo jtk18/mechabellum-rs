@@ -503,11 +503,11 @@ fn verify(
     let mut meant = board.clone();
     let mut notes = Vec::new();
     for side in &mut meant.sides {
-        for u in &mut side.units {
-            let ((_, y), moved) = mechabellum_grounds::behind_front(u);
+        let moves = mechabellum_grounds::behind_front(&side.units);
+        for (u, ((_, y), moved)) in side.units.iter_mut().zip(moves) {
             if moved > 0.0 {
                 notes.push(format!(
-                    "{}{} at {:.1},{:.1} was moved {moved:.1} back, behind Testing Grounds' front edge",
+                    "{}{} at {:.1},{:.1} was moved {moved:.1} back, to clear Testing Grounds' front edge or a unit moved back in front of it",
                     mechabellum_grounds::compare::NOTE,
                     u.name,
                     f64::from(u.x) / 10.0,
