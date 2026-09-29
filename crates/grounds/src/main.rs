@@ -65,8 +65,8 @@ enum Command {
         /// First catalog cell to check (0-based, top to bottom)
         #[arg(long, default_value_t = 0)]
         from: usize,
-        /// How many cells to check in one fight (at most 13)
-        #[arg(long, default_value_t = 13)]
+        /// How many cells to check in one fight (at most 12: one per spot on the half)
+        #[arg(long, default_value_t = 12)]
         count: usize,
         /// The unit to equip; some items only fit some units (Laser Sights won't go on a Crawler)
         #[arg(long, default_value = "Fortress")]

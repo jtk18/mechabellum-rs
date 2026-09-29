@@ -111,8 +111,10 @@ Commit each step once it's verified.
 - [x] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
 - [ ] T4. Items: the tools' Equipment tab grants any item into your inventory; click it there,
-      then a unit (see docs/testing-grounds.md). Still to do: map catalog cells to item IDs by
-      equipping a dozen at a time and reading the replay, then equip items in `place`.
+      then a unit (see docs/testing-grounds.md). Catalog cells map to item IDs in
+      crates/grounds/src/equipment.rs: 78 of 79 confirmed with `grounds items-check`
+      (Lightweight Lock System's run read another unit's item; rerun it alone). Still to do:
+      codes need the ID where a name repeats across ranks, then equip items in `place`.
       (An earlier note here said items couldn't be granted; that was wrong: the tab I took
       for buildings is Equipment.)
 - [ ] T5. Replay real rounds from the user's replays and compare the outcome. `grounds replay
