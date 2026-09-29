@@ -473,6 +473,17 @@ const CALIBRATION_TARGETS: [(f64, f64); 14] = [
     (15.0, -27.0),
 ];
 
+/// Empty the item inventory of the side being edited (equipped items stay on their units).
+#[cfg(windows)]
+fn clear_inventory(game: &mut mechabellum_grounds::win::Game) {
+    use mechabellum_grounds::ui;
+    game.right_click(ui::NEUTRAL, 400);
+    game.click(ui::TOOLS, 1200);
+    game.click(ui::TOOLS_CLEAR_EQUIPMENT, 800);
+    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+}
+
 /// Put an item in your inventory from the tools' Equipment tab, and close the tools.
 #[cfg(windows)]
 fn grant(game: &mut mechabellum_grounds::win::Game, id: u32) -> Result<()> {
@@ -535,6 +546,8 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
     let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
+    // Start with an empty inventory: a leftover item would be picked up instead of the new one.
+    clear_inventory(&mut game);
     let mut placed = Vec::new();
     let mut refused = Vec::new();
     for (cell, &(x, y)) in cells.iter().zip(&targets) {
@@ -559,10 +572,7 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
         // up again next time; clear it.
         if mechabellum_grounds::inventory_has_item(&game.screenshot()?) {
             refused.push(*cell);
-            game.click(ui::TOOLS, 1200);
-            game.click(ui::TOOLS_CLEAR_EQUIPMENT, 800);
-            game.click(ui::TOOLS_CLOSE_LEFT, 500);
-            game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+            clear_inventory(&mut game);
             continue;
         }
         placed.push((cell, (x, y)));
@@ -855,9 +865,16 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
                     u.name
                 ));
             }
-            if !u.items.is_empty() {
-                dropped.push(format!("items on {}: {}", u.name, u.items.join(", ")));
-                u.items.clear();
+            let before = u.items.len();
+            u.items.retain(|i| {
+                mechabellum::board::resolve_item(i)
+                    .is_ok_and(|id| mechabellum_grounds::equipment::cell(id).is_some())
+            });
+            if u.items.len() < before {
+                dropped.push(format!(
+                    "some items on {} (not in the Equipment tab)",
+                    u.name
+                ));
             }
         }
         for b in side.buildings.drain(..) {
@@ -1012,6 +1029,21 @@ fn place(
         );
     }
     let mut buttons = buttons.into_iter();
+    // Items by ID, each from a cell of the Equipment tab; check them all before starting.
+    let mut items: Vec<Vec<u32>> = Vec::new();
+    for unit in board.sides.iter().flat_map(|s| &s.units) {
+        let mut ids = Vec::new();
+        for entry in &unit.items {
+            let id = mechabellum::board::resolve_item(entry)
+                .map_err(|e| anyhow::anyhow!("{} at {}: {e}", unit.name, entry))?;
+            if mechabellum_grounds::equipment::cell(id).is_none() {
+                bail!("{entry} on {} isn't in the Equipment tab", unit.name);
+            }
+            ids.push(id);
+        }
+        items.push(ids);
+    }
+    let mut items = items.into_iter();
 
     let mut game = Game::find()?;
     // Testing Grounds starts on your own (south) side.
@@ -1029,6 +1061,11 @@ fn place(
             }
             game.click(ui::TOOLS_CLOSE_LEFT, 500);
             game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+        }
+        // Items wait in an inventory before they're equipped; start this side with it empty,
+        // or a leftover would be equipped instead.
+        if side.units.iter().any(|u| !u.items.is_empty()) {
+            clear_inventory(&mut game);
         }
         println!("{}:", side.name.as_deref().unwrap_or(half_name(half)));
         for (step, unit) in plan(side, projection).iter().zip(&side.units) {
@@ -1075,8 +1112,21 @@ fn place(
                 game.click(ui::TOOLS_CLOSE_RIGHT, 700);
                 game.right_click(ui::NEUTRAL, 500);
             }
+            // Items: grant each into the inventory, then click it and the unit. One the unit
+            // can't wear stays in the inventory; clear it.
+            let mut refused_items = Vec::new();
+            for id in items.next().unwrap_or_default() {
+                grant(&mut game, id)?;
+                game.click(ui::INVENTORY_ITEM, 700);
+                game.click(at, 900);
+                game.right_click(ui::NEUTRAL, 600);
+                if mechabellum_grounds::inventory_has_item(&game.screenshot()?) {
+                    clear_inventory(&mut game);
+                    refused_items.push(id);
+                }
+            }
             println!(
-                "  {:<14} at {:>5.1},{:>5.1} level {}: {}",
+                "  {:<14} at {:>5.1},{:>5.1} level {}: {}{}",
                 step.name,
                 step.board.0,
                 step.board.1,
@@ -1085,6 +1135,11 @@ fn place(
                     Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
                     Some((x, y)) => format!("refused there; placed at {x:.1},{y:.1}"),
                     None => "NOT confirmed (check the screen)".to_owned(),
+                },
+                if refused_items.is_empty() {
+                    String::new()
+                } else {
+                    format!("; it can't wear item {refused_items:?}")
                 }
             );
         }
@@ -1092,16 +1147,6 @@ fn place(
     // Leave the game on your own side.
     switch_to(&mut game, Half::South, &mut current)?;
 
-    let skipped: Vec<&str> = board
-        .sides
-        .iter()
-        .flat_map(|s| &s.units)
-        .filter(|u| !u.items.is_empty())
-        .map(|u| u.name.as_str())
-        .collect();
-    if !skipped.is_empty() {
-        println!("Not set yet (items): {}", skipped.join(", "));
-    }
     let buildings: Vec<&str> = board
         .sides
         .iter()

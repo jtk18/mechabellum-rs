@@ -110,13 +110,12 @@ Commit each step once it's verified.
       needs its own. The tool relaunches the game after a crash and tidies its own replays.
 - [x] T3. Tower anchors: record Command Center and Research Center positions per map;
       `from=command-center` / `from=research-center`.
-- [ ] T4. Items: the tools' Equipment tab grants any item into your inventory; click it there,
-      then a unit (see docs/testing-grounds.md). Catalog cells map to item IDs in
-      crates/grounds/src/equipment.rs: 78 of 79 confirmed with `grounds items-check`
-      (Lightweight Lock System's run read another unit's item; rerun it alone). Still to do:
-      codes need the ID where a name repeats across ranks, then equip items in `place`.
-      (An earlier note here said items couldn't be granted; that was wrong: the tab I took
-      for buildings is Equipment.)
+- [x] T4. Items: the tools' Equipment tab grants any item into your inventory; click it there,
+      then a unit (see docs/testing-grounds.md). All 79 catalog cells map to confirmed item IDs
+      (crates/grounds/src/equipment.rs, checked with `grounds items-check`). Codes name items,
+      adding `#ID` where a name is shared; `place` equips them and reports ones a unit can't
+      wear. Verified 2026-09-29: Heavy Armor #13030013, Laser Sights #13030012, and Deployment
+      Module on both halves matched the replay.
 - [ ] T5. Replay real rounds from the user's replays and compare the outcome. `grounds replay
       FILE --round N` is written: it leaves out techs not in the Testing Grounds loadout, units
       it can't place, and items, then compares each half's result and HP lost. Runs end to end

@@ -33,6 +33,10 @@ replay, and (later) have the tester set it up in Testing Grounds.
 - **`level`** is the level the game shows, from 1. It defaults to 1.
 - **`rotated`** takes no value.
 - **`techs`** and **`items`** are lists separated by commas or semicolons, up to 16 entries.
+- **Items** go by name. Where several items share a name (Heavy Armor comes in two ranks, and
+  rank 1 alone has two Haste Modules), add the ID: `items="Heavy Armor #13030013"`. The name must
+  match the ID; `#13030013` alone also works. Codes copied from replays add the ID only where
+  it's needed.
 - **Values** with spaces go in double quotes. Quotes can't appear inside a value.
 
 ## Anchors: positions relative to landmarks

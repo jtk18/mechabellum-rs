@@ -37,6 +37,26 @@ fn same_techs(a: &[String], b: &[String]) -> bool {
     a == b
 }
 
+/// Items compared by ID where they resolve, else by name.
+fn same_items(a: &[String], b: &[String]) -> bool {
+    let key = |s: &String| {
+        mechabellum::board::resolve_item(s).map_or_else(
+            |_| {
+                s.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .flat_map(char::to_lowercase)
+                    .collect()
+            },
+            |id| id.to_string(),
+        )
+    };
+    let mut a: Vec<String> = a.iter().map(key).collect();
+    let mut b: Vec<String> = b.iter().map(key).collect();
+    a.sort();
+    b.sort();
+    a == b
+}
+
 /// Everything in `recorded` that differs from `planned`, one line each. Sides are matched by
 /// half. Empty means the game set up exactly what the code asked for.
 pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
@@ -95,6 +115,14 @@ pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
                     describe(w),
                     g.techs.join(", "),
                     w.techs.join(", ")
+                ));
+            }
+            if !same_items(&g.items, &w.items) {
+                out.push(format!(
+                    "{half:?}: {} has items [{}], not [{}]",
+                    describe(w),
+                    g.items.join(", "),
+                    w.items.join(", ")
                 ));
             }
             unmatched.remove(k);

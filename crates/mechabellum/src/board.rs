@@ -384,6 +384,64 @@ fn name_lookup(kind: NameKind) -> BTreeMap<String, (u32, String)> {
     map
 }
 
+/// Item IDs that go by each name (case and spacing ignored). Several names cover more than one
+/// item: Heavy Armor comes in two ranks, and rank 1 alone has two Haste Modules.
+fn item_ids_by_name() -> BTreeMap<String, Vec<u32>> {
+    let names = GameNames::bundled();
+    let mut map: BTreeMap<String, Vec<u32>> = BTreeMap::new();
+    for id in names.ids(NameKind::Equipment) {
+        if let (Some(name), Ok(id)) = (names.resolve(NameKind::Equipment, id), u32::try_from(id)) {
+            map.entry(normalize(name)).or_default().push(id);
+        }
+    }
+    map
+}
+
+/// How a code writes an item: its name, with ` #ID` added when the name alone would be
+/// ambiguous.
+fn item_entry(id: u32, name: &str) -> String {
+    let shared = item_ids_by_name()
+        .get(&normalize(name))
+        .is_some_and(|ids| ids.len() > 1);
+    if shared {
+        format!("{name} #{id}")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// The item ID an `items` entry means: a name, `Name #ID`, or `#ID`. A name several items share
+/// needs the ID; the error lists them.
+pub fn resolve_item(entry: &str) -> Result<u32, String> {
+    let names = GameNames::bundled();
+    let known = |id: u32| names.resolve(NameKind::Equipment, u64::from(id));
+    let entry = entry.trim();
+    if let Some((name, id)) = entry.rsplit_once('#') {
+        let id: u32 = id
+            .trim()
+            .parse()
+            .map_err(|_| format!("{entry:?}: after # comes the item's ID"))?;
+        let actual = known(id).ok_or_else(|| format!("{entry:?}: no item has ID {id}"))?;
+        let name = name.trim();
+        if !name.is_empty() && normalize(name) != normalize(actual) {
+            return Err(format!("{entry:?}: item {id} is {actual}, not {name}"));
+        }
+        return Ok(id);
+    }
+    match item_ids_by_name().get(&normalize(entry)).map(Vec::as_slice) {
+        Some([id]) => Ok(*id),
+        Some(ids) => Err(format!(
+            "{entry} is {} different items; add the ID: {}",
+            ids.len(),
+            ids.iter()
+                .map(|id| format!("{entry} #{id}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        None => Err(format!("unknown item {entry:?}")),
+    }
+}
+
 fn normalize(name: &str) -> String {
     name.chars()
         .filter(|c| c.is_alphanumeric())
@@ -534,7 +592,11 @@ impl Board {
                         items: u
                             .equipment
                             .iter()
-                            .map(|e| e.name.clone().unwrap_or_else(|| e.id.clone()))
+                            .map(|e| match (&e.name, e.id.trim().parse::<u32>()) {
+                                (Some(name), Ok(id)) => item_entry(id, name),
+                                (Some(name), Err(_)) => name.clone(),
+                                (None, _) => format!("#{}", e.id.trim()),
+                            })
                             .collect(),
                     })
                     .collect();
@@ -909,6 +971,36 @@ good luck"#;
             let e = Board::parse(bad).unwrap_err();
             assert!(e.message.contains(why), "{bad}: {e}");
         }
+    }
+
+    #[test]
+    fn test_items_resolve_by_name_or_id() {
+        assert_eq!(resolve_item("Deployment Module"), Ok(13040001));
+        assert_eq!(resolve_item("deployment module"), Ok(13040001));
+        assert_eq!(resolve_item("Heavy Armor #13030013"), Ok(13030013));
+        assert_eq!(resolve_item("#13030013"), Ok(13030013));
+        let e = resolve_item("Heavy Armor").unwrap_err();
+        assert!(
+            e.contains("Heavy Armor #13030002") && e.contains("#13030013"),
+            "{e}"
+        );
+        assert!(resolve_item("Laser Sights #13030013")
+            .unwrap_err()
+            .contains("not Laser"));
+        assert!(resolve_item("Moat").unwrap_err().contains("unknown item"));
+        assert_eq!(item_entry(13030013, "Heavy Armor"), "Heavy Armor #13030013");
+        assert_eq!(
+            item_entry(13040001, "Deployment Module"),
+            "Deployment Module"
+        );
+        // An entry with an ID survives a code round trip.
+        let code = r#"[board][side][unit=Fortress at=0,-20 items="Heavy Armor #13030013, Deployment Module"][/side][/board]"#;
+        let board = Board::parse(code).unwrap();
+        assert_eq!(
+            board.sides[0].units[0].items,
+            vec!["Heavy Armor #13030013", "Deployment Module"]
+        );
+        assert_eq!(Board::parse(&board.to_string()).unwrap(), board);
     }
 
     #[test]
