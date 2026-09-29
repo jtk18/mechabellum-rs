@@ -60,6 +60,10 @@ enum Command {
     Tidy,
     /// Put an item from the Equipment tab in your inventory, by item ID
     Grant { id: u32 },
+    /// Fight the round as it's set up, save the replay, and print the board it recorded
+    Fight,
+    /// Place each of the 9 Building tiles on your half, fight, and print which building each is
+    BuildingsCheck,
     /// Equip catalog items on units, fight, and check each item's ID in the replay
     ItemsCheck {
         /// First catalog cell to check (0-based, top to bottom)
@@ -307,6 +311,19 @@ fn main() -> Result<()> {
         #[cfg(windows)]
         Command::Replay { file, round } => replay(&file, round)?,
         #[cfg(windows)]
+        Command::BuildingsCheck => buildings_check()?,
+        #[cfg(windows)]
+        Command::Fight => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            let file = mechabellum_grounds::flow::run_round_and_save(&mut game, &replay_dir())?;
+            let detail = mechabellum::BattleRecord::new_from_file(&file, false)
+                .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?
+                .match_detail();
+            let last = detail.rounds.len().checked_sub(1).context("no rounds")?;
+            let board = Board::from_round(&detail, last).context("no board")?;
+            println!("{board}");
+        }
+        #[cfg(windows)]
         Command::Grant { id } => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             grant(&mut game, id)?;
@@ -367,6 +384,8 @@ fn main() -> Result<()> {
         | Command::Lobby
         | Command::Tidy
         | Command::Grant { .. }
+        | Command::Fight
+        | Command::BuildingsCheck
         | Command::ItemsCheck { .. }
         | Command::Calibrate { .. }
         | Command::Verify { .. } => {
@@ -472,6 +491,106 @@ const CALIBRATION_TARGETS: [(f64, f64); 14] = [
     (-9.0, -29.0),
     (15.0, -27.0),
 ];
+
+/// Pick a tile from the Squad tab's Building section (row and column from 0) and put it at a
+/// screen point, then close the tools.
+#[cfg(windows)]
+fn put_building(
+    game: &mut mechabellum_grounds::win::Game,
+    row: usize,
+    col: usize,
+    at: mechabellum_grounds::Px,
+) -> Result<()> {
+    use mechabellum_grounds::ui;
+    game.right_click(ui::NEUTRAL, 400);
+    let mut opened = false;
+    for _ in 0..3 {
+        if mechabellum_grounds::tools_open(&game.screenshot()?) {
+            opened = true;
+            break;
+        }
+        game.click(ui::TOOLS, 1200);
+    }
+    if !opened {
+        bail!("couldn't open Testing Grounds Tools");
+    }
+    game.click(ui::TOOLS_SQUAD_TAB, 800);
+    game.wheel_at(ui::BUILDING_SCROLL, 30);
+    if row > 0 {
+        game.wheel_at(
+            ui::BUILDING_SCROLL,
+            -ui::BUILDING_STEPS_PER_ROW * row as i32,
+        );
+    }
+    game.click((ui::BUILDING_COLUMNS[col], ui::BUILDING_ROW_Y), 900);
+    game.click(at, 900);
+    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+    Ok(())
+}
+
+/// Place each of the Building section's 9 tiles on your half, fight, and print which building
+/// the replay recorded at each spot.
+#[cfg(windows)]
+fn buildings_check() -> Result<()> {
+    use mechabellum_grounds::flow;
+    let map = "Railway Town";
+    let (south, _) = mechabellum_grounds::calibration::Calibrations::load(
+        &mechabellum_grounds::calibration::default_path(),
+    )
+    .projections(map)
+    .context("Railway Town isn't calibrated")?;
+    let spots: Vec<(f64, f64)> = CALIBRATION_TARGETS
+        .iter()
+        .copied()
+        .filter(|&t| t != (-4.0, -3.0) && t != (9.0, -4.0))
+        .collect();
+    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    flow::enter_map(&mut game, map)?;
+    flow::clear_both(&mut game)?;
+    let mut tried = Vec::new();
+    for (i, &(x, y)) in spots.iter().take(9).enumerate() {
+        put_building(&mut game, i / 3, i % 3, south.to_screen(x, y))?;
+        tried.push((i / 3, i % 3, (x, y)));
+    }
+    // A round with no units isn't recorded; add one out of the way.
+    let (ux, uy) = spots[9];
+    spawn_and_place(&mut game, "Crawler", &[south.to_screen(ux, uy)], false)?;
+    let file = flow::run_round_and_save(&mut game, &replay_dir())?;
+    let detail = mechabellum::BattleRecord::new_from_file(&file, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?
+        .match_detail();
+    let last = detail.rounds.len().checked_sub(1).context("no rounds")?;
+    let built: Vec<&mechabellum::PlacedBuilding> = detail.rounds[last]
+        .sides
+        .iter()
+        .flatten()
+        .flat_map(|s| &s.buildings)
+        .filter(|b| b.y < 0)
+        .collect();
+    for (row, col, (x, y)) in tried {
+        let near = built.iter().min_by(|a, b| {
+            let d = |p: &&&mechabellum::PlacedBuilding| {
+                (f64::from(p.x) / 10.0 - x).hypot(f64::from(p.y) / 10.0 - y)
+            };
+            d(a).total_cmp(&d(b))
+        });
+        match near {
+            Some(b) if (f64::from(b.x) / 10.0 - x).hypot(f64::from(b.y) / 10.0 - y) < 4.0 => {
+                println!(
+                    "  row {row} col {col}: {} ({}) at {},{}",
+                    b.name.as_deref().unwrap_or("?"),
+                    b.id,
+                    f64::from(b.x) / 10.0,
+                    f64::from(b.y) / 10.0
+                )
+            }
+            _ => println!("  row {row} col {col}: nothing recorded near {x},{y}"),
+        }
+    }
+    flow::tidy_replays();
+    Ok(())
+}
 
 /// Empty the item inventory of the side being edited (equipped items stay on their units).
 #[cfg(windows)]
@@ -877,14 +996,20 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
                 ));
             }
         }
-        for b in side.buildings.drain(..) {
-            dropped.push(format!(
-                "{} at {},{} (buildings aren't placed yet)",
-                b.name,
-                f64::from(b.x) / 10.0,
-                f64::from(b.y) / 10.0
-            ));
-        }
+        side.buildings.retain(|b| {
+            let screen = projection.to_screen(f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
+            let ok = mechabellum_grounds::clickable(screen)
+                && mechabellum_grounds::ui::building_tile(b.building_id).is_some();
+            if !ok {
+                dropped.push(format!(
+                    "{} at {},{} (can't be placed)",
+                    b.name,
+                    f64::from(b.x) / 10.0,
+                    f64::from(b.y) / 10.0
+                ));
+            }
+            ok
+        });
     }
     println!(
         "round {} of {}:
@@ -995,6 +1120,15 @@ fn place(
                 bad.board.0,
                 bad.board.1
             );
+        }
+        for b in &side.buildings {
+            let (x, y) = (f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
+            if !mechabellum_grounds::clickable(projection.to_screen(x, y)) {
+                bail!("{} at {x},{y} is outside the calibrated view", b.name);
+            }
+            if ui::building_tile(b.building_id).is_none() {
+                bail!("{} ({}) isn't in the Building tiles", b.name, b.building_id);
+            }
         }
     }
 
@@ -1143,19 +1277,18 @@ fn place(
                 }
             );
         }
+        // Buildings last: one on the spawn pad would block the units' spawns.
+        for b in &side.buildings {
+            let (row, col) = ui::building_tile(b.building_id)
+                .with_context(|| format!("{} isn't in the Building tiles", b.name))?;
+            let (x, y) = (f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
+            put_building(&mut game, row, col, projection.to_screen(x, y))?;
+            game.wheel(-60);
+            println!("  {:<14} at {x:>5.1},{y:>5.1}: built", b.name);
+        }
     }
     // Leave the game on your own side.
     switch_to(&mut game, Half::South, &mut current)?;
-
-    let buildings: Vec<&str> = board
-        .sides
-        .iter()
-        .flat_map(|s| &s.buildings)
-        .map(|b| b.name.as_str())
-        .collect();
-    if !buildings.is_empty() {
-        println!("Not set yet (buildings): {}", buildings.join(", "));
-    }
     Ok(())
 }
 

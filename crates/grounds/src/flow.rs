@@ -93,6 +93,13 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
             // cursor may be resting on the tools list, whose hover card covers the banner, so
             // move it (without clicking) to open ground below the board first.
             Screen::Other => {
+                // A unit card pinned from the Squad list covers the banner; closing the tools
+                // takes it away.
+                if crate::left_tools_open(&game.screenshot()?) {
+                    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+                    game.click(ui::TOOLS_CLOSE_RIGHT, 800);
+                    continue;
+                }
                 game.glide(HOVER_CLEAR);
                 std::thread::sleep(Duration::from_secs(3));
             }

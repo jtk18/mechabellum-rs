@@ -150,6 +150,23 @@ pub mod ui {
     pub const TOOLS_EQUIPMENT_TAB: Px = (2099.0, 896.0);
     /// Where a granted item waits in your inventory, top left. Click it, then a unit.
     pub const INVENTORY_ITEM: Px = (64.0, 365.0);
+    /// The Squad tab's Building section, above the units: three per row, three rows, scrolled on
+    /// its own (6 wheel steps a row) with the cursor over it. Pick one, then click the spot.
+    pub const BUILDING_SCROLL: Px = (2420.0, 640.0);
+    pub const BUILDING_ROW_Y: f64 = 700.0;
+    pub const BUILDING_COLUMNS: [f64; 3] = [2225.0, 2350.0, 2485.0];
+    pub const BUILDING_STEPS_PER_ROW: i32 = 6;
+    /// Building IDs by tile, row by row: all 9 checked against replays (`grounds
+    /// buildings-check` and `grounds verify`, 2026-09-29).
+    pub const BUILDINGS: [[u32; 3]; 3] = [[1, 4, 2], [3, 5, 6], [7, 8, 9]];
+
+    /// The Building tile (row, column) for a building ID.
+    pub fn building_tile(id: u32) -> Option<(usize, usize)> {
+        BUILDINGS
+            .iter()
+            .enumerate()
+            .find_map(|(row, ids)| ids.iter().position(|&i| i == id).map(|col| (row, col)))
+    }
     /// Left tools panel: empties the item inventory (equipped items stay on their units).
     pub const TOOLS_CLEAR_EQUIPMENT: Px = (192.0, 870.0);
     pub const TOOLS_UPGRADE: Px = (118.0, 1203.0);
@@ -470,6 +487,14 @@ pub fn mean_color(img: &image::RgbImage, (l, t, r, b): (u32, u32, u32, u32)) -> 
 pub fn inventory_has_item(img: &image::RgbImage) -> bool {
     let [_, _, b] = mean_color(img, (30, 335, 100, 400));
     b > 90.0
+}
+
+/// Whether the left-hand Testing Grounds Tools panel is open, from its header's blue-grey
+/// (65,69,87 measured; the ground there is 73,47,33 on Railway Town). Unlike the right panel's
+/// header, a unit card pinned from the Squad list never covers it.
+pub fn left_tools_open(img: &image::RgbImage) -> bool {
+    let [r, _, b] = mean_color(img, (20, 290, 330, 325));
+    b > r + 12.0 && b > 75.0
 }
 
 /// Whether the right-hand Testing Grounds Tools panel is open: its header is dark navy.

@@ -130,6 +130,41 @@ pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
         for extra in unmatched {
             out.push(format!("{half:?}: extra {}", describe(extra)));
         }
+        // Buildings: the nearest recorded one of the same kind (by ID) for each.
+        let mut built: Vec<&mechabellum::board::BoardBuilding> = got.buildings.iter().collect();
+        for w in &want.buildings {
+            let at = |b: &mechabellum::board::BoardBuilding| {
+                format!(
+                    "{} at {},{}",
+                    b.name,
+                    f64::from(b.x) / 10.0,
+                    f64::from(b.y) / 10.0
+                )
+            };
+            let best = built
+                .iter()
+                .enumerate()
+                .filter(|(_, g)| g.building_id == w.building_id)
+                .min_by_key(|(_, g)| (g.x - w.x).abs() + (g.y - w.y).abs())
+                .map(|(k, g)| (k, *g));
+            match best {
+                None => out.push(format!("{half:?}: missing {}", at(w))),
+                Some((k, g)) => {
+                    if (g.x - w.x).abs() > TOLERANCE || (g.y - w.y).abs() > TOLERANCE {
+                        out.push(format!("{half:?}: {} landed at {}", at(w), at(g)));
+                    }
+                    built.remove(k);
+                }
+            }
+        }
+        for extra in built {
+            out.push(format!(
+                "{half:?}: extra {} at {},{}",
+                extra.name,
+                f64::from(extra.x) / 10.0,
+                f64::from(extra.y) / 10.0
+            ));
+        }
     }
     out
 }

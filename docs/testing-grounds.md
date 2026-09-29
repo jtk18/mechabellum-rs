@@ -116,8 +116,18 @@ Rotation and techs (verified 2026-09-27, same replay check):
 
 Tools tabs (right panel, top to bottom at screen x 2099): Squad (448), Specialists (560),
 unit specialists (675), commander skills (783; Missile Strike, Shield Airdrop, Redeployment,
-...), and Equipment (896). There is no buildings tab; the left panel only has "Clear all
-buildings".
+...), and Equipment (896).
+
+Buildings and devices (verified 2026-09-29) are in the Squad tab, above the units: a Devices row
+(Shield Generator, Sentry Missile, Missile Interceptor) and a Building section of 9 tiles, three
+per row, that scrolls on its own (6 wheel steps a row, cursor at 2420,640; tiles at y 700).
+Click a tile, then the spot: unlike ranked, where buildings stand in sockets beside the towers,
+Testing Grounds builds anywhere on your half. `grounds buildings-check` places all 9 and reads
+their IDs from the replay; `place` puts a side's buildings down after its units.
+
+A unit card pinned from the Squad list (a click on a tile selects it) covers the top banner, so
+the screen reader can't tell where the game is. Closing the tools removes it, and `enter` does
+that when the left tools panel is open.
 
 Items (verified 2026-09-28): the Equipment tab lists every item, grouped by rank, and it
 scrolls. Clicking one puts it in your item inventory at the top left (screen 64,365). Click

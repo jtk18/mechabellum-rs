@@ -125,8 +125,12 @@ Commit each step once it's verified.
       exactly; all 6 beside them were nudged. Replays don't record tower positions.
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
-- [ ] T7. Place buildings in Testing Grounds. The tools have no buildings tab; they may come
-      from reinforcement cards. (`grounds replay` lists them as left out for now.)
+- [x] T7. Place buildings in Testing Grounds: the Squad tab's Building section, then a click on
+      the spot (anywhere, not just the sockets). All 9 tiles mapped to IDs. Verified 2026-09-29:
+      five buildings on both halves, including off-socket, matched the replay.
+- [ ] T8. Devices (Shield Generator, Sentry Missile, Missile Interceptor): the Squad tab's
+      Devices row above the buildings. Replays record them as `contraptions`, which board codes
+      don't carry yet.
 
 ## Housekeeping
 
