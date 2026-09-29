@@ -160,6 +160,16 @@ pub mod ui {
     /// buildings-check` and `grounds verify`, 2026-09-29).
     pub const BUILDINGS: [[u32; 3]; 3] = [[1, 4, 2], [3, 5, 6], [7, 8, 9]];
 
+    /// The Devices row above the buildings, in the same columns: Shield Generator, Sentry
+    /// Missile, Missile Interceptor.
+    pub const DEVICE_ROW_Y: f64 = 510.0;
+    pub const DEVICES: [u32; 3] = [10001, 20001, 30001];
+
+    /// The Devices column for a device ID.
+    pub fn device_tile(id: u32) -> Option<usize> {
+        DEVICES.iter().position(|&d| d == id)
+    }
+
     /// The Building tile (row, column) for a building ID.
     pub fn building_tile(id: u32) -> Option<(usize, usize)> {
         BUILDINGS

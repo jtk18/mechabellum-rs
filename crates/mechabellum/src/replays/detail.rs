@@ -6,7 +6,7 @@
 //! the techs researched by then.
 
 use super::battle_record::{
-    ActiveTechnologiesUnitData, PlayerRecord, PlayerRoundRecord, UnitsNewUnitData,
+    ActiveTechnologiesUnitData, PlayerData, PlayerRecord, PlayerRoundRecord, UnitsNewUnitData,
 };
 use super::final_round::replay_deployment;
 use super::game_data::{footprint, xp_to_next_level};
@@ -107,6 +107,9 @@ pub struct SideLayout {
     /// Buildings standing for the fight (walls, cannons, barricades). For the last round,
     /// those standing as its deployment began: ones built during it aren't recorded.
     pub buildings: Vec<PlacedBuilding>,
+    /// Devices standing for the fight (Shield Generator, Sentry Missile, Missile Interceptor),
+    /// recorded the same way as buildings.
+    pub devices: Vec<PlacedBuilding>,
     /// The units were rebuilt by replaying the round's actions (the last round, which has no
     /// snapshot after it) rather than read from a snapshot.
     pub rebuilt: bool,
@@ -454,6 +457,33 @@ impl BattleRecord {
                             })
                         })
                         .collect(),
+                    // The record after the fight misses devices the fight used up (a Missile
+                    // Interceptor that stopped a missile), so add those standing as the round
+                    // began. One set up and used up in the same round isn't recorded at all.
+                    devices: {
+                        let read = |d: &PlayerData| -> Vec<PlacedBuilding> {
+                            d.contraptions
+                                .contraption_data
+                                .iter()
+                                .filter_map(|d| {
+                                    Some(PlacedBuilding {
+                                        id: d.id.trim().parse().ok()?,
+                                        name: resolve(NameKind::Device, d.id.trim())
+                                            .map(str::to_owned),
+                                        x: d.position.x.trim().parse().ok()?,
+                                        y: d.position.y.trim().parse().ok()?,
+                                    })
+                                })
+                                .collect()
+                        };
+                        let mut devices = read(data);
+                        for d in read(&entering.player_data) {
+                            if !devices.contains(&d) {
+                                devices.push(d);
+                            }
+                        }
+                        devices
+                    },
                     enabled_techs: enabled_techs(&data.active_technologies.unit_data),
                     specialists: data
                         .officers

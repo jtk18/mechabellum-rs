@@ -1,10 +1,15 @@
 //! Comparing the board a replay recorded with the board code that was set up.
 
-use mechabellum::board::{Board, BoardUnit, Half, Side};
+use mechabellum::board::{Board, BoardBuilding, BoardUnit, Half, Side};
 
 /// Largest distance between a unit's planned and recorded center, in replay units (10 per
 /// square). The game snaps centers to half squares and nudges units off each other.
 const TOLERANCE: i32 = 10;
+
+const MISSILE_INTERCEPTOR: u32 = 30001;
+
+/// Lines starting with this are worth knowing but aren't differences in the setup.
+pub const NOTE: &str = "note: ";
 
 fn half_of(side: &Side, index: usize, count: usize) -> Half {
     side.half.unwrap_or(if count == 2 && index == 1 {
@@ -130,43 +135,55 @@ pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
         for extra in unmatched {
             out.push(format!("{half:?}: extra {}", describe(extra)));
         }
-        // Buildings: the nearest recorded one of the same kind (by ID) for each.
-        let mut built: Vec<&mechabellum::board::BoardBuilding> = got.buildings.iter().collect();
-        for w in &want.buildings {
-            let at = |b: &mechabellum::board::BoardBuilding| {
-                format!(
-                    "{} at {},{}",
-                    b.name,
-                    f64::from(b.x) / 10.0,
-                    f64::from(b.y) / 10.0
-                )
-            };
-            let best = built
-                .iter()
-                .enumerate()
-                .filter(|(_, g)| g.building_id == w.building_id)
-                .min_by_key(|(_, g)| (g.x - w.x).abs() + (g.y - w.y).abs())
-                .map(|(k, g)| (k, *g));
-            match best {
-                None => out.push(format!("{half:?}: missing {}", at(w))),
-                Some((k, g)) => {
-                    if (g.x - w.x).abs() > TOLERANCE || (g.y - w.y).abs() > TOLERANCE {
-                        out.push(format!("{half:?}: {} landed at {}", at(w), at(g)));
-                    }
-                    built.remove(k);
-                }
-            }
-        }
-        for extra in built {
-            out.push(format!(
-                "{half:?}: extra {} at {},{}",
-                extra.name,
-                f64::from(extra.x) / 10.0,
-                f64::from(extra.y) / 10.0
-            ));
-        }
+        placed_differences(half, &want.buildings, &got.buildings, &mut out);
+        placed_differences(half, &want.devices, &got.devices, &mut out);
     }
     out
+}
+
+/// Buildings or devices: each planned one is matched with the nearest recorded one with the
+/// same ID.
+fn placed_differences(
+    half: Half,
+    want: &[BoardBuilding],
+    got: &[BoardBuilding],
+    out: &mut Vec<String>,
+) {
+    let at = |b: &BoardBuilding| {
+        format!(
+            "{} at {},{}",
+            b.name,
+            f64::from(b.x) / 10.0,
+            f64::from(b.y) / 10.0
+        )
+    };
+    let mut left: Vec<&BoardBuilding> = got.iter().collect();
+    for w in want {
+        let best = left
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| g.building_id == w.building_id)
+            .min_by_key(|(_, g)| (g.x - w.x).abs() + (g.y - w.y).abs())
+            .map(|(k, g)| (k, *g));
+        match best {
+            // An interceptor that stopped a missile is gone by the time the replay records the
+            // board, so its absence says nothing about the setup.
+            None if w.building_id == MISSILE_INTERCEPTOR => out.push(format!(
+                "{NOTE}{half:?}: no {} recorded (it's used up when it stops a missile)",
+                at(w)
+            )),
+            None => out.push(format!("{half:?}: missing {}", at(w))),
+            Some((k, g)) => {
+                if (g.x - w.x).abs() > TOLERANCE || (g.y - w.y).abs() > TOLERANCE {
+                    out.push(format!("{half:?}: {} landed at {}", at(w), at(g)));
+                }
+                left.remove(k);
+            }
+        }
+    }
+    for extra in left {
+        out.push(format!("{half:?}: extra {}", at(extra)));
+    }
 }
 
 #[cfg(test)]

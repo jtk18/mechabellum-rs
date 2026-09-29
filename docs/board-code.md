@@ -24,11 +24,13 @@ replay, and (later) have the tester set it up in Testing Grounds.
 | `[side]` … `[/side]` | `name`, `hp` (optional). `[side=Name]` is short for `name`. | Up to 8 sides. |
 | `[unit=Name]` | `at` (required), `level`, `rotated`, `techs`, `items` | No closing tag. Up to 300 per side. |
 | `[building=Name]` | `at` (required) | A wall, cannon, or barricade. No closing tag. Up to 50 per side. |
+| `[device=Name]` | `at` (required) | Shield Generator, Sentry Missile, or Missile Interceptor. Up to 50 per side. |
 
 - **Unit names** are the game's English names, matched without regard to case, spaces, or
   punctuation (`fire badger` finds Firebadger). A unit's number also works (`[unit=10 ...]`).
 - **`at=x,y`** is the unit's center in grid squares from the middle of the board, the way
-  replays store it. Halves are allowed (`-12.5`), since even-sized units sit between squares.
+  replays store it. Halves are allowed (`-12.5`), since even-sized units sit between squares,
+  and so are tenths (`23.4`), since devices can stand anywhere.
   Positive `y` is one army's half and negative `y` the other's.
 - **`level`** is the level the game shows, from 1. It defaults to 1.
 - **`rotated`** takes no value.
@@ -94,6 +96,15 @@ In every replay checked (60 games, 2.0), buildings stand only in fixed sockets, 
 towers: x = ±14, with walls at y = ∓5.5 and cannons at y = ∓10 (the south half's signs).
 Replays record buildings as they stood for each fight; for the last round, only those standing
 as its deployment began.
+
+## Devices
+
+`[device="Sentry Missile" at=23.4,-27.2]` is a device the side has set up: Shield Generator,
+Sentry Missile, or Missile Interceptor (19 of 50 recent games had at least one). Devices stand
+anywhere on the half, not in sockets. A Missile Interceptor is used up when it stops a missile,
+so the replay's record after the fight loses it; codes copied from a replay add the devices that
+stood as the round began to make up for that, but one set up and used up in the same round
+can't be seen.
 
 ## Limits
 

@@ -52,13 +52,17 @@ pub struct Side {
     pub units: Vec<BoardUnit>,
     /// Buildings the side has put up: walls, cannons, barricades.
     pub buildings: Vec<BoardBuilding>,
+    /// Devices: Shield Generator, Sentry Missile, Missile Interceptor. Same shape as buildings;
+    /// `building_id` holds the device's ID.
+    pub devices: Vec<BoardBuilding>,
 }
 
+/// A building or a device: something placed that isn't a unit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BoardBuilding {
-    /// A `ConstructionData` ID.
+    /// A `ConstructionData` ID, or for a device its `...ContraptionData` ID.
     pub building_id: u32,
-    /// The building's name as the game shows it.
+    /// The name as the game shows it.
     pub name: String,
     /// Center, in replay units (10 per grid square).
     pub x: i32,
@@ -330,12 +334,13 @@ fn coordinate(p: &Parser, value: &str, at: usize) -> Result<i32, ParseError> {
     let bad = || {
         p.error(
             at,
-            format!("{value:?} isn't a coordinate (whole or half squares)"),
+            format!("{value:?} isn't a coordinate (squares, to one decimal place)"),
         )
     };
+    // Replays store tenths of a square; units sit on halves, devices anywhere.
     let (whole, half) = match value.split_once('.') {
-        Some((w, "5")) => (w, 5),
-        Some((w, "0")) | Some((w, "")) => (w, 0),
+        Some((w, "")) => (w, 0),
+        Some((w, d)) if d.len() == 1 => (w, d.parse::<i32>().map_err(|_| bad())?),
         Some(_) => return Err(bad()),
         None => (value, 0),
     };
@@ -463,6 +468,7 @@ impl Board {
         p.pos = start;
         let units = unit_lookup();
         let buildings = name_lookup(NameKind::Construction);
+        let devices = name_lookup(NameKind::Device);
 
         let open = p.tag()?;
         if open.name != "board" || open.closing {
@@ -500,6 +506,7 @@ impl Board {
                         half: None,
                         units: Vec::new(),
                         buildings: Vec::new(),
+                        devices: Vec::new(),
                     };
                     if let Some(value) = tag.value {
                         s.name = Some(text_value(&p, value, tag.at)?);
@@ -542,10 +549,31 @@ impl Board {
                             format!("more than {MAX_BUILDINGS_PER_SIDE} buildings"),
                         ));
                     }
-                    s.buildings.push(parse_building(&p, &tag, &buildings)?);
+                    s.buildings.push(parse_structure(
+                        &p,
+                        &tag,
+                        NameKind::Construction,
+                        "building",
+                        &buildings,
+                    )?);
                 }
-                ("building", false, None) => {
-                    return Err(p.error(tag.at, "a [building] must be inside a [side]"))
+                ("device", false, Some(s)) => {
+                    if s.devices.len() == MAX_BUILDINGS_PER_SIDE {
+                        return Err(p.error(
+                            tag.at,
+                            format!("more than {MAX_BUILDINGS_PER_SIDE} devices"),
+                        ));
+                    }
+                    s.devices.push(parse_structure(
+                        &p,
+                        &tag,
+                        NameKind::Device,
+                        "device",
+                        &devices,
+                    )?);
+                }
+                ("building" | "device", false, None) => {
+                    return Err(p.error(tag.at, format!("a [{}] must be inside a [side]", tag.name)))
                 }
                 ("side", false, Some(_)) => {
                     return Err(p.error(tag.at, "close the previous side with [/side] first"))
@@ -605,22 +633,23 @@ impl Board {
                 let half = ys
                     .get(ys.len() / 2)
                     .map(|&y| if y < 0 { Half::South } else { Half::North });
-                let buildings = side
-                    .buildings
-                    .iter()
-                    .map(|b| BoardBuilding {
-                        building_id: b.id,
-                        name: b.name.clone().unwrap_or_else(|| b.id.to_string()),
-                        x: b.x,
-                        y: b.y,
-                    })
-                    .collect();
+                let placed = |list: &[crate::PlacedBuilding]| -> Vec<BoardBuilding> {
+                    list.iter()
+                        .map(|b| BoardBuilding {
+                            building_id: b.id,
+                            name: b.name.clone().unwrap_or_else(|| b.id.to_string()),
+                            x: b.x,
+                            y: b.y,
+                        })
+                        .collect()
+                };
                 Some(Side {
                     name: Some(player.name.clone()),
                     hp: Some(side.hp),
                     half,
                     units,
-                    buildings,
+                    buildings: placed(&side.buildings),
+                    devices: placed(&side.devices),
                 })
             })
             .collect();
@@ -754,29 +783,34 @@ fn parse_unit(
     Ok(unit)
 }
 
-fn parse_building(
+/// A `[building=...]` or `[device=...]` tag: `what` is the tag name, `kind` its names.
+fn parse_structure(
     p: &Parser,
     tag: &Tag,
-    buildings: &BTreeMap<String, (u32, String)>,
+    kind: NameKind,
+    what: &str,
+    names: &BTreeMap<String, (u32, String)>,
 ) -> Result<BoardBuilding, ParseError> {
-    let name = tag.value.ok_or_else(|| {
-        p.error(
-            tag.at,
-            "say which building: [building=\"Defensive Wall\" ...]",
-        )
-    })?;
+    let example = if what == "device" {
+        "\"Sentry Missile\""
+    } else {
+        "\"Defensive Wall\""
+    };
+    let name = tag
+        .value
+        .ok_or_else(|| p.error(tag.at, format!("say which {what}: [{what}={example} ...]")))?;
     // An ID keeps the exact variant (several IDs share a name); a name takes the lowest ID.
     let (building_id, name) = match name.parse::<u32>() {
         Ok(id) => {
             let name = GameNames::bundled()
-                .resolve(NameKind::Construction, u64::from(id))
-                .ok_or_else(|| p.error(tag.at, format!("unknown building ID {id}")))?;
+                .resolve(kind, u64::from(id))
+                .ok_or_else(|| p.error(tag.at, format!("unknown {what} ID {id}")))?;
             (id, name.to_owned())
         }
-        Err(_) => buildings
+        Err(_) => names
             .get(&normalize(name))
             .cloned()
-            .ok_or_else(|| p.error(tag.at, format!("unknown building {name:?}")))?,
+            .ok_or_else(|| p.error(tag.at, format!("unknown {what} {name:?}")))?,
     };
     let mut building = BoardBuilding {
         building_id,
@@ -797,11 +831,11 @@ fn parse_building(
                 building.y = coordinate(p, y.trim(), at)?;
                 placed = true;
             }
-            _ => return Err(p.error(at, format!("[building] has no {key} attribute"))),
+            _ => return Err(p.error(at, format!("[{what}] has no {key} attribute"))),
         }
     }
     if !placed {
-        return Err(p.error(tag.at, "every building needs a position: at=x,y"));
+        return Err(p.error(tag.at, format!("every {what} needs a position: at=x,y")));
     }
     Ok(building)
 }
@@ -811,9 +845,7 @@ fn squares(units: i32) -> String {
     let (whole, rest) = (units.abs() / 10, units.abs() % 10);
     match rest {
         0 => format!("{sign}{whole}"),
-        5 => format!("{sign}{whole}.5"),
-        // Not on the half-square grid; keep the nearest half square.
-        _ => format!("{sign}{whole}.5"),
+        _ => format!("{sign}{whole}.{rest}"),
     }
 }
 
@@ -877,17 +909,23 @@ impl fmt::Display for Board {
                 }
                 writeln!(f, "]")?;
             }
-            for b in &side.buildings {
-                // Several IDs share a name; write the name only when it picks the same one.
-                let by_name = name_lookup(NameKind::Construction)
-                    .get(&normalize(&b.name))
-                    .is_some_and(|(id, _)| *id == b.building_id);
-                let what = if by_name {
-                    quoted(&b.name)
-                } else {
-                    b.building_id.to_string()
-                };
-                writeln!(f, "[building={what} at={},{}]", squares(b.x), squares(b.y))?;
+            for (tag, kind, list) in [
+                ("building", NameKind::Construction, &side.buildings),
+                ("device", NameKind::Device, &side.devices),
+            ] {
+                let names = name_lookup(kind);
+                for b in list {
+                    // Several IDs share a name; write the name only when it picks the same one.
+                    let by_name = names
+                        .get(&normalize(&b.name))
+                        .is_some_and(|(id, _)| *id == b.building_id);
+                    let what = if by_name {
+                        quoted(&b.name)
+                    } else {
+                        b.building_id.to_string()
+                    };
+                    writeln!(f, "[{tag}={what} at={},{}]", squares(b.x), squares(b.y))?;
+                }
             }
             writeln!(f, "[/side]")?;
         }
@@ -971,6 +1009,35 @@ good luck"#;
             let e = Board::parse(bad).unwrap_err();
             assert!(e.message.contains(why), "{bad}: {e}");
         }
+    }
+
+    #[test]
+    fn test_devices() {
+        let code = r#"[board][side half=south]
+[unit=Crawler at=0,-20]
+[device="sentry missile" at=23.5,-27]
+[device=10001 at=14,-10.5]
+[/side][/board]"#;
+        let board = Board::parse(code).unwrap();
+        let d = &board.sides[0].devices;
+        assert_eq!(
+            (d[0].building_id, d[0].name.as_str(), d[0].x, d[0].y),
+            (20001, "Sentry Missile", 235, -270)
+        );
+        assert_eq!(
+            (d[1].building_id, d[1].name.as_str()),
+            (10001, "Shield Generator")
+        );
+        let text = board.to_string();
+        assert!(
+            text.contains("[device=\"Sentry Missile\" at=23.5,-27]"),
+            "{text}"
+        );
+        assert_eq!(Board::parse(&text).unwrap(), board);
+        let e = Board::parse("[board][side][device=Moat at=0,0][/side][/board]").unwrap_err();
+        assert!(e.message.contains("unknown device"), "{e}");
+        let e = Board::parse("[board][device=10001 at=0,0][/board]").unwrap_err();
+        assert!(e.message.contains("[device] must be inside"), "{e}");
     }
 
     #[test]

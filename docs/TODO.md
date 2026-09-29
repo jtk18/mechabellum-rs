@@ -123,14 +123,17 @@ Commit each step once it's verified.
       beside the towers that ranked games allow, so tight formations there get nudged and the
       outcome can differ. Forest Eye round 2: all 14 units away from the towers landed
       exactly; all 6 beside them were nudged. Replays don't record tower positions.
+      2026-09-29, with items and buildings placed too: Forest Eye round 2 now fights out the
+      same as the real round (both walls built; only the 5 tower-side units differ).
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
 - [x] T7. Place buildings in Testing Grounds: the Squad tab's Building section, then a click on
       the spot (anywhere, not just the sockets). All 9 tiles mapped to IDs. Verified 2026-09-29:
       five buildings on both halves, including off-socket, matched the replay.
-- [ ] T8. Devices (Shield Generator, Sentry Missile, Missile Interceptor): the Squad tab's
-      Devices row above the buildings. Replays record them as `contraptions`, which board codes
-      don't carry yet.
+- [x] T8. Devices (Shield Generator, Sentry Missile, Missile Interceptor): `[device=...]` in
+      codes (read from replay `contraptions`), set up from the Squad tab's Devices row. Verified
+      2026-09-29 on both halves, within 0.3 squares. A Missile Interceptor is used up stopping a
+      missile, so verify reports its absence as a note.
 
 ## Housekeeping
 

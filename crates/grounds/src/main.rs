@@ -345,8 +345,15 @@ fn main() -> Result<()> {
         Command::Verify { code, fresh } => {
             let board = load(&code)?;
             let (south, north) = projections(&board)?;
-            let problems = verify(&board, &south, &north, fresh)?;
+            let mut problems = verify(&board, &south, &north, fresh)?;
             mechabellum_grounds::flow::tidy_replays();
+            problems.retain(|p| {
+                let note = p.starts_with(mechabellum_grounds::compare::NOTE);
+                if note {
+                    println!("{p}");
+                }
+                !note
+            });
             if problems.is_empty() {
                 println!("OK: the replay matches the code");
             } else {
@@ -523,6 +530,35 @@ fn put_building(
         );
     }
     game.click((ui::BUILDING_COLUMNS[col], ui::BUILDING_ROW_Y), 900);
+    game.click(at, 900);
+    game.click(ui::TOOLS_CLOSE_LEFT, 500);
+    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
+    Ok(())
+}
+
+/// Pick a device from the Squad tab's Devices row (column from 0) and put it at a screen point,
+/// then close the tools.
+#[cfg(windows)]
+fn put_device(
+    game: &mut mechabellum_grounds::win::Game,
+    col: usize,
+    at: mechabellum_grounds::Px,
+) -> Result<()> {
+    use mechabellum_grounds::ui;
+    game.right_click(ui::NEUTRAL, 400);
+    let mut opened = false;
+    for _ in 0..3 {
+        if mechabellum_grounds::tools_open(&game.screenshot()?) {
+            opened = true;
+            break;
+        }
+        game.click(ui::TOOLS, 1200);
+    }
+    if !opened {
+        bail!("couldn't open Testing Grounds Tools");
+    }
+    game.click(ui::TOOLS_SQUAD_TAB, 800);
+    game.click((ui::BUILDING_COLUMNS[col], ui::DEVICE_ROW_Y), 900);
     game.click(at, 900);
     game.click(ui::TOOLS_CLOSE_LEFT, 500);
     game.click(ui::TOOLS_CLOSE_RIGHT, 700);
@@ -1010,6 +1046,20 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
             }
             ok
         });
+        side.devices.retain(|d| {
+            let screen = projection.to_screen(f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
+            let ok = mechabellum_grounds::clickable(screen)
+                && mechabellum_grounds::ui::device_tile(d.building_id).is_some();
+            if !ok {
+                dropped.push(format!(
+                    "{} at {},{} (can't be placed)",
+                    d.name,
+                    f64::from(d.x) / 10.0,
+                    f64::from(d.y) / 10.0
+                ));
+            }
+            ok
+        });
     }
     println!(
         "round {} of {}:
@@ -1128,6 +1178,15 @@ fn place(
             }
             if ui::building_tile(b.building_id).is_none() {
                 bail!("{} ({}) isn't in the Building tiles", b.name, b.building_id);
+            }
+        }
+        for d in &side.devices {
+            let (x, y) = (f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
+            if !mechabellum_grounds::clickable(projection.to_screen(x, y)) {
+                bail!("{} at {x},{y} is outside the calibrated view", d.name);
+            }
+            if ui::device_tile(d.building_id).is_none() {
+                bail!("{} ({}) isn't in the Devices row", d.name, d.building_id);
             }
         }
     }
@@ -1285,6 +1344,14 @@ fn place(
             put_building(&mut game, row, col, projection.to_screen(x, y))?;
             game.wheel(-60);
             println!("  {:<14} at {x:>5.1},{y:>5.1}: built", b.name);
+        }
+        for d in &side.devices {
+            let col = ui::device_tile(d.building_id)
+                .with_context(|| format!("{} isn't in the Devices row", d.name))?;
+            let (x, y) = (f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
+            put_device(&mut game, col, projection.to_screen(x, y))?;
+            game.wheel(-60);
+            println!("  {:<14} at {x:>5.1},{y:>5.1}: set up", d.name);
         }
     }
     // Leave the game on your own side.

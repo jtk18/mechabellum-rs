@@ -24,6 +24,8 @@ pub enum NameKind {
     Equipment,
     Tech,
     Construction,
+    /// Devices: Shield Generator, Sentry Missile, Missile Interceptor.
+    Device,
     Map,
     /// Command Center skills.
     TowerSkill,
@@ -46,6 +48,7 @@ impl NameKind {
                     || category == "SearchTargetSpecificData"
             }
             NameKind::Construction => category == "ConstructionData",
+            NameKind::Device => category.ends_with("ContraptionData"),
             NameKind::Map => category == "MatchSetting",
             NameKind::TowerSkill => category == "EnergyTowerSkillData",
             NameKind::Blueprint => category == "BlueprintData",
@@ -67,6 +70,7 @@ impl NameKind {
             NameKind::Equipment => "EquipmentData",
             NameKind::Tech => "TechnologyData",
             NameKind::Construction => "ConstructionData",
+            NameKind::Device => "",
             NameKind::Map => "MatchSetting",
             NameKind::TowerSkill => "EnergyTowerSkillData",
             NameKind::Blueprint => "BlueprintData",
