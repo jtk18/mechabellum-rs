@@ -137,7 +137,18 @@ placing a code's items needs a map from catalog cell to item ID. That can be mea
 calibration is: equip a different cell on each of a dozen units, fight, and read the IDs from
 the replay. The hexagon slot on a unit's card shows its item; clicking it does nothing.
 
-Placement details learned re-fighting real rounds (2026-09-28):
+Placement details learned re-fighting real rounds (2026-09-28, 29):
+- **The zone grows with the round:** in round 1 its front stops about 5 squares from the middle
+  (a drop at y=-3 is refused, y=-6 is fine); from round 2 it reaches the front line, and flank
+  columns open in round 3. Ranked round 1 already reaches the front line, so `verify` (and
+  `replay`) fight empty rounds up to the code's `round` before placing. Empty fights leave the
+  camera where calibration measured it; correcting for a "pan" measured from screenshots made
+  placements worse, so there's no correction (`grounds shift` still measures one).
+- **Turning:** a middle click turns a carried unit, but it's a toggle, and a refused drop keeps
+  the turn. So a unit is turned once, 4 squares behind its spot (where the unturned footprint
+  fits even on the front line), then dropped. Turning it at the spot itself failed for a
+  Sledgehammer on the front line: the unturned footprint didn't fit, so the drop was refused
+  before the turn applied. Turning it at the spawn pad didn't turn it at all.
 - **Camera after entering:** straight after entering, your own side's camera sits about a square
   off from where it is after switching sides and back. Calibration and verify both clear the
   board first, which does that round trip, so they see the same view.

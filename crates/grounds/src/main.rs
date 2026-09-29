@@ -62,6 +62,8 @@ enum Command {
     Grant { id: u32 },
     /// Fight the round as it's set up, save the replay, and print the board it recorded
     Fight,
+    /// How far the map moved between two screenshots (reference first), in pixels
+    Shift { reference: PathBuf, now: PathBuf },
     /// Place each of the 9 Building tiles on your half, fight, and print which building each is
     BuildingsCheck,
     /// Equip catalog items on units, fight, and check each item's ID in the replay
@@ -261,6 +263,12 @@ fn main() -> Result<()> {
                 mechabellum_grounds::tools_open(&img)
             );
         }
+        Command::Shift { reference, now } => {
+            let a = image::open(&reference)?.to_rgb8();
+            let b = image::open(&now)?.to_rgb8();
+            let ((dx, dy), s) = mechabellum_grounds::camera_shift(&a, &b);
+            println!("the map moved {dx},{dy} px (mean difference {s:.1})");
+        }
         Command::Blobs { png, at: None } => {
             let img = image::open(&png)?.to_rgb8();
             for ((x, y), weight) in mechabellum_grounds::green_blobs(&img) {
@@ -272,7 +280,7 @@ fn main() -> Result<()> {
             let mut game = mechabellum_grounds::win::Game::find()?;
             for (x, y) in points {
                 let target = (f64::from(x), f64::from(y));
-                let ok = spawn_and_place(&mut game, &unit, &[target], false)?;
+                let ok = spawn_and_place(&mut game, &unit, &[target], None)?;
                 println!(
                     "{unit} to {x},{y}: {}",
                     if ok.is_some() {
@@ -453,10 +461,24 @@ fn verify(
         .iter()
         .flat_map(|s| &s.units)
         .any(|u| !u.techs.is_empty());
+    let mut fought = false;
     if wants_techs && mechabellum_grounds::loadouts(&replay_dir()).is_err() {
         println!("no Testing Grounds replay yet; running an empty round to record the loadouts");
         flow::run_round_and_save(&mut game, &replay_dir())?;
+        fought = true;
     }
+    // The deployment zone grows with the round: in round 1 its front stops about 5 squares
+    // from the middle, and flank columns open in round 3. Fight empty rounds up to the code's.
+    let round = board.round.unwrap_or(1).clamp(1, 12);
+    let now_round = if fought { 2 } else { 1 };
+    if round > now_round {
+        println!("advancing Testing Grounds to round {round}");
+        for _ in now_round..round {
+            flow::run_round(&mut game)?;
+        }
+    }
+    // Empty fights leave the camera where calibration measured it (checked 2026-09-29: a
+    // round-2 board placed exactly, and correcting for a measured "pan" made it worse).
     place(board, south, north, None)?;
     let mut game = mechabellum_grounds::win::Game::find()?;
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
@@ -591,7 +613,7 @@ fn buildings_check() -> Result<()> {
     }
     // A round with no units isn't recorded; add one out of the way.
     let (ux, uy) = spots[9];
-    spawn_and_place(&mut game, "Crawler", &[south.to_screen(ux, uy)], false)?;
+    spawn_and_place(&mut game, "Crawler", &[south.to_screen(ux, uy)], None)?;
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
     let detail = mechabellum::BattleRecord::new_from_file(&file, false)
         .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?
@@ -707,7 +729,7 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
     let mut refused = Vec::new();
     for (cell, &(x, y)) in cells.iter().zip(&targets) {
         let at = south.to_screen(x, y);
-        match spawn_and_place(&mut game, unit, &[at], false) {
+        match spawn_and_place(&mut game, unit, &[at], None) {
             Ok(Some(_)) => {}
             Ok(None) => {
                 println!("  {unit} at {x},{y} wasn't placed; skipping {}", cell.name);
@@ -848,7 +870,7 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
             if !mechabellum_grounds::clickable(target) {
                 continue;
             }
-            match spawn_and_place(&mut game, "Crawler", &[target], false) {
+            match spawn_and_place(&mut game, "Crawler", &[target], None) {
                 Ok(Some(_)) => dropped[i].push(target),
                 Ok(None) => {
                     // Refused (a building, the zone's edge): the unit may still be carried.
@@ -1282,8 +1304,26 @@ fn place(
                 .iter()
                 .map(|&(x, y)| projection.to_screen(x, y))
                 .collect();
-            let landed = spawn_and_place(&mut game, &step.name, &screens, unit.rotated)
-                .with_context(|| format!("{} at {},{}", step.name, step.board.0, step.board.1))?;
+            // Turn a unit 4 squares behind its spot (toward its own edge), where the unturned
+            // footprint fits even when the spot is on the front line.
+            let turn_at = unit
+                .rotated
+                .then(|| projection.to_screen(step.board.0, step.board.1 - 4.0 * flip));
+            // One unit that won't spawn shouldn't sink the rest of the board; the comparison
+            // afterwards reports it missing.
+            let landed = match spawn_and_place(&mut game, &step.name, &screens, turn_at) {
+                Ok(landed) => landed,
+                Err(e) => {
+                    println!(
+                        "  {:<14} at {:>5.1},{:>5.1}: NOT placed ({e:#})",
+                        step.name, step.board.0, step.board.1
+                    );
+                    game.right_click(ui::NEUTRAL, 600);
+                    buttons.next();
+                    items.next();
+                    continue;
+                }
+            };
             let at = landed.map_or(step.screen, |i| screens[i]);
             // Techs: select it (a click picks it up), click its card's buttons, then put it back.
             let techs = buttons.next().unwrap_or_default();
@@ -1378,7 +1418,7 @@ fn spawn_and_place(
     game: &mut mechabellum_grounds::win::Game,
     name: &str,
     targets: &[mechabellum_grounds::Px],
-    rotated: bool,
+    turn_at: Option<mechabellum_grounds::Px>,
 ) -> Result<Option<usize>> {
     use mechabellum_grounds::{green_blobs, ui, Px};
 
@@ -1472,14 +1512,19 @@ fn spawn_and_place(
         .iter()
         .enumerate()
         .flat_map(|(i, t)| std::iter::repeat_n((i, *t), if i == 0 { 3 } else { 2 }));
+    // A middle click on the ground while carrying turns the unit 90 degrees. Turning is a
+    // toggle and a refused drop keeps the turn, so turn only once. It's done at `turn_at`, a spot
+    // where the unturned footprint fits: at the target itself, one that only fits turned (a
+    // Sledgehammer on the front line) is refused before the turn applies.
+    let mut turned = false;
     for (i, target) in attempts {
         game.click(spawn, 700);
-        game.click(target, 700);
-        // Between the first click at the spot and the confirming double click, a middle click
-        // turns the unit 90 degrees.
-        if rotated {
-            game.middle_click(target, 700);
+        if let (Some(spot), false) = (turn_at, turned) {
+            game.click(spot, 700);
+            game.middle_click(spot, 700);
+            turned = true;
         }
+        game.click(target, 700);
         game.double_click(target, 700);
         game.right_click(target, 900);
         let now = green_blobs(&game.screenshot()?);

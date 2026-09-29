@@ -92,6 +92,24 @@ impl Projection {
             (h[3] * x + h[4] * y + h[5]) / w,
         )
     }
+
+    /// The same projection with the whole view moved by (dx, dy) pixels, for when the camera
+    /// has panned since calibration.
+    pub fn translated(&self, dx: f64, dy: f64) -> Projection {
+        let h = self.h;
+        Projection {
+            h: [
+                h[0] + dx * h[6],
+                h[1] + dx * h[7],
+                h[2] + dx,
+                h[3] + dy * h[6],
+                h[4] + dy * h[7],
+                h[5] + dy,
+                h[6],
+                h[7],
+            ],
+        }
+    }
 }
 
 /// Calibration for Railway Town, south half, seen from your own side with the camera zoomed all
@@ -499,6 +517,65 @@ pub fn inventory_has_item(img: &image::RgbImage) -> bool {
     b > 90.0
 }
 
+/// How far the map in `now` has moved from where it was in `reference` (same camera zoom), in
+/// reference pixels: the offset that best lines up a few patches of ground away from the UI.
+/// Also returns the match's mean difference per sample, lower being better.
+pub fn camera_shift(reference: &image::RgbImage, now: &image::RgbImage) -> (Px, f64) {
+    // Patches of open map on both sides of the board, clear of the HUD and tools.
+    const PATCHES: [(u32, u32); 4] = [(600, 450), (1500, 450), (700, 1000), (1500, 1000)];
+    const SIZE: u32 = 160;
+    const STEP: u32 = 4;
+    let grey = |img: &image::RgbImage, x: i64, y: i64| -> Option<f64> {
+        if x < 0 || y < 0 || x >= i64::from(img.width()) || y >= i64::from(img.height()) {
+            return None;
+        }
+        let p = img.get_pixel(x as u32, y as u32).0;
+        Some(f64::from(p[0]) + f64::from(p[1]) + f64::from(p[2]))
+    };
+    let score = |dx: i64, dy: i64| -> f64 {
+        let (mut sum, mut n) = (0.0, 0.0);
+        for &(px, py) in &PATCHES {
+            for y in (0..SIZE).step_by(STEP as usize) {
+                for x in (0..SIZE).step_by(STEP as usize) {
+                    let (rx, ry) = (i64::from(px + x), i64::from(py + y));
+                    if let (Some(a), Some(b)) =
+                        (grey(reference, rx, ry), grey(now, rx + dx, ry + dy))
+                    {
+                        sum += (a - b).abs();
+                        n += 1.0;
+                    }
+                }
+            }
+        }
+        if n > 0.0 {
+            sum / n
+        } else {
+            f64::MAX
+        }
+    };
+    // Coarse, then fine around the best.
+    let mut best = ((0i64, 0i64), score(0, 0));
+    for dy in (-160..=160).step_by(8) {
+        for dx in (-160..=160).step_by(8) {
+            let s = score(dx, dy);
+            if s < best.1 {
+                best = ((dx, dy), s);
+            }
+        }
+    }
+    let ((cx, cy), _) = best;
+    for dy in cy - 8..=cy + 8 {
+        for dx in cx - 8..=cx + 8 {
+            let s = score(dx, dy);
+            if s < best.1 {
+                best = ((dx, dy), s);
+            }
+        }
+    }
+    let ((dx, dy), s) = best;
+    ((dx as f64, dy as f64), s)
+}
+
 /// Whether the left-hand Testing Grounds Tools panel is open, from its header's blue-grey
 /// (65,69,87 measured; the ground there is 73,47,33 on Railway Town). Unlike the right panel's
 /// header, a unit card pinned from the Squad list never covers it.
@@ -570,6 +647,39 @@ pub fn green_blobs(img: &image::RgbImage) -> Vec<(Px, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_camera_shift_finds_a_pan() {
+        // Smooth, non-repeating "terrain", like the map's ground.
+        let pattern = |x: i64, y: i64| -> u8 {
+            let (x, y) = (x as f64, y as f64);
+            let v = 128.0
+                + 45.0 * (x / 37.0 + (y / 53.0).sin()).sin()
+                + 40.0 * (y / 29.0 + x / 71.0).cos()
+                + 25.0 * ((x * 0.013 - y * 0.021).sin() * 3.1).sin();
+            v.clamp(0.0, 255.0) as u8
+        };
+        let (dx, dy) = (21i64, -21i64);
+        let make = |ox: i64, oy: i64| {
+            image::RgbImage::from_fn(2560, 1600, |x, y| {
+                let v = pattern(i64::from(x) - ox, i64::from(y) - oy);
+                image::Rgb([v, v / 2, v / 3])
+            })
+        };
+        let (shift, score) = camera_shift(&make(0, 0), &make(dx, dy));
+        assert_eq!(shift, (21.0, -21.0), "score {score}");
+        assert!(score < 1.0, "{score}");
+    }
+
+    #[test]
+    fn test_translated_projection_moves_every_point() {
+        let p = Projection::fit(&RAILWAY_TOWN_SOUTH).unwrap();
+        let q = p.translated(21.0, -21.0);
+        for (x, y) in [(0.0, -10.0), (-25.0, -28.0), (20.0, -3.0)] {
+            let (a, b) = (p.to_screen(x, y), q.to_screen(x, y));
+            assert!((b.0 - a.0 - 21.0).abs() < 1e-6 && (b.1 - a.1 + 21.0).abs() < 1e-6);
+        }
+    }
 
     #[test]
     fn test_calibration_fits_and_predicts_the_zone() {

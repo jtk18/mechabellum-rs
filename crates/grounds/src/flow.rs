@@ -190,8 +190,8 @@ fn newest_replay(dir: &Path) -> Option<(PathBuf, SystemTime)> {
         .max_by_key(|(_, t)| *t)
 }
 
-/// Press Start, wait for the fight to end, and save the replay. Returns the replay file.
-pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf> {
+/// Press Start and wait for the fight to end and the next deployment to begin.
+pub fn run_round(game: &mut Game) -> Result<()> {
     if current(game)? != Screen::Deploying {
         bail!("not ready to start a round");
     }
@@ -200,6 +200,12 @@ pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf>
     // The fight lasts up to the preset's combat phase (120 s by default).
     wait_for(game, Screen::Deploying, Duration::from_secs(240))?;
     std::thread::sleep(Duration::from_secs(2));
+    Ok(())
+}
+
+/// Press Start, wait for the fight to end, and save the replay. Returns the replay file.
+pub fn run_round_and_save(game: &mut Game, replay_dir: &Path) -> Result<PathBuf> {
+    run_round(game)?;
     let before = SystemTime::now();
     game.click(ui::MENU, 1500);
     if current(game)? != Screen::Menu {
