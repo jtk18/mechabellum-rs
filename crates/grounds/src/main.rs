@@ -129,6 +129,18 @@ enum Command {
     },
     /// Save a screenshot of the game window
     Shot { out: PathBuf },
+    /// Turn the mouse wheel at the middle of the window (positive zooms in)
+    Zoom {
+        #[arg(allow_hyphen_values = true)]
+        steps: i32,
+    },
+    /// Pan the camera: drag with the right button between two screen points (reference pixels)
+    Pan {
+        #[arg(value_parser = parse_point)]
+        from: (u32, u32),
+        #[arg(value_parser = parse_point)]
+        to: (u32, u32),
+    },
     /// List green blobs (units bought this round) in a screenshot
     Blobs {
         png: PathBuf,
@@ -373,6 +385,17 @@ fn main() -> Result<()> {
             }
         }
         #[cfg(windows)]
+        Command::Zoom { steps } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            game.wheel(steps);
+        }
+        #[cfg(windows)]
+        Command::Pan { from, to } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            let px = |(x, y): (u32, u32)| (f64::from(x), f64::from(y));
+            game.right_drag(px(from), px(to), 1500);
+        }
+        #[cfg(windows)]
         Command::Shot { out } => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             game.screenshot()?.save(&out)?;
@@ -391,6 +414,8 @@ fn main() -> Result<()> {
         }
         #[cfg(not(windows))]
         Command::Shot { .. }
+        | Command::Zoom { .. }
+        | Command::Pan { .. }
         | Command::Place { .. }
         | Command::Drop { .. }
         | Command::Enter { .. }
@@ -1473,9 +1498,19 @@ fn half_name(half: Half) -> &'static str {
 const TOWER: (f64, f64) = (14.0, -17.5);
 
 /// Board offsets (squares, in the side's own frame: +y toward the middle) to try when the game
-/// refuses a drop, e.g. when a tower's model is in front of the spot. A refused unit would sit
-/// on the spawn pad and block the next spawn, so a nearby spot beats none.
-const NUDGES: [(f64, f64); 5] = [(0.0, 0.0), (0.0, 2.0), (-3.0, 0.0), (3.0, 0.0), (0.0, 4.0)];
+/// refuses a drop. From this camera the Research Center's model covers the ground about 2 to 3
+/// squares in front of it on screen, and a click there hits the tower, so the game refuses it
+/// (the ground itself is free; panning or zooming doesn't change the camera's angle, so neither
+/// uncovers it). One square farther forward is usually clear. A refused unit would sit on the
+/// spawn pad and block the next spawn, so a nearby spot beats none.
+const NUDGES: [(f64, f64); 6] = [
+    (0.0, 0.0),
+    (0.0, 1.0),
+    (0.0, 2.0),
+    (-3.0, 0.0),
+    (3.0, 0.0),
+    (0.0, 4.0),
+];
 
 /// Spawn a unit from the Squad list and move it to the first of `targets` the game accepts.
 /// Returns the index of the target it landed on, if a unit was seen there afterwards.
@@ -1573,16 +1608,16 @@ fn spawn_and_place(
             .unwrap_or(0)
     };
     let grown = spawn_weight(&after);
-    // Each target gets two tries; the first gets three, as a drop sometimes just doesn't take.
-    let attempts = targets
-        .iter()
-        .enumerate()
-        .flat_map(|(i, t)| std::iter::repeat_n((i, *t), if i == 0 { 3 } else { 2 }));
     // A middle click on the ground while carrying turns the unit 90 degrees. Turning is a
     // toggle and a refused drop keeps the turn, so turn only once. It's done at `turn_at`, a spot
     // where the unturned footprint fits: at the target itself, one that only fits turned (a
     // Sledgehammer on the front line) is refused before the turn applies.
     let mut turned = false;
+    // Each target gets two tries; the first gets three, as a drop sometimes just doesn't take.
+    let attempts = targets
+        .iter()
+        .enumerate()
+        .flat_map(|(i, t)| std::iter::repeat_n((i, *t), if i == 0 { 3 } else { 2 }));
     for (i, target) in attempts {
         game.click(spawn, 700);
         if let (Some(spot), false) = (turn_at, turned) {
@@ -1593,7 +1628,24 @@ fn spawn_and_place(
         game.click(target, 700);
         game.double_click(target, 700);
         game.right_click(target, 900);
-        let now = green_blobs(&game.screenshot()?);
+        let shot = game.screenshot()?;
+        let now = green_blobs(&shot);
+        if let Ok(dir) = std::env::var("GROUNDS_DEBUG") {
+            let n = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+            let _ = shot.save(format!("{dir}/drop{n:03}.png"));
+            eprintln!(
+                "  debug drop{n:03}: {name} target {:.0},{:.0} spawn {:.0},{:.0} weight {} of {}; blobs {:?}",
+                target.0,
+                target.1,
+                spawn.0,
+                spawn.1,
+                spawn_weight(&now),
+                grown,
+                now.iter()
+                    .map(|(p, w)| (p.0 as i32, p.1 as i32, *w))
+                    .collect::<Vec<_>>()
+            );
+        }
         // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
         let left_spawn =
             near(target, spawn, 120.0) || (spawn_weight(&now) as f64) < grown as f64 * 0.8;

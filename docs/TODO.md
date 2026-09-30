@@ -133,7 +133,12 @@ Commit each step once it's verified.
       view from just after clearing; the check now allows half a square, not one (which hid
       the drift). The 5-round batch: all 5 re-fights came out as the real rounds did.
       Still open:
-      - Units right in front of the towers are refused (see above).
+      - Units about 2 squares in front of the Research Center land 1 square farther forward.
+        The ground is free (ranked allows it, and so does Testing Grounds by hand), but from
+        the tool's camera the tower's model covers that square, so the click hits the tower.
+        Panning and zooming keep the camera's angle, so neither helps; turning the camera
+        would, with its own calibration. Everywhere else by the towers lands exactly
+        (2026-09-30, version 2328).
       - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.

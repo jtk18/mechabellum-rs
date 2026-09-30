@@ -158,6 +158,16 @@ impl Game {
         ms(wait_ms);
     }
 
+    /// Hold the right button and move from `from` to `to`: this pans the camera.
+    pub fn right_drag(&mut self, from: Px, to: Px, wait_ms: u64) {
+        self.glide(from);
+        unsafe { mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0) };
+        ms(120);
+        self.glide(to);
+        unsafe { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0) };
+        ms(wait_ms);
+    }
+
     /// Scroll the wheel at the middle of the window; negative zooms out.
     pub fn wheel(&mut self, steps: i32) {
         self.glide((REFERENCE_SIZE.0 / 2.0, REFERENCE_SIZE.1 / 2.0));
