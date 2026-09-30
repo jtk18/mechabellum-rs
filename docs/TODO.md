@@ -1,6 +1,6 @@
 # Work list
 
-Last updated 2026-09-27. Newest decisions are in `ORIENTATION.md` at the scratchpad root.
+Last updated 2026-09-30. Newest decisions are in `ORIENTATION.md` at the scratchpad root.
 
 ## Overnight loop (autonomous)
 
@@ -134,8 +134,9 @@ Commit each step once it's verified.
       the drift). The 5-round batch: all 5 re-fights came out as the real rounds did.
       Still open:
       - Units right in front of the towers are refused (see above).
-      - Dusk's view differs from Railway Town's by a square. Dusk now has its own calibration
-        (fit within 17 px, not yet checked with verify); Night still borrows Railway Town's.
+      - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
+        Night each have their own calibration (two runs pooled, fit within 24 px), and a
+        Crawler test board matches exactly on both, in round 1 and round 2.
       - The tool doesn't recognize the "Network disconnected" dialog.
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
