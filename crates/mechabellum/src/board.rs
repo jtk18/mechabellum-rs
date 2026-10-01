@@ -1354,8 +1354,8 @@ good luck"#;
 [/board]"#;
         let board = Board::parse(code).unwrap();
         let south = &board.sides[0].units;
-        // Crawler is 3 wide, 2 deep: flush in the front-left corner, then 2 right, 1 back.
-        assert_eq!((south[0].x, south[0].y), (-300 + 15 + 20, -10 - 10 - 10));
+        // Crawler is 5 wide, 2 deep: flush in the front-left corner, then 2 right, 1 back.
+        assert_eq!((south[0].x, south[0].y), (-300 + 25 + 20, -10 - 10 - 10));
         assert_eq!((south[1].x, south[1].y), (0, 0));
         assert_eq!((south[2].x, south[2].y), (330, 10 + 10 + 30));
         assert_eq!((south[3].x, south[3].y), (-140, -170 + 40));
@@ -1409,17 +1409,17 @@ good luck"#;
         // A 4x4 Fortress flush with the front edge, a Marksman flush behind it.
         assert_eq!(at[4], (0, -30));
         assert_eq!(at[5], (0, -60));
-        // Three 3x2 Crawlers from the front-left corner, a square apart.
-        assert_eq!(&at[6..9], &[(-285, -20), (-245, -20), (-205, -20)]);
+        // Three 5x2 Crawlers from the front-left corner, a square apart.
+        assert_eq!(&at[6..9], &[(-275, -20), (-215, -20), (-155, -20)]);
         // A Fang (5x2) centered behind the whole row.
-        assert_eq!(at[9], (-245, -40));
+        assert_eq!(at[9], (-215, -40));
         // Two 4x2 Hounds from the back-right corner, the second toward the back: past the edge,
         // which problems() reports.
         assert_eq!(&at[10..12], &[(280, -300), (280, -320)]);
         assert_eq!(board.problems().len(), 1, "{:?}", board.problems());
         // North mirrors everything, rows included.
         let north: Vec<(i32, i32)> = board.sides[1].units.iter().map(|u| (u.x, u.y)).collect();
-        assert_eq!(north, vec![(-140, 150), (285, 20), (255, 20)]);
+        assert_eq!(north, vec![(-140, 150), (275, 20), (225, 20)]);
 
         let err = |text: &str| Board::parse(text).unwrap_err().message;
         let side = |units: &str| format!("[board][side half=south]{units}[/side][/board]");

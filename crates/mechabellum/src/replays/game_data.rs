@@ -33,7 +33,9 @@ fn base_id(id: u32) -> u32 {
 /// Fang and Crawler were corrected 2026-09-27 from (4, 3) and (2, 3): in 2.0 replays their
 /// centers sit on half squares across (odd width) and on grid lines front to back (even depth)
 /// in 30 of 33 Fangs and 9 of 9 Crawlers, and Fangs stack 2 squares apart. Fang is 5 wide by
-/// 2 deep (J, from play); Crawler's 3 is the smallest odd width, not confirmed in game.
+/// 2 deep (J, from play). Crawler is 5 wide (2026-10-01): side by side in a row, 2.0 Crawlers
+/// stand exactly 5 squares apart, never closer (28 pairs; turned ones 5 or more front to back),
+/// and Testing Grounds refused one dropped 4 squares from another.
 ///
 /// 2026-09-30, from 2,821 replay boards (`replay-parse check-board`): Centurion, Wraith, and
 /// Tarantula are 3×3, not 5×5 or 5×3 (units stand closer than half that to the zone's edges
@@ -51,7 +53,7 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         7 => (5, 2),    // Mustang
         8 => (5, 2),    // Steel Ball
         9 => (5, 2),    // Fang
-        10 => (3, 2),   // Crawler
+        10 => (5, 2),   // Crawler
         11 => (5, 5),   // Overlord
         12 => (3, 2),   // Stormcaller
         13 => (5, 2),   // Sledgehammer

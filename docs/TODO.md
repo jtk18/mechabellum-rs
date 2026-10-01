@@ -52,7 +52,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     are needed.
 11. **Verify inferred footprints** against the game and correct `game_data.rs`. 2026-09-30: five
     corrected from 2,821 replay boards (`check-board`); every footprint now fits the corpus. Still
-    unconfirmed in game: exact sizes below the zone-edge bounds (e.g. Crawler 3x2, Stormcaller 3x2).
+    unconfirmed in game: exact sizes below the zone-edge bounds (e.g. Stormcaller and Wasp 3x2). 2026-10-01: Crawler is 5x2 (row spacing in replays, and Testing Grounds).
 
 ## Platform and distribution
 
@@ -141,6 +141,16 @@ Commit each step once it's verified.
         Panning and zooming keep the camera's angle, so neither helps; turning the camera
         would, with its own calibration. Everywhere else by the towers lands exactly
         (2026-09-30, version 2328).
+        2026-10-01: the tool now looks straight down (hold R), with calibrations measured from
+        drawn tiles (Night within 9 px). Sides and backs of both towers land flush; the square
+        flush in front of the Command Center (and, on the north half, both towers' fronts and
+        the Command Center's sides) still can't be clicked: the tower takes the click even
+        mid-screen, so those units land a square off. Not solved; ideas: the Forced Move tool,
+        or a drag that ends there instead of a click.
+      - Testing Grounds' zone is a square smaller at the sides too (x = +-29); `place` moves
+        units in, verified 2026-10-01.
+      - Straight-down calibrations for Railway Town, Dusk, Training Base, and Forest Eye
+        (only Night so far; running 2026-10-01 overnight).
       - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.

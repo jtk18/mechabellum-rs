@@ -831,13 +831,14 @@ mod tests {
         )
         .unwrap();
         let moves = behind_front(&board.sides[0].units);
-        // Flush with x = -30: the row shifts a square right, all three together.
-        assert_eq!(moves[0], ((-27.5, -16.0), 1.0));
-        assert_eq!(moves[1], ((-24.5, -16.0), 1.0));
-        assert_eq!(moves[2], ((-21.5, -16.0), 1.0));
-        // Already a square in: stays.
-        assert_eq!(moves[3], ((27.5, -20.0), 0.0));
-        assert_eq!(moves[4], ((27.5, -26.0), 1.0));
+        // Crawlers are 5 wide. Flush with x = -30: the row shifts a square right, all three
+        // together.
+        assert_eq!(moves[0], ((-26.5, -16.0), 1.0));
+        assert_eq!(moves[1], ((-21.5, -16.0), 1.0));
+        assert_eq!(moves[2], ((-16.5, -16.0), 1.0));
+        // Past 29 by a square, and by two.
+        assert_eq!(moves[3], ((26.5, -20.0), 1.0));
+        assert_eq!(moves[4], ((26.5, -26.0), 2.0));
         // In a flank column: left alone.
         assert_eq!(moves[5], ((33.0, 10.0), 0.0));
     }
