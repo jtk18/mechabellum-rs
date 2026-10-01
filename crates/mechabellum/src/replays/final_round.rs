@@ -14,6 +14,7 @@ use super::battle_record::{
     MatchActionData, PlayerData, PlayerDataUnitsNewUnitDataPosition, UnitEquipment,
     UnitsNewUnitData,
 };
+use super::game_data::xp_to_next_level;
 use super::names::GameNames;
 
 use std::collections::BTreeMap;
@@ -59,7 +60,16 @@ pub(crate) fn replay_deployment(
             "MoveUnit" => deploy.moves(action),
             "UpgradeUnit" => {
                 if let Some(unit) = index(&action.uidx).and_then(|i| deploy.units.get_mut(&i)) {
-                    let level: i32 = unit.level.trim().parse().unwrap_or(0);
+                    let level: u32 = unit.level.trim().parse().unwrap_or(0);
+                    // Upgrading spends the XP bar: what's left over carries into the new level.
+                    let exp: u32 = unit.exp.trim().parse().unwrap_or(0);
+                    let cap = unit
+                        .id
+                        .trim()
+                        .parse()
+                        .ok()
+                        .and_then(|id| xp_to_next_level(id, level));
+                    unit.exp = exp.saturating_sub(cap.unwrap_or(exp)).to_string();
                     unit.level = (level + 1).to_string();
                 }
             }

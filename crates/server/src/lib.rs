@@ -524,6 +524,30 @@ mod tests {
         assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 1);
     }
 
+    /// Starter packs reach the match list, one per player, for old and new replays alike.
+    #[test]
+    fn test_match_list_has_starter_packs() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record.xml"), Path::new("a"), None)
+            .unwrap();
+        store.ingest(&fixture(OLD), Path::new("b"), None).unwrap();
+        let rows = store.recent_matches(10).unwrap();
+        let packs: Vec<_> = rows
+            .iter()
+            .flat_map(|m| m.winner_packs.iter().chain(&m.loser_packs))
+            .flatten()
+            .collect();
+        assert_eq!(packs.len(), 4, "both players of both matches");
+        assert!(packs
+            .iter()
+            .any(|p| p.id == "9874" && p.units[0].count == 3));
+        for m in &rows {
+            assert_eq!(m.winner_packs.len(), m.winners.len());
+            assert_eq!(m.loser_packs.len(), m.losers.len());
+        }
+    }
+
     #[test]
     fn test_ingest_dedupes_and_counts() {
         let store = Store::open_in_memory().unwrap();

@@ -153,6 +153,7 @@ impl BattleRecord {
                         .filter(|id| id.trim() != "0")
                         .map(super::detail::card_ref)
                         .collect(),
+                    starter_pack: super::detail::starter_pack(player),
                     enabled_techs: super::detail::enabled_techs(
                         &rounds[rounds.len() - 1]
                             .player_data

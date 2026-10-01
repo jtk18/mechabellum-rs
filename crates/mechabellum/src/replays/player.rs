@@ -1,4 +1,4 @@
-use super::{CardRef, Skills, Specialist, Unit, UnitInstance, UnitTechs};
+use super::{CardRef, Skills, Specialist, StarterPack, Unit, UnitInstance, UnitTechs};
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct PlayerName(String);
@@ -35,4 +35,6 @@ pub struct PlayerSummary {
     /// Every card the player picked between rounds, in order. Unlike `specialist_cards`, this
     /// leaves out specialists the game granted without a pick.
     pub picked_cards: Vec<CardRef>,
+    /// The starter pack picked before round 1.
+    pub starter_pack: Option<StarterPack>,
 }

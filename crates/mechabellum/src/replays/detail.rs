@@ -13,7 +13,7 @@ use super::game_data::{footprint, xp_to_next_level};
 use super::names::{resolve, GameNames, NameKind};
 use super::{BattleRecord, Item, Unit};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -40,6 +40,29 @@ pub struct PlayerInfo {
     pub won: Option<bool>,
     /// Techs the player brought for each unit (their Unit Modification loadout).
     pub loadout: Vec<UnitTechs>,
+    pub starter_pack: Option<StarterPack>,
+}
+
+/// The starter pack ("advance team") a player picked before round 1.
+///
+/// Round 0 records the pick as `PAD_ChooseAdvanceTeam`, whose ID has no localized name, and
+/// the pack's units stand in round 1's snapshot before any of that round's actions. Across
+/// 2,326 picks of 49 packs in versions 1425-2328, each pack ID always gave the same units. The
+/// starting specialist and buildings differ between players with the same pack, so they
+/// aren't part of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StarterPack {
+    pub id: String,
+    /// Most numerous first.
+    pub units: Vec<PackUnit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackUnit {
+    /// Base unit ID (AsyncBattle copies folded into the original).
+    pub unit_id: u32,
+    pub name: String,
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -113,6 +136,8 @@ pub struct SideLayout {
     /// The units were rebuilt by replaying the round's actions (the last round, which has no
     /// snapshot after it) rather than read from a snapshot.
     pub rebuilt: bool,
+    /// Index of the unit that earned the most XP in this fight, when any did.
+    pub most_xp: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -143,6 +168,12 @@ pub struct PlacedUnit {
     /// Grid squares (width, depth) before rotation, when known.
     pub footprint: Option<(u8, u8)>,
     pub equipment: Vec<NamedRef>,
+    /// Not in this side's previous fight (bought, or added by a card, this round). For the first
+    /// fight, every unit is new; when the previous fight isn't recorded, none are marked.
+    pub is_new: bool,
+    /// XP earned in this fight, counting level-ups. `None` for the last fight (no record after
+    /// it) and when a level's requirement isn't known.
+    pub xp_gained: Option<u32>,
 }
 
 fn base_unit_id(raw: &str) -> Option<u32> {
@@ -258,6 +289,8 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
         y: data.position.y.trim().parse().unwrap_or(0),
         rotated: data.is_rotate.trim().eq_ignore_ascii_case("true"),
         footprint: footprint(unit_id),
+        is_new: false,
+        xp_gained: None,
         equipment: data
             .equipments
             .ids(&data.equipment_id)
@@ -310,6 +343,59 @@ fn loadout(player: &PlayerRecord) -> Vec<UnitTechs> {
             })
         })
         .collect()
+}
+
+/// The player's starter pack, when the replay records one (see `StarterPack`).
+pub fn starter_pack(player: &PlayerRecord) -> Option<StarterPack> {
+    let records = &player.player_round_records.player_round_record;
+    let id = records
+        .iter()
+        .find(|r| r.round.trim() == "0")?
+        .action_records
+        .match_action_data
+        .iter()
+        .find(|a| a.xsi_type.ends_with("ChooseAdvanceTeam"))?
+        .id
+        .as_deref()?
+        .trim()
+        .to_owned();
+    let first = records.iter().find(|r| r.round.trim() == "1")?;
+    let mut counts: BTreeMap<u32, (String, u32)> = BTreeMap::new();
+    for unit in &first.player_data.units.new_unit_data {
+        let Some(unit_id) = base_unit_id(&unit.id) else {
+            continue;
+        };
+        counts
+            .entry(unit_id)
+            .or_insert_with(|| (unit_name(&unit.id), 0))
+            .1 += 1;
+    }
+    if counts.is_empty() {
+        return None;
+    }
+    let mut units: Vec<PackUnit> = counts
+        .into_iter()
+        .map(|(unit_id, (name, count))| PackUnit {
+            unit_id,
+            name,
+            count,
+        })
+        .collect();
+    units.sort_by(|a, b| b.count.cmp(&a.count).then(a.unit_id.cmp(&b.unit_id)));
+    Some(StarterPack { id, units })
+}
+
+/// XP a unit earned going from `before` to `after`, counting the levels it crossed. `None` when
+/// a crossed level's requirement isn't known.
+fn xp_between(before: &UnitsNewUnitData, after: &UnitsNewUnitData) -> Option<i64> {
+    let raw_id: u32 = after.id.trim().parse().ok()?;
+    let level = |u: &UnitsNewUnitData| u.level.trim().parse::<u32>().unwrap_or(0);
+    let exp = |u: &UnitsNewUnitData| u.exp.trim().parse::<i64>().unwrap_or(0);
+    let mut gained = exp(after) - exp(before);
+    for l in level(before)..level(after) {
+        gained += i64::from(xp_to_next_level(raw_id, l)?);
+    }
+    Some(gained)
 }
 
 impl BattleRecord {
@@ -366,6 +452,8 @@ impl BattleRecord {
                 .player_round_record
                 .last()
                 .map(|r| r.player_data.pre_round_fight_result == "Win");
+            // The previous fight's units for this player, by index, once one has been drawn.
+            let mut previous: Option<(u32, BTreeMap<u32, u32>)> = None;
             for fight in 1..=last {
                 let Some(&entering) = records.get(&fight) else {
                     continue;
@@ -394,6 +482,54 @@ impl BattleRecord {
                 if units.is_empty() {
                     continue;
                 }
+                // The army as the fight began: this round's snapshot with its actions replayed
+                // (purchases, upgrades). What it has more of in the next snapshot is fight XP.
+                let start: BTreeMap<String, UnitsNewUnitData> = if rebuilt {
+                    BTreeMap::new()
+                } else {
+                    replay_deployment(
+                        &entering.player_data,
+                        &entering.action_records.match_action_data,
+                    )
+                    .into_iter()
+                    .map(|u| (u.index.trim().to_owned(), u))
+                    .collect()
+                };
+                let mut gains: BTreeMap<u32, i64> = BTreeMap::new();
+                let mut placed: Vec<PlacedUnit> = units
+                    .iter()
+                    .filter_map(|data| {
+                        let mut unit = placed_unit(data)?;
+                        unit.is_new = match &previous {
+                            Some((f, prev)) if f + 1 == fight => {
+                                prev.get(&unit.index) != Some(&unit.unit_id)
+                            }
+                            None => fight == 1,
+                            Some(_) => false,
+                        };
+                        if let Some(xp) = start
+                            .get(data.index.trim())
+                            .and_then(|before| xp_between(before, data))
+                        {
+                            gains.insert(unit.index, xp);
+                        }
+                        Some(unit)
+                    })
+                    .collect();
+                // A unit losing XP means the snapshots don't follow on from each other. That
+                // happens to AsyncBattle opponents, whose rounds come from other games, so
+                // their XP isn't shown at all.
+                if gains.values().all(|&xp| xp >= 0) {
+                    for unit in &mut placed {
+                        unit.xp_gained = gains.get(&unit.index).map(|&xp| xp as u32);
+                    }
+                }
+                let most_xp = placed
+                    .iter()
+                    .filter_map(|u| Some((u.xp_gained.filter(|&xp| xp > 0)?, u.index)))
+                    .max_by_key(|&(xp, index)| (xp, std::cmp::Reverse(index)))
+                    .map(|(_, index)| index);
+                previous = Some((fight, placed.iter().map(|u| (u.index, u.unit_id)).collect()));
                 let data = &after.player_data;
                 let levels: Vec<i32> = data
                     .tower_strengthen_levels
@@ -442,7 +578,8 @@ impl BattleRecord {
                         .trim()
                         .parse()
                         .unwrap_or(0),
-                    units: units.iter().filter_map(placed_unit).collect(),
+                    units: placed,
+                    most_xp,
                     buildings: data
                         .construction_snapshot_datas
                         .construction_snapshot_data
@@ -519,6 +656,7 @@ impl BattleRecord {
                         .last()
                         .map(|r| r.player_data.pre_round_fight_result == "Win"),
                     loadout: loadout(p),
+                    starter_pack: starter_pack(p),
                 })
                 .collect(),
             rounds: rounds
@@ -603,5 +741,82 @@ mod tests {
         assert_eq!(unit_id_in_name("Vanguard-Melting Point"), Some(4));
         assert_eq!(unit_id_in_name("Experimental Death Knell"), Some(4001));
         assert_eq!(unit_id_in_name("Supply Enhancement"), None);
+
+        // No record 1, so no starter pack, and the first fight drawn has no previous one to
+        // compare with: nothing is marked new.
+        assert!(detail.players.iter().all(|p| p.starter_pack.is_none()));
+        assert!(first.units.iter().all(|u| !u.is_new));
+        // Later fights mark new units and XP; the last fight has no XP on record.
+        let second = detail.rounds[1].sides[0].as_ref().unwrap();
+        assert!(second.units.iter().any(|u| u.is_new));
+        assert!(second.units.iter().any(|u| !u.is_new));
+        assert!(detail.rounds[..detail.rounds.len() - 1]
+            .iter()
+            .flat_map(|r| r.sides.iter().flatten())
+            .all(|s| s.most_xp.is_some()));
+        assert!(last.sides.iter().flatten().all(|s| s.most_xp.is_none()));
+        let top = second.most_xp.unwrap();
+        let best = second.units.iter().find(|u| u.index == top).unwrap();
+        assert!(second
+            .units
+            .iter()
+            .all(|u| u.xp_gained.unwrap_or(0) <= best.xp_gained.unwrap()));
+    }
+
+    #[test]
+    fn test_starter_pack() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/battle_record.xml");
+        let record = BattleRecord::new_from_file(path, false).unwrap();
+        let pack = starter_pack(&record.player_records.player_record[0]).unwrap();
+        // Pack 9874 is 3 Fangs and 2 Steel Balls in every replay that has it.
+        assert_eq!(pack.id, "9874");
+        let units: Vec<(u32, u32)> = pack.units.iter().map(|u| (u.unit_id, u.count)).collect();
+        assert_eq!(units, [(9, 3), (8, 2)]);
+        // In the first fight, the whole army is new.
+        let detail = record.match_detail();
+        let first = detail.rounds[0].sides[0].as_ref().unwrap();
+        assert!(first.units.iter().all(|u| u.is_new));
+    }
+
+    /// New units and fight XP over a folder of extracted replays:
+    /// `MECHABELLUM_REPLAYS=<dir> cargo test -p mechabellum -- --ignored xp_folder --nocapture`
+    #[test]
+    #[ignore]
+    fn test_xp_folder() {
+        let dir = std::env::var("MECHABELLUM_REPLAYS").expect("MECHABELLUM_REPLAYS");
+        let (mut known, mut unknown, mut sides, mut topped, mut packs) = (0, 0, 0, 0, 0);
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "xml") {
+                continue;
+            }
+            let Ok(record) = BattleRecord::new_from_file(path, false) else {
+                continue;
+            };
+            let detail = record.match_detail();
+            packs += detail
+                .players
+                .iter()
+                .filter(|p| p.starter_pack.is_some())
+                .count();
+            for side in detail.rounds.iter().flat_map(|r| r.sides.iter().flatten()) {
+                if side.rebuilt {
+                    continue;
+                }
+                sides += 1;
+                topped += usize::from(side.most_xp.is_some());
+                for u in &side.units {
+                    if u.xp_gained.is_some() {
+                        known += 1;
+                    } else {
+                        unknown += 1;
+                    }
+                }
+            }
+        }
+        println!(
+            "packs {packs}; sides {sides}, {topped} with a top unit; \r
+             unit XP known {known}, unknown {unknown}"
+        );
     }
 }
