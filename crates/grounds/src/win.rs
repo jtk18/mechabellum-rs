@@ -158,6 +158,17 @@ impl Game {
         ms(wait_ms);
     }
 
+    /// Press or release the left button where the cursor is (for drags made of glides).
+    pub fn left_button(&mut self, down: bool) {
+        let flag = if down {
+            MOUSEEVENTF_LEFTDOWN
+        } else {
+            MOUSEEVENTF_LEFTUP
+        };
+        unsafe { mouse_event(flag, 0, 0, 0, 0) };
+        ms(150);
+    }
+
     /// Hold the right button and move from `from` to `to`: this pans the camera.
     pub fn right_drag(&mut self, from: Px, to: Px, wait_ms: u64) {
         self.glide(from);

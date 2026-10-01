@@ -90,6 +90,30 @@ enum Command {
         #[arg(value_parser = parse_point, required = true)]
         points: Vec<(u32, u32)>,
     },
+    /// Try a unit at spots around a tower, one click each, and print what the game did: where
+    /// it may stand, where it's refused, and where the click goes to something else (the
+    /// tower's model). Run on the half being shown.
+    ClickMap {
+        #[arg(long, default_value = "Railway Town - Night")]
+        map: String,
+        #[arg(long)]
+        north: bool,
+        /// cc or rc
+        #[arg(long, default_value = "cc")]
+        tower: String,
+        /// Squares out from the tower's center to test, each way
+        #[arg(long, default_value_t = 4.0)]
+        reach: f64,
+        /// Squares between spots
+        #[arg(long, default_value_t = 1.0)]
+        step: f64,
+        /// Save each hover's screenshot here
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// The unit to try
+        #[arg(long, default_value = "Arclight")]
+        unit: String,
+    },
     /// Measure a map's screen positions for both halves and save them
     Calibrate {
         /// Map name as the game shows it, e.g. "Forest Eye"
@@ -247,6 +271,16 @@ fn main() -> Result<()> {
                 println!("{c:?} x{n}");
             }
         }
+        #[cfg(windows)]
+        Command::ClickMap {
+            map,
+            north,
+            tower,
+            reach,
+            step,
+            out,
+            unit,
+        } => click_map(&map, north, &tower, reach, step, out.as_deref(), &unit)?,
         Command::Where { map, north, points } => {
             let (s, n) = mechabellum_grounds::calibration::Calibrations::load(
                 &mechabellum_grounds::calibration::default_path(),
@@ -476,6 +510,7 @@ fn main() -> Result<()> {
         | Command::BuildingsCheck
         | Command::ItemsCheck { .. }
         | Command::Calibrate { .. }
+        | Command::ClickMap { .. }
         | Command::Verify { .. } => {
             bail!("driving the game needs Windows")
         }
@@ -919,6 +954,89 @@ fn worst_error(points: &mechabellum_grounds::calibration::Points) -> Option<f64>
             })
             .fold(0.0, f64::max),
     )
+}
+
+/// See `Command::ClickMap`. Each probe: pick the unit up from the pad, click the spot, read the
+/// screen, right-click (a placed unit goes back to the pad, a carried one is let go).
+#[cfg(windows)]
+fn click_map(
+    map: &str,
+    north: bool,
+    tower: &str,
+    reach: f64,
+    step: f64,
+    out: Option<&std::path::Path>,
+    unit: &str,
+) -> Result<()> {
+    use mechabellum_grounds::calibration::{default_path, Calibrations};
+    let (s, n) = Calibrations::load(&default_path())
+        .projections(map)
+        .with_context(|| format!("{map} isn't calibrated"))?;
+    let projection = if north { n } else { s };
+    let flip = if north { -1.0 } else { 1.0 };
+    let tx = match tower {
+        "cc" => -TOWER.0,
+        "rc" => TOWER.0,
+        _ => bail!("--tower is cc or rc"),
+    };
+    // A point in the side's own frame (x right, y forward) to the screen.
+    let screen = |x: f64, y: f64| projection.to_screen(x * flip, y * flip);
+    let mut game = mechabellum_grounds::win::Game::find()?;
+    // The unit is moved from spot to spot: picked up where it stands, dropped and confirmed at
+    // the next spot. Where it ends up (its green tint) says whether the spot took it.
+    let (mut at, _) = spawn_unit(&mut game, unit)?;
+    let near = |a: (f64, f64), b: (f64, f64), d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
+    println!(
+        "{unit} centered at each spot near the {tower} (own {tx},{}): G it stood there, . it didn't",
+        TOWER.1
+    );
+    // GROUNDS_STOP_AFTER=n leaves the unit where the nth probe put it (to fight and check).
+    let stop_after: Option<usize> = std::env::var("GROUNDS_STOP_AFTER")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    let mut probes = 0;
+    let k = (reach / step).round() as i32;
+    print!("      ");
+    for i in -k..=k {
+        print!("{:>5}", f64::from(i) * step);
+    }
+    println!("   <- right of the tower's center");
+    for j in (-k..=k).rev() {
+        let dy = f64::from(j) * step;
+        print!("{dy:>5} ");
+        for i in -k..=k {
+            let dx = f64::from(i) * step;
+            let p = screen(tx + dx, TOWER.1 + dy);
+            game.click(at, 600);
+            game.click(p, 600);
+            game.double_click(p, 600);
+            game.right_click(mechabellum_grounds::ui::NEUTRAL, 700);
+            let shot = game.screenshot()?;
+            if let Some(dir) = out {
+                let _ = shot.save(dir.join(format!("click_{dx}_{dy}.png")));
+            }
+            let blobs = mechabellum_grounds::green_blobs(&shot);
+            let placed = blobs.iter().any(|(b, _)| near(*b, p, 20.0));
+            if placed {
+                at = p;
+            } else if let Some((b, _)) = blobs.iter().min_by(|x, y| {
+                let d = |q: &(f64, f64)| (q.0 - at.0).hypot(q.1 - at.1);
+                d(&x.0).total_cmp(&d(&y.0))
+            }) {
+                // Not there: it's wherever its tint is now (usually where it was).
+                at = *b;
+            }
+            print!("{:>5}", if placed { "G" } else { "." });
+            probes += 1;
+            if stop_after == Some(probes) {
+                println!();
+                return Ok(());
+            }
+        }
+        println!();
+    }
+    game.park();
+    Ok(())
 }
 
 /// Drop Crawlers across both halves of `map`, fight a round, read where the replay recorded

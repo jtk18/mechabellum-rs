@@ -187,6 +187,15 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   A drag doesn't get around it either: pressing a square and a half away and releasing on the
   spot also drops the carry, and the Command Center shows its hover ring with the cursor about
   2.8 squares from its center (2026-10-01).
+- **Tower keep-out (2026-10-01, Night, round 2):** a board with an Arclight flush against every
+  face and corner of both towers (16 units, `from=cc-front` etc.), placed from the pad:
+  straight down, the Research Center took 6 of 8 (not its left side or back-left corner) and the
+  Command Center none; from the starting tilt (`GROUNDS_VIEW=tilted`, its own calibration in
+  data/tilted.json), no better, and the Command Center again none. So the camera angle isn't
+  it. `grounds click-map --tower cc` (one unit moved spot to spot) puts the Command Center's
+  keep-out at about 4x4 squares (x -16 to -12, y -20 to -16 on the south half), against the
+  2x2 that ranked replays show, and the Research Center's close to its 2x2. Units in front of
+  the Command Center that the screen shows standing flush are recorded a square forward.
 - **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
   x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
   ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours

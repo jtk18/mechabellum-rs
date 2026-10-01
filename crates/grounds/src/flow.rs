@@ -113,7 +113,9 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
 /// tower's model hides the ground about 2 squares in front of it, so a click there hits the
 /// tower; from above nothing is hidden.
 pub fn look_straight_down(game: &mut Game) {
-    game.hold_key('R', 4000);
+    if !crate::tilted_view() {
+        game.hold_key('R', 4000);
+    }
     game.wheel(-60);
 }
 

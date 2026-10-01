@@ -131,6 +131,12 @@ impl Projection {
     }
 }
 
+/// Whether the tool keeps the game's starting camera tilt (`GROUNDS_VIEW=tilted`) instead of
+/// looking straight down. Each view has its own calibrations.
+pub fn tilted_view() -> bool {
+    std::env::var("GROUNDS_VIEW").is_ok_and(|v| v.eq_ignore_ascii_case("tilted"))
+}
+
 /// A first guess for the straight-down view (see `flow::look_straight_down`), south half: the
 /// zone's corners and the two towers as they look on Railway Town - Night, read off a
 /// screenshot, so good to a square or so. `grounds calibrate` measures each map properly.

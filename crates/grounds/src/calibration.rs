@@ -34,20 +34,27 @@ const RAILWAY_TOWN_VARIANTS: [&str; 3] = [
 /// The file calibrations for the straight-down view are kept in (`calibrations.json` holds the
 /// earlier ones, for the starting tilt).
 const FILE: &str = "top-down.json";
+/// The same for the starting tilt (`GROUNDS_VIEW=tilted`).
+const TILTED_FILE: &str = "tilted.json";
 
 /// Where calibrations are kept: the repository's data folder when run from a checkout, else next
 /// to the program.
 pub fn default_path() -> PathBuf {
+    let file = if crate::tilted_view() {
+        TILTED_FILE
+    } else {
+        FILE
+    };
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("data")
-        .join(FILE);
+        .join(file);
     if checkout.parent().is_some_and(Path::is_dir) {
         return checkout;
     }
     std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join(FILE)))
-        .unwrap_or_else(|| PathBuf::from(FILE))
+        .and_then(|p| p.parent().map(|d| d.join(file)))
+        .unwrap_or_else(|| PathBuf::from(file))
 }
 
 impl Calibrations {
@@ -74,6 +81,12 @@ impl Calibrations {
             return Some((Projection::fit(&m.south)?, Projection::fit(&m.north)?));
         }
         if RAILWAY_TOWN_VARIANTS.iter().any(|v| key(v) == key(map)) {
+            if crate::tilted_view() {
+                return Some((
+                    Projection::fit(&crate::RAILWAY_TOWN_SOUTH)?,
+                    Projection::fit(&crate::RAILWAY_TOWN_NORTH)?,
+                ));
+            }
             return Some((
                 Projection::fit(&TOP_DOWN_SOUTH)?,
                 Projection::fit(&TOP_DOWN_NORTH)?,
