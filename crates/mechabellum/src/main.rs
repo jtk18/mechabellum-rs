@@ -59,7 +59,7 @@ fn main() {
         return;
     }
 
-    if let Some(Command::CheckBoard { file }) = &args.command {
+    if let Some(Command::CheckBoard { file, show }) = &args.command {
         let text = if file.as_os_str() == "-" {
             let mut text = String::new();
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
@@ -80,6 +80,9 @@ fn main() {
             match board::Board::parse(rest) {
                 Ok(board) => {
                     let units: usize = board.sides.iter().map(|s| s.units.len()).sum();
+                    if *show {
+                        println!("{board}");
+                    }
                     let problems = board.problems();
                     if problems.is_empty() {
                         println!("OK: {} sides, {units} units", board.sides.len());

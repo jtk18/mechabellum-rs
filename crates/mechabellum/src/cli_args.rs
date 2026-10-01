@@ -34,8 +34,14 @@ pub enum Command {
         #[arg(short, long)]
         round: Option<usize>,
     },
-    /// Check board code for mistakes, reading it from a file or "-" for stdin
-    CheckBoard { file: PathBuf },
+    /// Check board code for mistakes and for what the game wouldn't allow, reading every
+    /// [board] in a file, or "-" for stdin
+    CheckBoard {
+        file: PathBuf,
+        /// Also print each board with anchors, names, and rows resolved to at=x,y
+        #[arg(long)]
+        show: bool,
+    },
     /// Extract the ID -> name table from a Mechabellum install
     GenNames {
         /// Game install directory (steamapps/common/Mechabellum). Defaults to the Steam install
