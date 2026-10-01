@@ -1557,19 +1557,45 @@ fn place(
             placed += 1;
             // The north half's own frame is the board turned half a turn.
             let flip = if half == Half::North { -1.0 } else { 1.0 };
-            let spots: Vec<(f64, f64)> = NUDGES
+            // Where each try should land, and where to click for it.
+            let mut tries: Vec<((f64, f64), (f64, f64))> = vec![(step.board, step.board)];
+            // Beside a tower the click itself can land on the tower (the Command Center takes
+            // clicks about 2.4 squares out from its center), though the ground is free. A drop
+            // snaps to the grid, so a click up to half a square off lands on the same spot: aim
+            // farther from the tower, on the axes facing it.
+            let (ox, oy) = (step.board.0 * flip, step.board.1 * flip);
+            let tower = [(-TOWER.0, TOWER.1), (TOWER.0, TOWER.1)]
+                .into_iter()
+                .find(|t| (ox - t.0).abs() <= 4.0 && (oy - t.1).abs() <= 4.0);
+            if let Some(t) = tower {
+                let away = |d: f64| if d.abs() < 1.0 { 0.0 } else { d.signum() };
+                let (sx, sy) = (away(ox - t.0), away(oy - t.1));
+                // One axis at a time (shifting both at a corner overshot a square), forward or
+                // back first.
+                for k in [0.25, 0.4] {
+                    for (ax, ay) in [(0.0, sy), (sx, 0.0), (sx, sy)] {
+                        if ax != 0.0 || ay != 0.0 {
+                            let aim = ((ox + ax * k) * flip, (oy + ay * k) * flip);
+                            tries.push((step.board, aim));
+                        }
+                    }
+                }
+                tries.dedup();
+            }
+            tries.extend(NUDGES.iter().skip(1).map(|(dx, dy)| {
+                let p = (step.board.0 + dx * flip, step.board.1 + dy * flip);
+                (p, p)
+            }));
+            tries.retain(|&(_, (x, y))| {
+                // Stay in the side's zone and in view.
+                (x * flip).abs() <= 30.0
+                    && (-40.0..=-1.0).contains(&(y * flip))
+                    && mechabellum_grounds::clickable(projection.to_screen(x, y))
+            });
+            let spots: Vec<(f64, f64)> = tries.iter().map(|t| t.0).collect();
+            let screens: Vec<_> = tries
                 .iter()
-                .map(|(dx, dy)| (step.board.0 + dx * flip, step.board.1 + dy * flip))
-                .filter(|&(x, y)| {
-                    // Stay in the side's zone and in view.
-                    (x * flip).abs() <= 30.0
-                        && (-40.0..=-1.0).contains(&(y * flip))
-                        && mechabellum_grounds::clickable(projection.to_screen(x, y))
-                })
-                .collect();
-            let screens: Vec<_> = spots
-                .iter()
-                .map(|&(x, y)| projection.to_screen(x, y))
+                .map(|&(_, (x, y))| projection.to_screen(x, y))
                 .collect();
             // Turn a unit 4 squares behind its spot (toward its own edge), where the unturned
             // footprint fits even when the spot is on the front line.
@@ -1821,7 +1847,6 @@ fn move_unit(
     // Pick it up, drop it, confirm, deselect. It has moved when the blob that grew at the spawn
     // point has shrunk back and a blob sits at the target. A refused drop leaves the unit carried,
     // so cancel with a right-click and try again.
-    let spawn_weight = |blobs: &[(Px, usize)]| blob_weight(blobs, spawn);
     // A middle click on the ground while carrying turns the unit 90 degrees. Turning is a
     // toggle and a refused drop keeps the turn, so turn only once. It's done at `turn_at`, a spot
     // where the unturned footprint fits: at the target itself, one that only fits turned (a
@@ -1860,7 +1885,7 @@ fn move_unit(
                 target.1,
                 spawn.0,
                 spawn.1,
-                spawn_weight(&now),
+                blob_weight(&now, spawn),
                 grown,
                 now.iter()
                     .map(|(p, w)| (p.0 as i32, p.1 as i32, *w))
@@ -1869,7 +1894,7 @@ fn move_unit(
         }
         // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
         let left_spawn =
-            near(target, spawn, 120.0) || (spawn_weight(&now) as f64) < grown as f64 * 0.8;
+            near(target, spawn, 120.0) || (blob_weight(&now, spawn) as f64) < grown as f64 * 0.8;
         let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
         if left_spawn && at_target {
             return Ok(Some(i));

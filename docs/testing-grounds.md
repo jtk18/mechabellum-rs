@@ -196,6 +196,16 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   keep-out at about 4x4 squares (x -16 to -12, y -20 to -16 on the south half), against the
   2x2 that ranked replays show, and the Research Center's close to its 2x2. Units in front of
   the Command Center that the screen shows standing flush are recorded a square forward.
+- **Fixed: aim off the tower (2026-10-01).** The user placed units flush against both towers by
+  hand (a Sabertooth at -13.5,-14.5 in front of the Command Center, a Hound at 14,-15 in front of
+  the Research Center), and the tool placed those exact two from straight down. The difference
+  from the failing Arclight at -14,-15 is the click: 2 squares from the Command Center's center
+  lands on the tower, 2.5 squares doesn't. A drop snaps to the grid, so near a tower `place` now
+  also tries clicks 0.25 and 0.4 squares farther from it, one axis at a time (both at once at a
+  corner overshot a square). The 16-unit flush board went from 6 exact to 13: still off are the
+  Command Center's outer side (-16,-17, refused) and the Research Center's two inner corners
+  (land a square farther out). A strict landing check (tile within half a square) made it worse:
+  tiles beside a tower are partly hidden, so their centers read off.
 - **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
   x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
   ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours
