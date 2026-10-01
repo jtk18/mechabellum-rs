@@ -68,15 +68,42 @@ fn main() {
         } else {
             fs::read_to_string(file).expect("Unable to read file")
         };
-        match board::Board::parse(&text) {
-            Ok(board) => {
-                let units: usize = board.sides.iter().map(|s| s.units.len()).sum();
-                println!("OK: {} sides, {units} units", board.sides.len());
+        // Every [board] block in the file, each checked for what the game wouldn't allow.
+        let (mut offset, mut failed) = (0, false);
+        let lower = text.to_ascii_lowercase();
+        while let Some(start) = lower[offset..].find("[board") {
+            let end = lower[offset + start..]
+                .find("[/board]")
+                .map_or(text.len(), |e| offset + start + e + "[/board]".len());
+            let rest = &text[offset + start..end];
+            let label = format!("board at byte {}", offset + start);
+            match board::Board::parse(rest) {
+                Ok(board) => {
+                    let units: usize = board.sides.iter().map(|s| s.units.len()).sum();
+                    let problems = board.problems();
+                    if problems.is_empty() {
+                        println!("OK: {} sides, {units} units", board.sides.len());
+                    } else {
+                        failed = true;
+                        println!("{label}: {} sides, {units} units", board.sides.len());
+                        for p in problems {
+                            println!("  {p}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    failed = true;
+                    eprintln!("{label}: {e}");
+                }
             }
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(1);
-            }
+            offset = end;
+        }
+        if offset == 0 {
+            eprintln!("no [board] block found");
+            failed = true;
+        }
+        if failed {
+            std::process::exit(1);
         }
         return;
     }

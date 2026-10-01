@@ -98,9 +98,16 @@ const ZONE_BACK: i32 = -310;
 const FLANK_CENTER_X: i32 = 330;
 const FLANK_NEAR: i32 = 10;
 const FLANK_OPENS_ROUND: u32 = 3;
-/// Command Center and Research Center: the same place on every 2.0 map, mirrored left and right.
-const TOWER_X: i32 = 140;
-const TOWER_Y: i32 = -175;
+/// Command Center and Research Center centers: the same place on every 2.0 map, mirrored left
+/// and right. Each blocks exactly 2×2 squares, x 13 to 15 and y -18 to -16 for the Research
+/// Center (no unit covers them in 2,821 replay boards on 5 maps; every square around them is
+/// covered hundreds of times).
+pub const TOWER_X: i32 = 140;
+pub const TOWER_Y: i32 = -170;
+/// A tower's width and depth, in replay units.
+pub const TOWER_SIZE: i32 = 20;
+/// Most units one `count=` makes.
+const MAX_COUNT: u32 = 60;
 
 /// A named point on a side's half. `inward` says which way the unit extends from it, so a unit
 /// anchored to a corner sits flush in the corner rather than centered on it.
@@ -110,9 +117,93 @@ struct Anchor {
     inward: (i32, i32),
 }
 
+/// A rectangle in a side's own frame (x to its right, y forward), in replay units: a tower, or a
+/// unit (or row of units) given a name with `id=`.
+#[derive(Debug, Clone, Copy)]
+struct Rect {
+    x: i32,
+    y: i32,
+    w: i32,
+    d: i32,
+}
+
+impl Rect {
+    /// The point `face` names (none: the center), and which way a unit extends from it to stand
+    /// flush against that face, outside the rectangle.
+    fn anchor(self, face: Option<&str>) -> Option<Anchor> {
+        let (hw, hd) = (self.w / 2, self.d / 2);
+        let (dx, dy) = match face {
+            None => (0, 0),
+            Some("front") => (0, 1),
+            Some("back") => (0, -1),
+            Some("left") => (-1, 0),
+            Some("right") => (1, 0),
+            Some("front-left") => (-1, 1),
+            Some("front-right") => (1, 1),
+            Some("back-left") => (-1, -1),
+            Some("back-right") => (1, -1),
+            Some(_) => return None,
+        };
+        Some(Anchor {
+            x: self.x + dx * hw,
+            y: self.y + dy * hd,
+            inward: (dx, dy),
+        })
+    }
+
+    fn overlaps(&self, o: &Rect) -> bool {
+        (self.x - o.x).abs() * 2 < self.w + o.w && (self.y - o.y).abs() * 2 < self.d + o.d
+    }
+}
+
+/// The two towers, in a side's own frame.
+fn tower(name: &str) -> Option<Rect> {
+    let x = match name {
+        "command-center" | "cc" => -TOWER_X,
+        "research-center" | "rc" => TOWER_X,
+        _ => return None,
+    };
+    Some(Rect {
+        x,
+        y: TOWER_Y,
+        w: TOWER_SIZE,
+        d: TOWER_SIZE,
+    })
+}
+
 /// Anchor names, for error messages.
 const ANCHORS: &str = "center, front, back, left, right, front-left, front-right, back-left, \
-back-right, left-flank, right-flank, command-center, research-center";
+back-right, left-flank, right-flank, command-center (cc), research-center (rc), or a name \
+given with id=; a tower or name can take a face: rc-front, cc-back-left, wall-right";
+
+/// Faces a tower or named unit can be followed by, longest first so `-front-left` wins over
+/// `-left`.
+const FACES: [&str; 8] = [
+    "front-left",
+    "front-right",
+    "back-left",
+    "back-right",
+    "front",
+    "back",
+    "left",
+    "right",
+];
+
+/// Resolve `from=`: a zone anchor, a tower, or a name given earlier with `id=`, the last two
+/// optionally followed by a face.
+fn resolve_anchor(name: &str, names: &BTreeMap<String, Rect>) -> Option<Anchor> {
+    if let Some(a) = anchor(name) {
+        return Some(a);
+    }
+    let rect = |n: &str| tower(n).or_else(|| names.get(n).copied());
+    if let Some(r) = rect(name) {
+        return r.anchor(None);
+    }
+    FACES.iter().find_map(|face| {
+        let base = name.strip_suffix(face)?.strip_suffix('-')?;
+        rect(base)?.anchor(Some(face))
+    })
+}
 
 fn anchor(name: &str) -> Option<Anchor> {
     let mid_y = (ZONE_FRONT + ZONE_BACK) / 2;
@@ -129,11 +220,6 @@ fn anchor(name: &str) -> Option<Anchor> {
         // The near end of a flank column, just past the middle.
         "left-flank" => (-FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
         "right-flank" => (FLANK_CENTER_X, FLANK_NEAR, (0, 1)),
-        // Tower centers; a unit is centered on the offset from them, since the tower itself
-        // takes the spot. Measured in Testing Grounds on every 2.0 map (2026-09-28), within
-        // half a square.
-        "command-center" => (-TOWER_X, TOWER_Y, (0, 0)),
-        "research-center" => (TOWER_X, TOWER_Y, (0, 0)),
         _ => return None,
     };
     Some(Anchor { x, y, inward })
@@ -491,6 +577,8 @@ impl Board {
         }
 
         let mut side: Option<Side> = None;
+        // The current side's id= names.
+        let mut names = BTreeMap::new();
         loop {
             let tag = p.tag()?;
             match (tag.name.as_str(), tag.closing, side.as_mut()) {
@@ -528,16 +616,18 @@ impl Board {
                         }
                     }
                     side = Some(s);
+                    names.clear();
                 }
                 ("side", true, Some(_)) => board.sides.push(side.take().unwrap()),
                 ("unit", false, Some(s)) => {
-                    if s.units.len() == MAX_UNITS_PER_SIDE {
+                    let (half, round) = (s.half, board.round);
+                    let row = parse_unit(&p, &tag, &units, half, round, &mut names)?;
+                    if s.units.len() + row.len() > MAX_UNITS_PER_SIDE {
                         return Err(
                             p.error(tag.at, format!("more than {MAX_UNITS_PER_SIDE} units"))
                         );
                     }
-                    let (half, round) = (s.half, board.round);
-                    s.units.push(parse_unit(&p, &tag, &units, half, round)?);
+                    s.units.extend(row);
                 }
                 ("unit", false, None) => {
                     return Err(p.error(tag.at, "a [unit] must be inside a [side]"))
@@ -585,6 +675,71 @@ impl Board {
             }
         }
         Ok(board)
+    }
+
+    /// What the game wouldn't allow: units overlapping each other or a tower, or standing
+    /// outside their side's zone or the flank columns. Only sides with a `half` are checked.
+    /// Footprints are inferred (`footprint`), so an overlap may also mean a wrong footprint.
+    /// Of 2,821 replay boards (2026-09-30), 2,803 pass; the rest have an Abyss or a few small
+    /// units overlapping by a square, or units in front of the zone (cards that deploy forward).
+    pub fn problems(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (i, side) in self.sides.iter().enumerate() {
+            let Some(half) = side.half else { continue };
+            let who = side
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("side {}", i + 1));
+            let what = |u: &BoardUnit| format!("{} at {},{}", u.name, squares(u.x), squares(u.y));
+            let mut rects: Vec<(&BoardUnit, Rect)> = Vec::new();
+            for u in &side.units {
+                let (x, y) = match half {
+                    Half::South => (u.x, u.y),
+                    Half::North => (-u.x, -u.y),
+                };
+                let (w, d) = crate::footprint(u.unit_id).unwrap_or((2, 2));
+                let (w, d) = if u.rotated { (d, w) } else { (w, d) };
+                let r = Rect {
+                    x,
+                    y,
+                    w: i32::from(w) * 10,
+                    d: i32::from(d) * 10,
+                };
+                if x.abs() > ZONE_HALF_WIDTH {
+                    // A flank column: units there stand on end, so only the center is checked.
+                    // Replays have units the whole length of both columns, and a few before
+                    // round 3 (2.0, 36 of 3,000 flank units), so neither is a problem.
+                    let in_column = x.abs() < 2 * FLANK_CENTER_X - ZONE_HALF_WIDTH
+                        && (ZONE_BACK..=-ZONE_BACK).contains(&y);
+                    if !in_column {
+                        out.push(format!("{who}: {} is outside the zone", what(u)));
+                    }
+                    continue;
+                }
+                let inside = (r.x - r.w / 2) >= -ZONE_HALF_WIDTH
+                    && (r.x + r.w / 2) <= ZONE_HALF_WIDTH
+                    && (r.y - r.d / 2) >= ZONE_BACK
+                    && (r.y + r.d / 2) <= ZONE_FRONT;
+                if !inside {
+                    out.push(format!("{who}: {} pokes out of the zone", what(u)));
+                }
+                for (name, t) in [
+                    ("Command Center", tower("cc")),
+                    ("Research Center", tower("rc")),
+                ] {
+                    if t.is_some_and(|t| t.overlaps(&r)) {
+                        out.push(format!("{who}: {} overlaps the {name}", what(u)));
+                    }
+                }
+                for (o, other) in &rects {
+                    if r.overlaps(other) {
+                        out.push(format!("{who}: {} overlaps {}", what(u), what(o)));
+                    }
+                }
+                rects.push((u, r));
+            }
+        }
+        out
     }
 
     /// The board as it stood before round `round_index`'s fight (0-based into `detail.rounds`).
@@ -663,13 +818,16 @@ impl Board {
     }
 }
 
+/// A `[unit=...]` tag: one unit, or a row of them with `count=`. `names` holds the side's
+/// `id=` names so far, and gets this tag's, if it has one.
 fn parse_unit(
     p: &Parser,
     tag: &Tag,
     units: &BTreeMap<String, (u32, String)>,
     half: Option<Half>,
     round: Option<u32>,
-) -> Result<BoardUnit, ParseError> {
+    names: &mut BTreeMap<String, Rect>,
+) -> Result<Vec<BoardUnit>, ParseError> {
     let name = tag
         .value
         .ok_or_else(|| p.error(tag.at, "say which unit: [unit=Crawler ...]"))?;
@@ -695,9 +853,13 @@ fn parse_unit(
         items: Vec::new(),
     };
     let mut placed = false;
-    let mut from: Option<(Anchor, usize)> = None;
+    let mut from: Option<(String, usize)> = None;
     // Squares right and forward of the anchor, in the side's own view.
     let (mut right, mut forward) = (0, 0);
+    let mut count: Option<(u32, usize)> = None;
+    let mut gap: Option<(i32, usize)> = None;
+    let mut toward: Option<((i32, i32), usize)> = None;
+    let mut label: Option<String> = None;
     for (key, value, at) in &tag.attrs {
         let at = *at;
         let need = || value.ok_or_else(|| p.error(at, format!("{key} needs a value")));
@@ -711,19 +873,7 @@ fn parse_unit(
                 unit.y = coordinate(p, y.trim(), at)?;
                 placed = true;
             }
-            "from" => {
-                let name = need()?.to_ascii_lowercase();
-                let a = anchor(&name).ok_or_else(|| {
-                    p.error(at, format!("unknown anchor {name:?}; use one of {ANCHORS}"))
-                })?;
-                if name.ends_with("-flank") && round.is_some_and(|r| r < FLANK_OPENS_ROUND) {
-                    return Err(p.error(
-                        at,
-                        format!("flank columns open in round {FLANK_OPENS_ROUND}"),
-                    ));
-                }
-                from = Some((a, at));
-            }
+            "from" => from = Some((need()?.to_ascii_lowercase(), at)),
             "right" => right += coordinate(p, need()?, at)?,
             "left" => right -= coordinate(p, need()?, at)?,
             "forward" => forward += coordinate(p, need()?, at)?,
@@ -742,45 +892,142 @@ fn parse_unit(
                 }
                 unit.rotated = true;
             }
+            "count" => {
+                let n: u32 = number(p, need()?, at)?;
+                if !(1..=MAX_COUNT).contains(&n) {
+                    return Err(p.error(at, format!("count must be 1 to {MAX_COUNT}")));
+                }
+                count = Some((n, at));
+            }
+            "gap" => {
+                let g = coordinate(p, need()?, at)?;
+                if g < 0 {
+                    return Err(p.error(at, "gap can't be negative"));
+                }
+                gap = Some((g, at));
+            }
+            "toward" => {
+                let dir = match need()?.to_ascii_lowercase().as_str() {
+                    "right" => (1, 0),
+                    "left" => (-1, 0),
+                    "forward" => (0, 1),
+                    "back" => (0, -1),
+                    _ => return Err(p.error(at, "toward is right, left, forward, or back")),
+                };
+                toward = Some((dir, at));
+            }
+            "id" => {
+                let v = need()?.to_ascii_lowercase();
+                let ok = v.len() <= 24
+                    && v.starts_with(|c: char| c.is_ascii_alphabetic())
+                    && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !ok {
+                    return Err(p.error(
+                        at,
+                        "an id is a letter, then letters, digits, or _ (up to 24; no -)",
+                    ));
+                }
+                if anchor(&v).is_some() || tower(&v).is_some() {
+                    return Err(p.error(at, format!("{v:?} is already an anchor's name")));
+                }
+                if names.contains_key(&v) {
+                    return Err(p.error(at, format!("id {v:?} is already used on this side")));
+                }
+                label = Some(v);
+            }
             _ => return Err(p.error(at, format!("[unit] has no {key} attribute"))),
         }
     }
-    match (placed, from) {
+    // The footprint, in replay units, turned if the unit is.
+    let (w, d) = crate::footprint(unit.unit_id).unwrap_or((2, 2));
+    let (w, d) = if unit.rotated { (d, w) } else { (w, d) };
+    let (w, d) = (i32::from(w) * 10, i32::from(d) * 10);
+    // Own frame <-> replay frame: the north half is the south's turned half a turn.
+    let flip = |(x, y): (i32, i32)| match half {
+        Some(Half::North) => (-x, -y),
+        _ => (x, y),
+    };
+    let need_half = |at: usize, what: &str| {
+        half.map(|_| ()).ok_or_else(|| {
+            p.error(
+                at,
+                format!("{what} need the side's half: [side half=south] or half=north"),
+            )
+        })
+    };
+    // The first unit's center, in the side's own frame.
+    let first = match (placed, from) {
         (true, Some((_, at))) => {
             return Err(p.error(at, "give either at=x,y or from=anchor, not both"))
         }
         (true, None) if right != 0 || forward != 0 => {
             return Err(p.error(tag.at, "left, right, forward, and back need from=anchor"))
         }
-        (true, None) => {}
+        (true, None) => flip((unit.x, unit.y)),
         (false, None) => {
             return Err(p.error(
                 tag.at,
                 "every unit needs a position: at=x,y, or from=anchor with left/right/forward/back",
             ))
         }
-        (false, Some((a, at))) => {
-            let half = half.ok_or_else(|| {
-                p.error(
+        (false, Some((name, at))) => {
+            let a = resolve_anchor(&name, names)
+                .ok_or_else(|| p.error(at, format!("unknown anchor {name:?}; use {ANCHORS}")))?;
+            if name.ends_with("-flank") && round.is_some_and(|r| r < FLANK_OPENS_ROUND) {
+                return Err(p.error(
                     at,
-                    "anchors need the side's half: [side half=south] or half=north",
-                )
-            })?;
-            // Half the unit's size, so it lines up against the anchor's edges.
-            let (w, d) = crate::footprint(unit.unit_id).unwrap_or((2, 2));
-            let (w, d) = if unit.rotated { (d, w) } else { (w, d) };
-            let x = a.x + a.inward.0 * i32::from(w) * 5 + right;
-            let y = a.y + a.inward.1 * i32::from(d) * 5 + forward;
-            (unit.x, unit.y) = match half {
-                Half::South => (x, y),
-                Half::North => (-x, -y),
-            };
-            if unit.x.abs() > MAX_COORD || unit.y.abs() > MAX_COORD {
-                return Err(p.error(at, "that position is off the board"));
+                    format!("flank columns open in round {FLANK_OPENS_ROUND}"),
+                ));
             }
+            need_half(at, "anchors")?;
+            // Half the unit's size, so it lines up against the anchor's edges.
+            (
+                a.x + a.inward.0 * w / 2 + right,
+                a.y + a.inward.1 * d / 2 + forward,
+            )
         }
+    };
+    // A row: each next unit beside the last, `gap` squares apart.
+    let n = match count {
+        Some((n, at)) => {
+            need_half(at, "rows (count=)")?;
+            n
+        }
+        None => {
+            if let Some(at) = gap.map(|g| g.1).or(toward.map(|t| t.1)) {
+                return Err(p.error(at, "gap and toward go with count="));
+            }
+            1
+        }
+    };
+    let (dx, dy) = toward.map_or((1, 0), |t| t.0);
+    let g = gap.map_or(0, |g| g.0);
+    let step = (dx * (w + g), dy * (d + g));
+    let n = n as i32;
+    let mut row = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let (x, y) = flip((first.0 + step.0 * i, first.1 + step.1 * i));
+        if x.abs() > MAX_COORD || y.abs() > MAX_COORD {
+            return Err(p.error(tag.at, "that position is off the board"));
+        }
+        row.push(BoardUnit {
+            x,
+            y,
+            ..unit.clone()
+        });
     }
-    Ok(unit)
+    if let Some(label) = label {
+        // The whole row's outline, so a later unit can line up against it.
+        let last = (first.0 + step.0 * (n - 1), first.1 + step.1 * (n - 1));
+        let rect = Rect {
+            x: (first.0 + last.0) / 2,
+            y: (first.1 + last.1) / 2,
+            w: w + (first.0 - last.0).abs(),
+            d: d + (first.1 - last.1).abs(),
+        };
+        names.insert(label, rect);
+    }
+    Ok(row)
 }
 
 /// A `[building=...]` or `[device=...]` tag: `what` is the tag name, `kind` its names.
@@ -1111,7 +1358,7 @@ good luck"#;
         assert_eq!((south[0].x, south[0].y), (-300 + 15 + 20, -10 - 10 - 10));
         assert_eq!((south[1].x, south[1].y), (0, 0));
         assert_eq!((south[2].x, south[2].y), (330, 10 + 10 + 30));
-        assert_eq!((south[3].x, south[3].y), (-140, -175 + 40));
+        assert_eq!((south[3].x, south[3].y), (-140, -170 + 40));
         // The same code for the north half mirrors through the middle.
         let north = &board.sides[1].units[0];
         assert_eq!((north.x, north.y), (-south[0].x, -south[0].y));
@@ -1131,6 +1378,89 @@ good luck"#;
                 .contains("not both")
         );
         assert!(err("[board][side][unit=Crawler at=1,1 right=2][/side][/board]").contains("from"));
+    }
+
+    #[test]
+    fn test_tower_faces_names_and_rows() {
+        let code = r#"[board round=2]
+[side half=south]
+[unit=Arclight from=rc-front]
+[unit=Arclight from=research-center-left]
+[unit=Tarantula from=rc-back]
+[unit=Arclight from=cc-back-right]
+[unit=Fortress id=wall from=front]
+[unit=Marksman from=wall-back]
+[unit=Crawler count=3 gap=1 id=row from=front-left]
+[unit=Fang from=row-back]
+[unit=Hound count=2 toward=back from=back-right]
+[/side]
+[side half=north]
+[unit=Arclight from=rc-front]
+[unit=Crawler count=2 from=front-left]
+[/side]
+[/board]"#;
+        let board = Board::parse(code).unwrap();
+        let at: Vec<(i32, i32)> = board.sides[0].units.iter().map(|u| (u.x, u.y)).collect();
+        // The Research Center covers x 130..150, y -180..-160; units stand flush against it.
+        assert_eq!(at[0], (140, -150));
+        assert_eq!(at[1], (120, -170));
+        assert_eq!(at[2], (140, -195));
+        assert_eq!(at[3], (-120, -190));
+        // A 4x4 Fortress flush with the front edge, a Marksman flush behind it.
+        assert_eq!(at[4], (0, -30));
+        assert_eq!(at[5], (0, -60));
+        // Three 3x2 Crawlers from the front-left corner, a square apart.
+        assert_eq!(&at[6..9], &[(-285, -20), (-245, -20), (-205, -20)]);
+        // A Fang (5x2) centered behind the whole row.
+        assert_eq!(at[9], (-245, -40));
+        // Two 4x2 Hounds from the back-right corner, the second toward the back: past the edge,
+        // which problems() reports.
+        assert_eq!(&at[10..12], &[(280, -300), (280, -320)]);
+        assert_eq!(board.problems().len(), 1, "{:?}", board.problems());
+        // North mirrors everything, rows included.
+        let north: Vec<(i32, i32)> = board.sides[1].units.iter().map(|u| (u.x, u.y)).collect();
+        assert_eq!(north, vec![(-140, 150), (285, 20), (255, 20)]);
+
+        let err = |text: &str| Board::parse(text).unwrap_err().message;
+        let side = |units: &str| format!("[board][side half=south]{units}[/side][/board]");
+        assert!(err(&side("[unit=Crawler from=nope-front]")).contains("unknown anchor"));
+        assert!(err(&side("[unit=Crawler id=front from=back]")).contains("anchor"));
+        assert!(err(&side("[unit=Crawler id=a-b from=back]")).contains("letter"));
+        assert!(err(&side(
+            "[unit=Crawler id=a from=back][unit=Crawler id=a from=front]"
+        ))
+        .contains("already used"));
+        assert!(err(&side("[unit=Crawler from=back gap=1]")).contains("count"));
+        assert!(err(&side("[unit=Crawler from=back count=0]")).contains("count"));
+        assert!(err("[board][side][unit=Crawler at=0,-5 count=2][/side][/board]").contains("half"));
+        // Names belong to one side.
+        assert!(Board::parse(
+            "[board][side half=south][unit=Crawler id=a from=back][/side]             [side half=north][unit=Crawler from=a-front][/side][/board]"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_problems() {
+        let code = r#"[board]
+[side name=a half=south]
+[unit=Arclight at=14,-17]
+[unit=Fortress at=0,-20]
+[unit=Fortress at=2,-21]
+[unit=Fortress at=0,-1]
+[unit=Crawler at=33,10]
+[unit=Crawler at=40,10]
+[/side]
+[side name=b]
+[unit=Fortress at=0,0]
+[/side]
+[/board]"#;
+        let problems = Board::parse(code).unwrap().problems();
+        assert_eq!(problems.len(), 4, "{problems:?}");
+        assert!(problems[0].contains("Research Center"));
+        assert!(problems[1].contains("overlaps Fortress at 0,-20"));
+        assert!(problems[2].contains("pokes out"));
+        assert!(problems[3].contains("Crawler at 40,10 is outside"));
     }
 
     #[test]

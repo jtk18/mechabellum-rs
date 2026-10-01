@@ -71,19 +71,52 @@ Instead of `at=x,y`, a unit can be placed relative to a landmark on its own side
 | `left`, `right` | the middle of the zone's left or right edge |
 | `front-left`, `front-right`, `back-left`, `back-right` | the zone's corners |
 | `left-flank`, `right-flank` | the near end of a flank column, just past the middle; from round 3 |
-| `command-center`, `research-center` | the towers' centers (see below); use an offset |
+| `command-center` (`cc`), `research-center` (`rc`) | a tower's center; add a face to stand beside it (below) |
+| a name given with `id=` | that unit (or row) on the same side; add a face to stand beside it |
+
+**Faces:** a tower or a named unit followed by `-front`, `-back`, `-left`, `-right`, or a corner
+(`-front-left`, `-back-right`, ...) puts the new unit flush against that side of it, outside it,
+centered along it (or diagonally off the corner). Offsets still apply.
+
+```text
+[side half=south]
+[unit=Arclight from=rc-front]                  touching the Research Center's front
+[unit=Tarantula from=research-center-back]     touching its back
+[unit=Fortress id=wall from=front]             a name for later units
+[unit=Marksman from=wall-back left=1]          behind the Fortress, a square left
+[unit=Crawler count=5 gap=1 id=row from=front-left]
+[unit=Fang from=row-back]                      centered behind the whole row
+[/side]
+```
+
+**Names:** `id=wall` names a unit (a letter, then letters, digits, or `_`; no `-`, since that
+starts a face). A name works for the units after it on the same side, and can't reuse an
+anchor's name.
+
+**Rows:** `count=N` (up to 60) makes N copies, each next one flush beside the last, `gap=`
+squares apart (default 0), toward the side's right unless `toward=left`, `forward`, or `back`.
+An `id=` on a row names the whole row's outline.
 
 **Geometry** (the same on every 2.0 map measured, 82 games on 5 maps): each side's zone is 60
 squares wide and 30 deep, and its front edge stops 1 square short of the middle, so a 2-square
-strip separates the two boards. From round 3, flank columns 6 squares wide open along both edges
-of the opponent's half, running its full depth. That's the "front moves up" change mid-game. A
-flank anchor used with `round` below 3 is an error.
+strip separates the two boards. From round 3, flank columns 6 squares wide (x 30 to 36) open
+along both edges. That's the "front moves up" change mid-game. A flank anchor used with `round`
+below 3 is an error (though cards can allow it: 36 of 3,000 flank units in 2.0 replays stood
+there in rounds 1 and 2).
 
-**Towers:** the Command Center stands at about (-14, -17.5) and the Research Center at about
-(14, -17.5) in a side's own frame, on every 2.0 map. They were measured in Testing Grounds,
-since replays don't record them. Give an offset (e.g. `from=command-center forward=5`): the unit
-is centered at the offset, and the game nudges units off a tower's footprint (about a square
-or two).
+**Towers:** each tower covers exactly 2×2 squares: the Research Center x 13 to 15, y -18 to -16,
+centered at (14, -17), and the Command Center mirrored at (-14, -17), in a side's own frame, on
+every 2.0 map. No unit covers those squares in 2,821 replay boards, and every square around
+them is covered hundreds of times. Units can stand flush against every side.
+
+## Checking a code
+
+`replay-parse check-board FILE` reads every `[board]` in the file and reports what the game
+wouldn't allow: units overlapping each other or a tower, poking out of the zone, or outside the
+zone and the flank columns. Unit sizes come from `footprint` in `game_data.rs`; checking the
+2,821 replay boards corrected five of them (2026-09-30), and 2,803 of the boards now pass. The
+rest have an Abyss or a few small units overlapping by a square, or units ahead of the zone
+(cards that deploy forward).
 
 ## Buildings
 

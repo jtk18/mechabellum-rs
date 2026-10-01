@@ -34,6 +34,12 @@ fn base_id(id: u32) -> u32 {
 /// centers sit on half squares across (odd width) and on grid lines front to back (even depth)
 /// in 30 of 33 Fangs and 9 of 9 Crawlers, and Fangs stack 2 squares apart. Fang is 5 wide by
 /// 2 deep (J, from play); Crawler's 3 is the smallest odd width, not confirmed in game.
+///
+/// 2026-09-30, from 2,821 replay boards (`replay-parse check-board`): Centurion, Wraith, and
+/// Tarantula are 3×3, not 5×5 or 5×3 (units stand closer than half that to the zone's edges
+/// and to each other), and Phoenix and Typhoon are 4 wide by 2 deep, not 2 by 4. With these
+/// every unit type fits its board without overlaps; every footprint is at most what the
+/// zone's edges allow.
 pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     Some(match base_id(unit_id) {
         1 => (4, 4),    // Fortress
@@ -51,15 +57,15 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         13 => (5, 2),   // Sledgehammer
         14 => (3, 3),   // Hacker
         15 => (2, 2),   // Arclight
-        16 => (2, 4),   // Phoenix
+        16 => (4, 2),   // Phoenix
         17 => (5, 5),   // War Factory
-        18 => (5, 5),   // Wraith
+        18 => (3, 3),   // Wraith
         19 => (3, 3),   // Scorpion
         20 => (5, 2),   // Fire Badger
         21 => (3, 3),   // Sabertooth
-        22 => (2, 4),   // Typhoon
+        22 => (4, 2),   // Typhoon
         23 => (4, 4),   // Sandworm
-        24 => (5, 3),   // Tarantula
+        24 => (3, 3),   // Tarantula
         25 => (2, 2),   // Phantom Ray
         26 => (3, 3),   // Farseer
         27 => (4, 4),   // Raiden
@@ -67,7 +73,7 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         29 => (7, 7),   // Abyss
         30 => (4, 2),   // Void Eye
         31 => (2, 2),   // Vortex
-        32 => (5, 5),   // Centurion
+        32 => (3, 3),   // Centurion
         2001 => (5, 5), // Death Knell
         2002 => (7, 7), // Mountain
         4001 => (5, 5), // Experimental Death Knell
