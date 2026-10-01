@@ -149,8 +149,15 @@ Commit each step once it's verified.
         or a drag that ends there instead of a click.
       - Testing Grounds' zone is a square smaller at the sides too (x = +-29); `place` moves
         units in, verified 2026-10-01.
-      - Straight-down calibrations for Railway Town, Dusk, Training Base, and Forest Eye
-        (only Night so far; running 2026-10-01 overnight).
+      - ~~Straight-down calibrations for the other maps~~ Done 2026-10-01: all five maps, two
+        passes each (fits within 7 to 13 px). A test board of anchors, names, and rows
+        (tower faces, a row on the back edge, a turned Fang on the right edge, Hounds stacked
+        forward, Marksmen in a gapped row) placed everything exactly on all of them except
+        units flush against a tower: sides land on some maps and not others (Night and
+        Training Base mostly yes, Forest Eye no), so a tower's click area reaches past its
+        sides too, about as far as its 2x2 footprint plus a square. Those land 3 squares
+        sideways (the nudge list). A Tarantula behind the Research Center was once moved by a
+        later unit's retries (Dusk, Training Base): retries click near placed units.
       - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.
