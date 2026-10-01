@@ -2,7 +2,7 @@
 //! Testing Grounds view. Built in for Railway Town; `grounds calibrate` measures the rest and
 //! saves them in a JSON file next to the program's data.
 
-use crate::{Projection, RAILWAY_TOWN_NORTH, RAILWAY_TOWN_SOUTH};
+use crate::{Projection, TOP_DOWN_NORTH, TOP_DOWN_SOUTH};
 
 use serde::{Deserialize, Serialize};
 
@@ -31,19 +31,23 @@ const RAILWAY_TOWN_VARIANTS: [&str; 3] = [
     "Railway Town - Night",
 ];
 
+/// The file calibrations for the straight-down view are kept in (`calibrations.json` holds the
+/// earlier ones, for the starting tilt).
+const FILE: &str = "top-down.json";
+
 /// Where calibrations are kept: the repository's data folder when run from a checkout, else next
 /// to the program.
 pub fn default_path() -> PathBuf {
     let checkout = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("data")
-        .join("calibrations.json");
+        .join(FILE);
     if checkout.parent().is_some_and(Path::is_dir) {
         return checkout;
     }
     std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("calibrations.json")))
-        .unwrap_or_else(|| PathBuf::from("calibrations.json"))
+        .and_then(|p| p.parent().map(|d| d.join(FILE)))
+        .unwrap_or_else(|| PathBuf::from(FILE))
 }
 
 impl Calibrations {
@@ -71,8 +75,8 @@ impl Calibrations {
         }
         if RAILWAY_TOWN_VARIANTS.iter().any(|v| key(v) == key(map)) {
             return Some((
-                Projection::fit(&RAILWAY_TOWN_SOUTH)?,
-                Projection::fit(&RAILWAY_TOWN_NORTH)?,
+                Projection::fit(&TOP_DOWN_SOUTH)?,
+                Projection::fit(&TOP_DOWN_NORTH)?,
             ));
         }
         None
@@ -231,6 +235,7 @@ fn skip_sets(n: usize, k: usize) -> Vec<Vec<usize>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RAILWAY_TOWN_SOUTH;
 
     #[test]
     fn test_match_points_recovers_order() {

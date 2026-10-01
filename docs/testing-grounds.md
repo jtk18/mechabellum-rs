@@ -174,6 +174,22 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   the south half, or ±12,17 on the north), though ranked replays have units there. Either
   Testing Grounds blocks more around its towers, or the tower's model catches the click. A
   refused drop tries nearby spots (2 forward, 3 sideways, 4 forward) and reports where it went.
+  2026-09-30/10-01, looking straight down (`flow::look_straight_down`: hold R, zoom out; the
+  same view every time) with Night calibrated from the drawn tiles (fit within 9 px): each
+  tower covers exactly 2×2 squares (its yellow outline shows while carrying a unit), and units
+  stand flush against its sides and back, and the Research Center's front on the south half.
+  The square flush in front of the Command Center can't be clicked: the click lands on the
+  tower (its selection brackets reach about 1.25 squares out, and its click area farther) and
+  the carry is dropped, with no red footprint. It's the same with the tower panned to the middle
+  of the screen, so it isn't the camera's angle. The game centers a carried unit on the cursor
+  whatever point it was grabbed by, so there's no aiming beside it. On the north half both
+  towers' fronts fail the same way. Such a unit lands one square forward (the first nudge).
+- **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
+  x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
+  ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours
+  along, as it does at the front edge.
+  Debugging: `GROUNDS_DEBUG=dir` saves each drop's screenshot and the frame just after the
+  drop click (`carry*.png`), which shows the footprint the game tried.
 
 ## Re-fighting real rounds
 

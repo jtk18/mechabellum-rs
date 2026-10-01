@@ -50,7 +50,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 10. **Command Center and Research Center positions** on the map. Not in replays; per-map layouts
     are needed.
-11. **Verify inferred footprints** against the game and correct `game_data.rs`.
+11. **Verify inferred footprints** against the game and correct `game_data.rs`. 2026-09-30: five
+    corrected from 2,821 replay boards (`check-board`); every footprint now fits the corpus. Still
+    unconfirmed in game: exact sizes below the zone-edge bounds (e.g. Crawler 3x2, Stormcaller 3x2).
 
 ## Platform and distribution
 

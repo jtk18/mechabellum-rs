@@ -73,7 +73,7 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
                     game.click(ui::TOOLS_CLOSE_RIGHT, 800);
                 }
                 game.right_click(ui::NEUTRAL, 400);
-                game.wheel(-60);
+                look_straight_down(game);
                 return Ok(());
             }
             Screen::Battle => wait_for(game, Screen::Deploying, Duration::from_secs(200))?,
@@ -106,6 +106,15 @@ pub fn enter(game: &mut Game, fresh: bool) -> Result<()> {
         }
     }
     bail!("couldn't get into Testing Grounds")
+}
+
+/// Tilt the camera to look straight down and zoom all the way out. Both stop at a limit, so
+/// the view is the same every time, and switching sides keeps the tilt. From the starting tilt a
+/// tower's model hides the ground about 2 squares in front of it, so a click there hits the
+/// tower; from above nothing is hidden.
+pub fn look_straight_down(game: &mut Game) {
+    game.hold_key('R', 4000);
+    game.wheel(-60);
 }
 
 /// Choose the map in the Testing Grounds presets. Must be on the presets screen.

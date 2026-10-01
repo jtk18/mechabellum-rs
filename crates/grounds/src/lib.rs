@@ -131,9 +131,34 @@ impl Projection {
     }
 }
 
+/// A first guess for the straight-down view (see `flow::look_straight_down`), south half: the
+/// zone's corners and the two towers as they look on Railway Town - Night, read off a
+/// screenshot, so good to a square or so. `grounds calibrate` measures each map properly.
+pub const TOP_DOWN_SOUTH: [(f64, f64, f64, f64); 6] = [
+    (-30.0, -1.0, 640.0, 151.0),
+    (30.0, -1.0, 2214.0, 819.0),
+    (30.0, -31.0, 1920.0, 1536.0),
+    (-30.0, -31.0, 333.0, 845.0),
+    (-14.0, -17.0, 902.0, 653.0),
+    (14.0, -17.0, 1632.0, 986.0),
+];
+
+/// The same for the north half: its camera looks from the other end, so the screen is the same
+/// with the board turned half a turn.
+pub const TOP_DOWN_NORTH: [(f64, f64, f64, f64); 6] = [
+    (30.0, 1.0, 640.0, 151.0),
+    (-30.0, 1.0, 2214.0, 819.0),
+    (-30.0, 31.0, 1920.0, 1536.0),
+    (30.0, 31.0, 333.0, 845.0),
+    (14.0, 17.0, 902.0, 653.0),
+    (-14.0, 17.0, 1632.0, 986.0),
+];
+
 /// Calibration for Railway Town, south half, seen from your own side with the camera zoomed all
-/// the way out (60 wheel steps). Units dropped at these screen points were recorded at these board
-/// squares in the saved replay (2026-09-27); fit error 2 to 10 px. The whole zone is on screen.
+/// the way out (60 wheel steps) and at its starting tilt, before the tool switched to looking
+/// straight down (the tilted view lets a tower's model hide the ground in front of it). Units
+/// dropped at these screen points were recorded at these board squares in the saved replay
+/// (2026-09-27); fit error 2 to 10 px. Kept for the geometry tests.
 pub const RAILWAY_TOWN_SOUTH: [(f64, f64, f64, f64); 6] = [
     (5.5, -12.0, 1472.0, 742.0),
     (22.5, -5.0, 1997.0, 762.0),
@@ -490,11 +515,11 @@ pub fn tech_buttons(
 #[derive(Debug, Clone)]
 pub struct PlanStep {
     pub name: String,
-    /// Where it goes: the code's spot, or moved back behind [`FRONT_EDGE`].
+    /// Where it goes: the code's spot, or moved inside [`FRONT_EDGE`] and [`SIDE_EDGE`].
     pub board: (f64, f64),
     pub screen: Px,
     pub clickable: bool,
-    /// Squares it was moved back to stay behind the front edge.
+    /// Squares it was moved to stay inside Testing Grounds' zone (see [`behind_front`]).
     pub moved_back: f64,
 }
 
@@ -503,10 +528,16 @@ pub struct PlanStep {
 /// was moved to 3 or refused, and a turned one on the front line was put down unturned).
 pub const FRONT_EDGE: f64 = 2.0;
 
+/// How far from the middle across a unit may reach in Testing Grounds, in squares: one square in
+/// from ranked's 30 on both sides (2026-10-01, Night round 2: Crawlers flush with x = -30 and
+/// 30 were refused, and ones a square in placed exactly; the back edge is the same as ranked's).
+pub const SIDE_EDGE: f64 = 29.0;
+
 /// Each unit's spot, moved straight back where needed so every footprint stays behind
-/// [`FRONT_EDGE`], with how far it moved. A unit moved back pushes the ones right behind it
-/// (overlapping it across) back too, so a packed formation keeps its shape instead of the game
-/// shoving the overlapping units aside.
+/// [`FRONT_EDGE`], and straight in from [`SIDE_EDGE`], with how far it moved. A unit moved
+/// back pushes the ones right behind it (overlapping it across) back too, and one moved in
+/// pushes the ones beside it, so a packed formation keeps its shape instead of the game
+/// shoving the overlapping units aside. Units in the flank columns are left alone across.
 pub fn behind_front(units: &[mechabellum::board::BoardUnit]) -> Vec<((f64, f64), f64)> {
     // Across (x), distance from the middle (t), width, depth.
     let boxes: Vec<(f64, f64, f64, f64)> = units
@@ -534,13 +565,37 @@ pub fn behind_front(units: &[mechabellum::board::BoardUnit]) -> Vec<((f64, f64),
         }
         t[i] = want;
     }
+    // Then across, once from each side edge inward.
+    let mut xs: Vec<f64> = boxes.iter().map(|b| b.0).collect();
+    for dir in [1.0, -1.0] {
+        // dir 1: in from the left edge (x = -SIDE_EDGE), units taken left to right.
+        let mut order: Vec<usize> = (0..units.len())
+            .filter(|&i| boxes[i].0.abs() <= 30.0)
+            .collect();
+        order.sort_by(|&a, &b| (dir * xs[a]).total_cmp(&(dir * xs[b])));
+        let start = xs.clone();
+        for (k, &i) in order.iter().enumerate() {
+            let (_, _, w, d) = boxes[i];
+            let mut want = (dir * start[i]).max(-SIDE_EDGE + w / 2.0);
+            for &j in &order[..k] {
+                let (_, _, wj, dj) = boxes[j];
+                let level = (t[i] - t[j]).abs() < (d + dj) / 2.0 - 1e-6;
+                let was_beside = dir * start[i] - w / 2.0 >= dir * start[j] + wj / 2.0 - 1e-6;
+                if level && was_beside {
+                    want = want.max(dir * xs[j] + (w + wj) / 2.0);
+                }
+            }
+            xs[i] = dir * want;
+        }
+    }
     units
         .iter()
         .zip(&boxes)
         .zip(t)
-        .map(|((u, &(x, ti, _, _)), t)| {
+        .zip(xs)
+        .map(|(((u, &(x, ti, _, _)), t), xn)| {
             let sign = if u.y < 0 { -1.0 } else { 1.0 };
-            ((x, t * sign), t - ti)
+            ((xn, t * sign), t - ti + (xn - x).abs())
         })
         .collect()
 }
@@ -760,6 +815,31 @@ mod tests {
         assert_eq!(south[1], ((20.0, -5.0), 0.0));
         // Right behind it (as on Dusk round 2): pushed back with it.
         assert_eq!(south[2], ((14.0, -8.0), 1.0));
+    }
+
+    #[test]
+    fn test_side_edges() {
+        let board = mechabellum::board::Board::parse(
+            "[board]
+[side half=south]
+             [unit=Crawler count=3 from=left]
+[unit=Crawler at=27.5,-20]
+             [unit=Crawler at=28.5,-26]
+[unit=Crawler at=33,10]
+[/side]
+[/board]",
+        )
+        .unwrap();
+        let moves = behind_front(&board.sides[0].units);
+        // Flush with x = -30: the row shifts a square right, all three together.
+        assert_eq!(moves[0], ((-27.5, -16.0), 1.0));
+        assert_eq!(moves[1], ((-24.5, -16.0), 1.0));
+        assert_eq!(moves[2], ((-21.5, -16.0), 1.0));
+        // Already a square in: stays.
+        assert_eq!(moves[3], ((27.5, -20.0), 0.0));
+        assert_eq!(moves[4], ((27.5, -26.0), 1.0));
+        // In a flank column: left alone.
+        assert_eq!(moves[5], ((33.0, 10.0), 0.0));
     }
 
     #[test]

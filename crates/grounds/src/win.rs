@@ -13,9 +13,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    mouse_event, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-    MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL,
-    MOUSE_EVENT_FLAGS,
+    keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
+    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
+    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSE_EVENT_FLAGS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, GetClientRect, IsIconic, SetCursorPos, SetForegroundWindow, SetProcessDPIAware,
@@ -168,6 +168,50 @@ impl Game {
         ms(wait_ms);
     }
 
+    /// Hold the middle button and move from `from` to `to`: this turns the camera.
+    /// The game reads turning from raw mouse motion, which moving the cursor directly doesn't
+    /// make, so this sends relative moves. The system's pointer speed can carry the cursor
+    /// farther than asked, and a cursor at the screen's edge scrolls the camera, so keep drags
+    /// short and start them mid-screen.
+    pub fn middle_drag(&mut self, from: Px, to: Px, wait_ms: u64) {
+        self.glide(from);
+        let a = self.to_client(from);
+        let b = self.to_client(to);
+        unsafe { mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0) };
+        ms(120);
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        const STEPS: i32 = 40;
+        for i in 0..STEPS {
+            let step = |d: i32| d * (i + 1) / STEPS - d * i / STEPS;
+            unsafe { mouse_event(MOUSEEVENTF_MOVE, step(dx), step(dy), 0, 0) };
+            ms(20);
+        }
+        ms(120);
+        unsafe { mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0) };
+        // Where the cursor ended up isn't known; put it back where it's tracked.
+        self.set_cursor(a);
+        ms(wait_ms);
+    }
+
+    /// Hold a letter key (a camera control: Q, E, R, F) for `ms_held`. Only letters: never Enter,
+    /// which opens the chat.
+    pub fn hold_key(&mut self, letter: char, ms_held: u64) {
+        let Some(vk) = letter
+            .to_ascii_uppercase()
+            .is_ascii_uppercase()
+            .then(|| letter.to_ascii_uppercase() as u8)
+        else {
+            return;
+        };
+        let _ = unsafe { SetForegroundWindow(self.hwnd) };
+        unsafe {
+            keybd_event(vk, 0, KEYBD_EVENT_FLAGS(0), 0);
+            ms(ms_held);
+            keybd_event(vk, 0, KEYEVENTF_KEYUP, 0);
+        }
+        ms(600);
+    }
+
     /// Scroll the wheel at the middle of the window; negative zooms out.
     pub fn wheel(&mut self, steps: i32) {
         self.glide((REFERENCE_SIZE.0 / 2.0, REFERENCE_SIZE.1 / 2.0));
@@ -199,6 +243,11 @@ impl Game {
     /// The client area as an RGB image, scaled to reference size if needed.
     pub fn screenshot(&mut self) -> Result<image::RgbImage> {
         self.park();
+        self.screenshot_here()
+    }
+
+    /// The client area without moving the cursor first, e.g. while it carries a unit.
+    pub fn screenshot_here(&mut self) -> Result<image::RgbImage> {
         let (w, h) = self.size;
         unsafe {
             let screen = GetDC(HWND::default());

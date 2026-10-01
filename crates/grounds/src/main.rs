@@ -5,7 +5,7 @@
 //! camera shows, for now. See docs/testing-grounds.md.
 
 use mechabellum::board::{Board, Half};
-use mechabellum_grounds::{plan, Projection, RAILWAY_TOWN_NORTH, RAILWAY_TOWN_SOUTH};
+use mechabellum_grounds::{plan, Projection, TOP_DOWN_NORTH, TOP_DOWN_SOUTH};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -98,6 +98,9 @@ enum Command {
         /// Keep the replay it saves (normally deleted after reading)
         #[arg(long)]
         keep: bool,
+        /// Start over instead of pooling with the map's earlier points
+        #[arg(long)]
+        replace: bool,
     },
     /// Set up a board code, fight the round, save the replay, and check it matches the code
     Verify {
@@ -136,6 +139,24 @@ enum Command {
     },
     /// Pan the camera: drag with the right button between two screen points (reference pixels)
     Pan {
+        #[arg(value_parser = parse_point)]
+        from: (u32, u32),
+        #[arg(value_parser = parse_point)]
+        to: (u32, u32),
+    },
+    /// Press Switch Sides this many times
+    Switch {
+        #[arg(default_value_t = 1)]
+        times: u32,
+    },
+    /// Hold a camera key (Q, E, R or F) for some milliseconds
+    Key {
+        letter: char,
+        #[arg(default_value_t = 1000)]
+        ms: u64,
+    },
+    /// Turn the camera: drag with the middle button between two screen points
+    Turn {
         #[arg(value_parser = parse_point)]
         from: (u32, u32),
         #[arg(value_parser = parse_point)]
@@ -311,7 +332,7 @@ fn main() -> Result<()> {
             println!("in Testing Grounds");
         }
         #[cfg(windows)]
-        Command::Calibrate { map, keep } => calibrate(&map, keep)?,
+        Command::Calibrate { map, keep, replace } => calibrate(&map, keep, replace)?,
         #[cfg(windows)]
         Command::Tidy => {
             println!(
@@ -390,6 +411,29 @@ fn main() -> Result<()> {
             game.wheel(steps);
         }
         #[cfg(windows)]
+        Command::Key { letter, ms } => {
+            if !"QERFqerf".contains(letter) {
+                bail!("only the camera keys Q, E, R and F");
+            }
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            game.hold_key(letter, ms);
+        }
+        #[cfg(windows)]
+        Command::Switch { times } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            for _ in 0..times {
+                game.right_click(mechabellum_grounds::ui::NEUTRAL, 400);
+                game.click(mechabellum_grounds::ui::SWITCH_SIDES, 2500);
+            }
+            game.wheel(-60);
+        }
+        #[cfg(windows)]
+        Command::Turn { from, to } => {
+            let mut game = mechabellum_grounds::win::Game::find()?;
+            let px = |(x, y): (u32, u32)| (f64::from(x), f64::from(y));
+            game.middle_drag(px(from), px(to), 1500);
+        }
+        #[cfg(windows)]
         Command::Pan { from, to } => {
             let mut game = mechabellum_grounds::win::Game::find()?;
             let px = |(x, y): (u32, u32)| (f64::from(x), f64::from(y));
@@ -416,6 +460,9 @@ fn main() -> Result<()> {
         Command::Shot { .. }
         | Command::Zoom { .. }
         | Command::Pan { .. }
+        | Command::Turn { .. }
+        | Command::Switch { .. }
+        | Command::Key { .. }
         | Command::Place { .. }
         | Command::Drop { .. }
         | Command::Enter { .. }
@@ -529,15 +576,16 @@ fn verify(
     let mut notes = Vec::new();
     for side in &mut meant.sides {
         let moves = mechabellum_grounds::behind_front(&side.units);
-        for (u, ((_, y), moved)) in side.units.iter_mut().zip(moves) {
+        for (u, ((x, y), moved)) in side.units.iter_mut().zip(moves) {
             if moved > 0.0 {
                 notes.push(format!(
-                    "{}{} at {:.1},{:.1} was moved {moved:.1} back, to clear Testing Grounds' front edge or a unit moved back in front of it",
+                    "{}{} at {:.1},{:.1} was moved {moved:.1} squares, to clear Testing Grounds' edges (2 from the middle, 29 across) or a unit moved in its way",
                     mechabellum_grounds::compare::NOTE,
                     u.name,
                     f64::from(u.x) / 10.0,
                     f64::from(u.y) / 10.0
                 ));
+                u.x = (x * 10.0).round() as i32;
                 u.y = (y * 10.0).round() as i32;
             }
         }
@@ -548,7 +596,7 @@ fn verify(
 
 /// Board squares to drop calibration units at, in a side's own frame (x right, y toward the
 /// middle; the south half's coordinates). Spread over the zone, and deliberately not symmetric,
-/// so a fit can't match them rotated. They keep clear of the towers (about ±14,-17.5) and the
+/// so a fit can't match them rotated. They keep clear of the towers (±14,-17) and the
 /// spawn pad (the middle), where drops are refused. Each drop snaps to the grid, so a fit needs
 /// many points to average that out.
 const CALIBRATION_TARGETS: [(f64, f64); 14] = [
@@ -876,7 +924,7 @@ fn worst_error(points: &mechabellum_grounds::calibration::Points) -> Option<f64>
 /// Drop Crawlers across both halves of `map`, fight a round, read where the replay recorded
 /// them, and save a fitted calibration for the map.
 #[cfg(windows)]
-fn calibrate(map: &str, keep: bool) -> Result<()> {
+fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
     use mechabellum_grounds::calibration::{
         default_path, match_by_guess, match_points, Calibrations, MapCalibration,
     };
@@ -891,8 +939,8 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
     let (guess_south, guess_north) = match Calibrations::load(&default_path()).projections(map) {
         Some(p) => p,
         None => (
-            Projection::fit(&RAILWAY_TOWN_SOUTH).context("calibration")?,
-            Projection::fit(&RAILWAY_TOWN_NORTH).context("calibration")?,
+            Projection::fit(&TOP_DOWN_SOUTH).context("calibration")?,
+            Projection::fit(&TOP_DOWN_NORTH).context("calibration")?,
         ),
     };
     let known = Calibrations::load(&default_path())
@@ -918,7 +966,21 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
                 continue;
             }
             match spawn_and_place(&mut game, "Crawler", &[target], None) {
-                Ok(Some(_)) => dropped[i].push(target),
+                Ok(Some(_)) => {
+                    // Looking straight down, the unit's green tile lies flat on the ground
+                    // around its center: measure that, not the click, which the game rounds to
+                    // the grid (by up to half a square).
+                    let blobs = mechabellum_grounds::green_blobs(&game.screenshot()?);
+                    let tile = blobs
+                        .iter()
+                        .map(|b| b.0)
+                        .filter(|p| (p.0 - target.0).hypot(p.1 - target.1) < 45.0)
+                        .min_by(|a, b| {
+                            let d = |p: &(f64, f64)| (p.0 - target.0).hypot(p.1 - target.1);
+                            d(a).total_cmp(&d(b))
+                        });
+                    dropped[i].push(tile.unwrap_or(target));
+                }
                 Ok(None) => {
                     // Refused (a building, the zone's edge): the unit may still be carried.
                     game.right_click(ui::NEUTRAL, 600);
@@ -955,7 +1017,11 @@ fn calibrate(map: &str, keep: bool) -> Result<()> {
     let path = default_path();
     let mut all = Calibrations::load(&path);
     // Earlier runs' points for this map, pooled with this run's so grid snapping averages out.
-    let earlier = all.maps.get(map).cloned().unwrap_or_default();
+    let earlier = if replace {
+        MapCalibration::default()
+    } else {
+        all.maps.get(map).cloned().unwrap_or_default()
+    };
     let mut result = MapCalibration::default();
     for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
         // With a close calibration already, match each drop to the unit recorded nearest where
@@ -1449,7 +1515,7 @@ fn place(
                 unit.level,
                 match landed.map(|i| spots[i]) {
                     Some((x, y)) if (x, y) == step.board && step.moved_back > 0.0 => format!(
-                        "placed {:.1} back, at {x:.1},{y:.1} (the front edge is farther back here)",
+                        "moved {:.1} squares, to {x:.1},{y:.1} (Testing Grounds' zone is a square smaller at the front and sides)",
                         step.moved_back
                     ),
                     Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
@@ -1495,7 +1561,7 @@ fn half_name(half: Half) -> &'static str {
 
 /// Command Center and Research Center on the south half, in squares (the same on every 2.0 map;
 /// mirrored for the north). They look the same every round, so they anchor camera matching.
-const TOWER: (f64, f64) = (14.0, -17.5);
+const TOWER: (f64, f64) = (14.0, -17.0);
 
 /// Board offsets (squares, in the side's own frame: +y toward the middle) to try when the game
 /// refuses a drop. From this camera the Research Center's model covers the ground about 2 to 3
@@ -1521,6 +1587,27 @@ fn spawn_and_place(
     targets: &[mechabellum_grounds::Px],
     turn_at: Option<mechabellum_grounds::Px>,
 ) -> Result<Option<usize>> {
+    let (spawn, grown) = spawn_unit(game, name)?;
+    move_unit(game, name, spawn, grown, targets, turn_at)
+}
+
+/// How much green shows within 60 pixels of `at` (the biggest blob there).
+fn blob_weight(blobs: &[(mechabellum_grounds::Px, usize)], at: mechabellum_grounds::Px) -> usize {
+    blobs
+        .iter()
+        .filter(|(p, _)| (p.0 - at.0).hypot(p.1 - at.1) < 60.0)
+        .map(|(_, w)| *w)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Spawn a unit from the Squad list. Returns where it showed up on the pad and how much green
+/// shows there with it.
+#[cfg(windows)]
+fn spawn_unit(
+    game: &mut mechabellum_grounds::win::Game,
+    name: &str,
+) -> Result<(mechabellum_grounds::Px, usize)> {
     use mechabellum_grounds::{green_blobs, ui, Px};
 
     let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
@@ -1595,19 +1682,28 @@ fn spawn_and_place(
     let Some(spawn) = found else {
         bail!("nothing appeared after spawning {name}");
     };
+    Ok((spawn, blob_weight(&after, spawn)))
+}
 
+/// Move the unit standing at `spawn` (with `grown` green showing there) to the first of
+/// `targets` the game accepts. Returns the index of the target it landed on, if a unit was
+/// seen there afterwards; a refused unit is left where it was.
+#[cfg(windows)]
+fn move_unit(
+    game: &mut mechabellum_grounds::win::Game,
+    name: &str,
+    spawn: mechabellum_grounds::Px,
+    grown: usize,
+    targets: &[mechabellum_grounds::Px],
+    turn_at: Option<mechabellum_grounds::Px>,
+) -> Result<Option<usize>> {
+    use mechabellum_grounds::{green_blobs, ui, Px};
+
+    let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
     // Pick it up, drop it, confirm, deselect. It has moved when the blob that grew at the spawn
     // point has shrunk back and a blob sits at the target. A refused drop leaves the unit carried,
     // so cancel with a right-click and try again.
-    let spawn_weight = |blobs: &[(Px, usize)]| {
-        blobs
-            .iter()
-            .filter(|(p, _)| near(*p, spawn, 60.0))
-            .map(|(_, w)| *w)
-            .max()
-            .unwrap_or(0)
-    };
-    let grown = spawn_weight(&after);
+    let spawn_weight = |blobs: &[(Px, usize)]| blob_weight(blobs, spawn);
     // A middle click on the ground while carrying turns the unit 90 degrees. Turning is a
     // toggle and a refused drop keeps the turn, so turn only once. It's done at `turn_at`, a spot
     // where the unturned footprint fits: at the target itself, one that only fits turned (a
@@ -1626,6 +1722,13 @@ fn spawn_and_place(
             turned = true;
         }
         game.click(target, 700);
+        if let Ok(dir) = std::env::var("GROUNDS_DEBUG") {
+            // Still carried if the drop was refused: the game draws the footprint it tried.
+            let n = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+            if let Ok(shot) = game.screenshot_here() {
+                let _ = shot.save(format!("{dir}/carry{n:03}.png"));
+            }
+        }
         game.double_click(target, 700);
         game.right_click(target, 900);
         let shot = game.screenshot()?;
