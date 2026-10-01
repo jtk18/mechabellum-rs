@@ -184,6 +184,9 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   of the screen, so it isn't the camera's angle. The game centers a carried unit on the cursor
   whatever point it was grabbed by, so there's no aiming beside it. On the north half both
   towers' fronts fail the same way. Such a unit lands one square forward (the first nudge).
+  A drag doesn't get around it either: pressing a square and a half away and releasing on the
+  spot also drops the carry, and the Command Center shows its hover ring with the cursor about
+  2.8 squares from its center (2026-10-01).
 - **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
   x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
   ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours
