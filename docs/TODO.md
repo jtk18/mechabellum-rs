@@ -157,7 +157,10 @@ Commit each step once it's verified.
         Training Base mostly yes, Forest Eye no), so a tower's click area reaches past its
         sides too, about as far as its 2x2 footprint plus a square. Those land 3 squares
         sideways (the nudge list). A Tarantula behind the Research Center was once moved by a
-        later unit's retries (Dusk, Training Base): retries click near placed units.
+        later unit's retries (Dusk, Training Base): the Arclight's click beside it hit the
+        Tarantula's model, picked it up, and the first nudge put it down there (11.5,-15.5).
+        Next: after a refused drop, check that the units already placed haven't moved, or
+        place units beside big models before the big models.
       - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.
