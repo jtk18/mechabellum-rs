@@ -26,6 +26,10 @@ interface PlacedUnit {
   rotated: boolean;
   footprint: [number, number] | null;
   equipment: { id: string; name: string | null }[];
+  /** Not in this side's previous fight. */
+  is_new: boolean;
+  /** XP earned in this fight, when known (never for the last fight). */
+  xp_gained: number | null;
 }
 
 interface CardRef {
@@ -52,6 +56,8 @@ interface SideLayout {
   research_center: Structure;
   /** Units rebuilt from the round's actions (the last round has no snapshot after it). */
   rebuilt: boolean;
+  /** Index of the unit that earned the most XP in this fight. */
+  most_xp: number | null;
 }
 
 interface MatchDetail {
@@ -61,7 +67,14 @@ interface MatchDetail {
   map_name: string | null;
   match_mode: string;
   game_mode: string;
-  players: { id: string; name: string; team: string; won: boolean | null; loadout: UnitTechs[] }[];
+  players: {
+    id: string;
+    name: string;
+    team: string;
+    won: boolean | null;
+    loadout: UnitTechs[];
+    starter_pack: { id: string; units: { unit_id: number; name: string; count: number }[] } | null;
+  }[];
   rounds: { round: number; sides: (SideLayout | null)[] }[];
 }
 
@@ -76,6 +89,9 @@ const ZONE_FRONT = 10;
 const ZONE_BACK = 310;
 const FLANK_OUTER = 360;
 const FLANK_OPENS_ROUND = 3;
+/** Why the board ranks units by XP and not damage. */
+const NO_DAMAGE_NOTE = "Replays record each unit's XP but not its damage: fight reports only total each side.";
+
 /** Footprint used when a unit's size is unknown. */
 const FALLBACK: [number, number] = [2, 2];
 
@@ -234,8 +250,9 @@ function drawUnits(sides: (SideLayout | null)[]) {
       const [bx, by] = toBoard(u.x, u.y);
       const [w, h] = size(u);
       const isSelected = selected?.side === s && selected.index === u.index;
+      const isTop = side?.most_xp === u.index;
       const g = svg("g", {
-        class: `unit ${sideClass(s)}${isSelected ? " selected" : ""}`,
+        class: `unit ${sideClass(s)}${isSelected ? " selected" : ""}${u.is_new ? " new" : ""}`,
         tabindex: 0,
         role: "button",
         "aria-label": `${u.name}, level ${u.level + 1}, ${detail!.players[s].name}`,
@@ -257,7 +274,21 @@ function drawUnits(sides: (SideLayout | null)[]) {
       for (let l = 0; l < Math.min(u.level, 5); l++) {
         g.append(svg("rect", { class: "pip", x: bx - w / 2 + 2 + l * 2.6, y: by - h / 2 + 2, width: 1.8, height: 1.8 }));
       }
-      const tip: Tip = { title: u.name, lines: [`Level ${u.level + 1}`, `Owned by ${detail!.players[s].name}`] };
+      if (isTop) {
+        // Most XP this fight: a star badge centered on the top-right corner, so it stays
+        // readable on one-square units.
+        const r = 7;
+        const cx = bx + w / 2 - 1;
+        const cy = by - h / 2 + 1;
+        g.append(svg("circle", { class: "xp-badge", cx, cy, r }));
+        const star = svg("text", { class: "xp-star", x: cx, y: cy + r * 0.38, "text-anchor": "middle", "font-size": r * 1.25 });
+        star.textContent = "★";
+        g.append(star);
+      }
+      const lines = [`Level ${u.level + 1}`, `Owned by ${detail!.players[s].name}`];
+      if (u.is_new) lines.push("New this round");
+      if (u.xp_gained !== null) lines.push(`${u.xp_gained.toLocaleString()} XP earned this fight${isTop ? ", the most on its side" : ""}`);
+      const tip: Tip = { title: u.name, lines };
       g.dataset.tip = JSON.stringify(tip);
       const choose = () => {
         selected = { side: s, index: u.index };
@@ -311,6 +342,22 @@ function renderUnitPanel() {
         el("p", "", `${side.result === "Win" ? "Won" : "Lost"} the round with ${side.hp.toLocaleString()} HP left`),
         el("p", "muted", `${side.units.length} units${side.specialists.length ? `, specialists: ${side.specialists.join(", ")}` : ""}`),
       );
+      const top = side.units.find((u) => u.index === side.most_xp);
+      const xpLine = el("p", top ? "" : "muted");
+      if (top) {
+        xpLine.append(el("span", "xp-star-inline", "★"), document.createTextNode(` Most XP: ${top.name} #${top.index + 1}, ${top.xp_gained!.toLocaleString()} XP`));
+      } else {
+        xpLine.textContent = side.rebuilt ? "XP from the last fight isn't recorded." : "No unit's XP is known for this fight.";
+      }
+      xpLine.dataset.tip = JSON.stringify({ title: "XP this fight", lines: ["XP each unit earned in this round's fight, counting level-ups."], note: NO_DAMAGE_NOTE } satisfies Tip);
+      block.append(xpLine);
+      const added = side.units.filter((u) => u.is_new);
+      if (added.length) {
+        const counts = new Map<string, number>();
+        for (const u of added) counts.set(u.name, (counts.get(u.name) ?? 0) + 1);
+        const list = [...counts].map(([name, n]) => (n > 1 ? `${n} ${name}` : name)).join(", ");
+        block.append(el("p", "muted", `New this round: ${list}`));
+      }
       block.append(structureCard("Command Center", art.commandCenter(), side.command_center, "No skills active"));
       block.append(structureCard("Research Center", art.researchCenter(), side.research_center, "No blueprints"));
       if (side.cards_offered.length) {
@@ -353,6 +400,17 @@ function renderUnitPanel() {
     level.append(el("span", "xp-text", `${unit.exp.toLocaleString()} XP (next level's requirement not known yet)`));
   }
   card.append(level);
+  const facts: string[] = [];
+  if (unit.is_new) facts.push("New this round.");
+  if (unit.xp_gained !== null) {
+    const top = sides[s]?.most_xp === unit.index;
+    facts.push(`Earned ${unit.xp_gained.toLocaleString()} XP this fight${top ? ", the most on its side" : ""}.`);
+  }
+  if (facts.length) {
+    const p = el("p", "muted", facts.join(" "));
+    p.dataset.tip = JSON.stringify({ title: "XP this fight", lines: ["Counts level-ups within the fight."], note: NO_DAMAGE_NOTE } satisfies Tip);
+    card.append(p);
+  }
 
   if (unit.equipment.length) {
     const list = el("ul", "equipment-list");

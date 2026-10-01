@@ -155,6 +155,14 @@
       <div class="match-body">
         <div class="board-wrap">
           <svg id="board" class="board" role="img" aria-labelledby="match-title"></svg>
+          <div class="legend board-legend" aria-label="Board legend">
+            <span class="legend-unit side-near"></span><span class="legend-unit side-far"></span>
+            <span>Fought last round too</span>
+            <span class="legend-unit side-near new"></span><span class="legend-unit side-far new"></span>
+            <span>New this round</span>
+            <span class="xp-star-inline legend-gap">★</span>
+            <span data-tip='{"title":"Most XP","lines":["The unit on each side that earned the most XP in this round&#39;s fight, counting level-ups."],"note":"Replays record each unit&#39;s XP but not its damage: fight reports only total each side."}'>Most XP this fight, per side</span>
+          </div>
           <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
           <p class="board-note" id="board-note-rebuilt" hidden>
             The replay saves no snapshot after the last round, so this board is rebuilt by

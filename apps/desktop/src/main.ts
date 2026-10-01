@@ -64,6 +64,15 @@ interface MatchRow {
   losers: string[];
   winner_elos: (number | null)[];
   loser_elos: (number | null)[];
+  /** Per player, in the same order as the names. */
+  winner_packs: (StarterPack | null)[];
+  loser_packs: (StarterPack | null)[];
+}
+
+/** Units a player's starter pack put on the board for round 1. */
+interface StarterPack {
+  id: string;
+  units: { unit_id: number; name: string; count: number }[];
 }
 
 interface TrendCell {
@@ -398,7 +407,8 @@ function renderMatchList() {
   const query = $<HTMLInputElement>("match-search").value.trim().toLowerCase();
   const shown = allMatches.filter((m) => {
     if (!query) return true;
-    const text = [...m.winners, ...m.losers, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
+    const packUnits = [...m.winner_packs, ...m.loser_packs].flatMap((p) => p?.units.map((u) => u.name) ?? []);
+    const text = [...m.winners, ...m.losers, ...packUnits, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
       .join(" ")
       .toLowerCase();
     return query.split(/\s+/).every((word) => text.includes(word));
@@ -415,27 +425,24 @@ function renderMatchList() {
       const iWon = me !== null && m.winners.includes(me);
       const iLost = me !== null && m.losers.includes(me);
       const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
+      // One line per player, winners first, each with the starter pack they opened with.
       const players = el("span", "players");
-      const side = (names: string[], elos: (number | null)[], cls: string, none: string) => {
-        const span = el("span", cls);
-        if (names.length === 0) span.textContent = none;
-        names.forEach((name, i) => {
-          if (i > 0) span.append(", ");
-          span.append(name);
-          const elo = elos[i];
-          if (elo != null) {
-            const badge = el("span", "elo", String(elo));
-            badge.title = "MMR at match start";
-            span.append(badge);
-          }
-        });
-        return span;
+      const line = (name: string, elo: number | null, pack: StarterPack | null, won: boolean) => {
+        const row = el("span", `player-line${won ? " winner" : ""}`);
+        row.append(el("span", "result-tag", won ? "Won" : "Lost"));
+        const who = el("span", "name", name);
+        if (elo != null) {
+          const badge = el("span", "elo", String(elo));
+          badge.title = "MMR at match start";
+          who.append(badge);
+        }
+        row.append(who);
+        if (pack) row.append(packChips(pack));
+        return row;
       };
-      players.append(
-        side(m.winners, m.winner_elos, "winner", "Nobody"),
-        el("span", "vs", " beat "),
-        side(m.losers, m.loser_elos, "", "nobody"),
-      );
+      m.winners.forEach((name, i) => players.append(line(name, m.winner_elos[i], m.winner_packs[i], true)));
+      m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_packs[i], false)));
+      if (players.children.length === 0) players.append(el("span", "player-line muted", "No result recorded"));
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
       open.type = "button";
@@ -453,6 +460,24 @@ function renderMatchList() {
   } else if (shown.length > 400) {
     list.append(el("li", "empty", `Showing the newest 400. Search to narrow the rest.`));
   }
+}
+
+/** A starter pack as small unit icons with counts, e.g. [Fang] 3 [Steel Ball] 2. */
+function packChips(pack: StarterPack) {
+  const chips = el("span", "pack");
+  const tip: Tip = {
+    title: "Starter pack",
+    lines: pack.units.map((u) => `${u.count} ${u.name}`),
+    note: "The units it put on the board for round 1. The starting specialist is picked separately.",
+  };
+  chips.dataset.tip = JSON.stringify(tip);
+  for (const u of pack.units) {
+    const chip = el("span", "pack-unit");
+    chip.append(artImage(art.unitIcon(u.unit_id), "pack-icon", u.name) ?? el("span", "pack-icon placeholder", u.name.slice(0, 3)));
+    chip.append(el("span", "pack-count", `×${u.count}`));
+    chips.append(chip);
+  }
+  return chips;
 }
 
 /** Win rates this far from 50% get the strongest color. */
@@ -657,6 +682,7 @@ function applyArt() {
     renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
     renderSpecialists();
   }
+  if (matchListLoaded) renderMatchList();
   redrawMatch();
 }
 

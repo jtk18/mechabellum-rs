@@ -1182,16 +1182,71 @@ h1 {
 }
 
 .match-row .players {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Tag, name, pack: packs line up in a column across rows. */
+.player-line {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 170px) auto;
+  justify-content: start;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.player-line .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
-.match-row .winner {
+.player-line.winner .name {
   font-weight: 600;
 }
 
-.match-row .vs {
+.result-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.player-line.winner .result-tag {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Starter pack: small unit icons with counts. */
+.pack {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pack-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pack-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: var(--track);
+}
+
+.pack-icon.placeholder {
+  display: inline-grid;
+  place-items: center;
+  font-size: 9px;
   color: var(--text-muted);
 }
 
@@ -1236,6 +1291,68 @@ h1 {
   .match-row .details {
     grid-column: 3 / 4;
   }
+}
+
+/* New units and most XP on the board. The new-unit border is light green: far from every
+   side palette (blue, red, orange, purple, gold) in hue and much lighter than all of them. */
+:root {
+  --new-unit: #a6f07a;
+  --xp-badge: #ffd34d;
+}
+
+.board .unit.new rect:first-child,
+.board .unit.new .edge {
+  stroke: var(--new-unit);
+  stroke-width: 2;
+}
+
+.board .unit.new.selected rect:first-child,
+.board .unit.new.selected .edge {
+  stroke: #fff;
+  stroke-width: 2.4;
+}
+
+.board .unit .xp-badge {
+  fill: var(--xp-badge);
+  stroke: var(--board);
+  stroke-width: 0.6;
+  pointer-events: none;
+}
+
+.board .unit .xp-star {
+  fill: #3a2a00;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.xp-star-inline {
+  color: var(--xp-badge);
+}
+
+.board-legend {
+  margin-top: 8px;
+}
+
+.legend-unit {
+  width: 14px;
+  height: 12px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--side-color) 45%, var(--board));
+  border: 2px solid var(--side-color);
+}
+
+.legend-unit.new {
+  border-color: var(--new-unit);
+}
+
+.legend-unit.side-near:not(.new) + .side-far,
+.legend-unit.new + .side-far {
+  margin-left: -4px;
+}
+
+.legend-unit.new.side-near,
+.legend-gap {
+  margin-left: 12px;
 }
 
 /* Unit art on the board */
