@@ -551,7 +551,8 @@ impl BattleRecord {
                         .get(&fight)
                         .map(|ids| ids.iter().map(|id| card_ref(id)).collect())
                         .unwrap_or_default(),
-                    // Index 0 is taken to be the Command Center and 1 the Research Center.
+                    // Index 0 is the Command Center and 1 the Research Center (checked in Testing
+                    // Grounds: upgrading the Research Center alone records Index 1).
                     command_center: Structure {
                         level: levels.first().copied(),
                         items: data

@@ -41,10 +41,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 8. ~~Remaining art~~ Done: Star Expedition cards (`TD_*`), "Mass-produced" cards (item art
    `E_*_S2`), and 73 of 79 equipment icons (`E_*`, on the board's unit card and card rows). Still
    unknown: card ID 40001 (no name in the game's tables).
-9. **Verify `towerStrengthenLevels`** order (needs the game): index 0 is assumed to be the Command
-   Center and index 1 the Research Center. Upgrades are `PAD_StrengthenTower` with `Index` 0 or 1.
-   Replay data can't tell them apart: both indices correlate equally with CC skills and RC
-   blueprints, so they may be two identical towers. Check in game: upgrade one, note the index.
+9. ~~Verify `towerStrengthenLevels` order~~ Done 2026-10-02 in Testing Grounds: upgrading only the
+   Research Center recorded `PAD_StrengthenTower` with `Index` 1 and levels `[0, 1]`. So index 0 is
+   the Command Center and index 1 the Research Center, as assumed.
 
 ## Board
 
