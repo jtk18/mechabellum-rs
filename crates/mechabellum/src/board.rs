@@ -205,6 +205,19 @@ fn resolve_anchor(name: &str, names: &BTreeMap<String, Rect>) -> Option<Anchor> 
     })
 }
 
+/// `c` moved half a square toward 0 if a unit `size` across can't be centered there: an odd
+/// size centers on half squares, an even one on whole squares (replay units, 10 a square).
+fn on_grid(c: i32, size: i32) -> i32 {
+    let want = if size % 20 == 0 { 0 } else { 5 };
+    if c.rem_euclid(10) == want {
+        c
+    } else if c > 0 {
+        c - 5
+    } else {
+        c + 5
+    }
+}
+
 fn anchor(name: &str) -> Option<Anchor> {
     let mid_y = (ZONE_FRONT + ZONE_BACK) / 2;
     let (x, y, inward) = match name {
@@ -716,6 +729,18 @@ impl Board {
                     }
                     continue;
                 }
+                // A drop snaps the footprint to the grid: an odd width centers the unit on a half
+                // square, an even one on a whole square (likewise depth). Testing Grounds moved
+                // 3-wide Stormcallers given whole-square centers half a square (2026-10-02).
+                let off_grid = |c: i32, size: i32| c.rem_euclid(10) != if size % 20 == 0 { 0 } else { 5 };
+                if off_grid(r.x, r.w) || off_grid(r.y, r.d) {
+                    out.push(format!(
+                        "{who}: {} is off the grid for its {}x{} footprint",
+                        what(u),
+                        r.w / 10,
+                        r.d / 10
+                    ));
+                }
                 let inside = (r.x - r.w / 2) >= -ZONE_HALF_WIDTH
                     && (r.x + r.w / 2) <= ZONE_HALF_WIDTH
                     && (r.y - r.d / 2) >= ZONE_BACK
@@ -980,11 +1005,19 @@ fn parse_unit(
                 ));
             }
             need_half(at, "anchors")?;
-            // Half the unit's size, so it lines up against the anchor's edges.
-            (
+            // Half the unit's size, so it lines up against the anchor's edges. Centered on an
+            // anchor, an odd-sized unit would sit off the grid (a 3-wide unit centered behind a
+            // tower), which the game snaps half a square; snap it toward the middle instead,
+            // so the code says where it will stand. Flank units stand on end; left as they are.
+            let (x, y) = (
                 a.x + a.inward.0 * w / 2 + right,
                 a.y + a.inward.1 * d / 2 + forward,
-            )
+            );
+            if name.ends_with("-flank") {
+                (x, y)
+            } else {
+                (on_grid(x, w), on_grid(y, d))
+            }
         }
     };
     // A row: each next unit beside the last, `gap` squares apart.
@@ -1356,9 +1389,11 @@ good luck"#;
         let south = &board.sides[0].units;
         // Crawler is 5 wide, 2 deep: flush in the front-left corner, then 2 right, 1 back.
         assert_eq!((south[0].x, south[0].y), (-300 + 25 + 20, -10 - 10 - 10));
-        assert_eq!((south[1].x, south[1].y), (0, 0));
+        // Centered on the middle, a 5-wide Crawler snaps half a square to stay on the grid.
+        assert_eq!((south[1].x, south[1].y), (5, 0));
         assert_eq!((south[2].x, south[2].y), (330, 10 + 10 + 30));
-        assert_eq!((south[3].x, south[3].y), (-140, -170 + 40));
+        // A 5-wide Fang centered on the Command Center snaps half a square toward the middle.
+        assert_eq!((south[3].x, south[3].y), (-135, -170 + 40));
         // The same code for the north half mirrors through the middle.
         let north = &board.sides[1].units[0];
         assert_eq!((north.x, north.y), (-south[0].x, -south[0].y));
@@ -1404,7 +1439,8 @@ good luck"#;
         // The Research Center covers x 130..150, y -180..-160; units stand flush against it.
         assert_eq!(at[0], (140, -150));
         assert_eq!(at[1], (120, -170));
-        assert_eq!(at[2], (140, -195));
+        // A 3x3 Tarantula centered behind the tower snaps half a square toward the middle.
+        assert_eq!(at[2], (135, -195));
         assert_eq!(at[3], (-120, -190));
         // A 4x4 Fortress flush with the front edge, a Marksman flush behind it.
         assert_eq!(at[4], (0, -30));
@@ -1461,6 +1497,15 @@ good luck"#;
         assert!(problems[1].contains("overlaps Fortress at 0,-20"));
         assert!(problems[2].contains("pokes out"));
         assert!(problems[3].contains("Crawler at 40,10 is outside"));
+
+        // A 3-wide Stormcaller centered on a whole square can't stand there.
+        let off = Board::parse(
+            "[board][side half=south][unit=Stormcaller at=-22,-24][unit=Stormcaller at=-18.5,-24][/side][/board]",
+        )
+        .unwrap()
+        .problems();
+        assert_eq!(off.len(), 1, "{off:?}");
+        assert!(off[0].contains("Stormcaller at -22,-24 is off the grid"), "{off:?}");
     }
 
     #[test]

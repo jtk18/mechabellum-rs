@@ -42,6 +42,11 @@ fn base_id(id: u32) -> u32 {
 /// and to each other), and Phoenix and Typhoon are 4 wide by 2 deep, not 2 by 4. With these
 /// every unit type fits its board without overlaps; every footprint is at most what the
 /// zone's edges allow.
+///
+/// 2026-10-02: Phantom Ray is 5 wide by 2 deep, not 2 by 2. Its centers sit on half squares across
+/// and whole squares front to back (1,211 of 1,272 unturned), which only an odd width and even
+/// depth allow, and side by side in a row they stand 5 squares apart or more, never closer (62
+/// pairs at 5).
 pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     Some(match base_id(unit_id) {
         1 => (4, 4),    // Fortress
@@ -68,7 +73,7 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         22 => (4, 2),   // Typhoon
         23 => (4, 4),   // Sandworm
         24 => (3, 3),   // Tarantula
-        25 => (2, 2),   // Phantom Ray
+        25 => (5, 2),   // Phantom Ray
         26 => (3, 3),   // Farseer
         27 => (4, 4),   // Raiden
         28 => (4, 2),   // Hound
