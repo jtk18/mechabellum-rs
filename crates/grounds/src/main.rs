@@ -1550,7 +1550,12 @@ fn place(
             clear_inventory(&mut game);
         }
         println!("{}:", side.name.as_deref().unwrap_or(half_name(half)));
-        for (step, unit) in plan(side, projection).iter().zip(&side.units) {
+        let steps = plan(side, projection);
+        let side_buttons: Vec<Vec<usize>> = buttons.by_ref().take(side.units.len()).collect();
+        let side_items: Vec<Vec<u32>> = items.by_ref().take(side.units.len()).collect();
+        let order = mechabellum_grounds::placement_order(&side.units);
+        for i in order {
+            let (step, unit) = (&steps[i], &side.units[i]);
             if limit.is_some_and(|l| placed >= l) {
                 break;
             }
@@ -1612,14 +1617,12 @@ fn place(
                         step.name, step.board.0, step.board.1
                     );
                     game.right_click(ui::NEUTRAL, 600);
-                    buttons.next();
-                    items.next();
                     continue;
                 }
             };
             let at = landed.map_or(step.screen, |i| screens[i]);
             // Techs: select it (a click picks it up), click its card's buttons, then put it back.
-            let techs = buttons.next().unwrap_or_default();
+            let techs = side_buttons[i].clone();
             if !techs.is_empty() {
                 game.click(at, 900);
                 for b in &techs {
@@ -1641,7 +1644,7 @@ fn place(
             // Items: grant each into the inventory, then click it and the unit. One the unit
             // can't wear stays in the inventory; clear it.
             let mut refused_items = Vec::new();
-            for id in items.next().unwrap_or_default() {
+            for &id in &side_items[i] {
                 grant(&mut game, id)?;
                 game.click(ui::INVENTORY_ITEM, 700);
                 game.click(at, 900);

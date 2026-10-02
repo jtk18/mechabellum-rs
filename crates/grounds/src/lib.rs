@@ -624,6 +624,18 @@ pub fn plan(side: &mechabellum::board::Side, projection: &Projection) -> Vec<Pla
         .collect()
 }
 
+/// The order to place a side's units in: as written, but big models (3x3 and up) last. A
+/// click beside a big model can land on it and pick it up instead of dropping the unit being
+/// placed (an Arclight beside a Tarantula did). Ordering by neighbours didn't help: with the
+/// faces of a tower placed first, its corners failed more often (2026-10-02).
+pub fn placement_order(units: &[mechabellum::board::BoardUnit]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..units.len()).collect();
+    order.sort_by_key(|&i| {
+        mechabellum::footprint(units[i].unit_id).is_some_and(|(w, d)| w >= 3 && d >= 3)
+    });
+    order
+}
+
 /// Mean RGB over a rectangle of a reference-size image.
 pub fn mean_color(img: &image::RgbImage, (l, t, r, b): (u32, u32, u32, u32)) -> [f64; 3] {
     let mut sum = [0.0; 3];
@@ -797,6 +809,15 @@ pub fn green_blobs(img: &image::RgbImage) -> Vec<(Px, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_placement_order() {
+        let board = mechabellum::board::Board::parse(
+            "[board][side half=south][unit=Tarantula at=0,-10][unit=Arclight at=-16,-19][unit=Overlord at=0,-20][unit=Arclight at=-16,-15][/side][/board]",
+        )
+        .unwrap();
+        assert_eq!(placement_order(&board.sides[0].units), vec![1, 3, 0, 2]);
+    }
 
     #[test]
     fn test_behind_front() {
