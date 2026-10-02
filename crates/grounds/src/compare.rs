@@ -80,15 +80,27 @@ pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
             }
             continue;
         };
-        let mut unmatched: Vec<&BoardUnit> = got.units.iter().collect();
-        for w in &want.units {
-            // The nearest recorded unit of the same type.
-            let best = unmatched
-                .iter()
-                .enumerate()
-                .filter(|(_, g)| g.unit_id == w.unit_id)
-                .min_by_key(|(_, g)| (g.x - w.x).abs() + (g.y - w.y).abs());
-            let Some((k, g)) = best.map(|(k, g)| (k, *g)) else {
+        // Pair planned and recorded units of the same type, closest pairs first, so one unit
+        // that landed off doesn't take a neighbour's exact match and shift the blame along.
+        let mut pairs: Vec<(i32, usize, usize)> = Vec::new();
+        for (a, w) in want.units.iter().enumerate() {
+            for (b, g) in got.units.iter().enumerate() {
+                if g.unit_id == w.unit_id {
+                    pairs.push(((g.x - w.x).abs() + (g.y - w.y).abs(), a, b));
+                }
+            }
+        }
+        pairs.sort();
+        let mut pair_of: Vec<Option<usize>> = vec![None; want.units.len()];
+        let mut taken = vec![false; got.units.len()];
+        for (_, a, b) in pairs {
+            if pair_of[a].is_none() && !taken[b] {
+                pair_of[a] = Some(b);
+                taken[b] = true;
+            }
+        }
+        for (w, paired) in want.units.iter().zip(&pair_of) {
+            let Some(g) = paired.map(|b| &got.units[b]) else {
                 out.push(format!("{half:?}: missing {}", describe(w)));
                 continue;
             };
@@ -130,10 +142,9 @@ pub fn differences(planned: &Board, recorded: &Board) -> Vec<String> {
                     w.items.join(", ")
                 ));
             }
-            unmatched.remove(k);
         }
-        for extra in unmatched {
-            out.push(format!("{half:?}: extra {}", describe(extra)));
+        for (g, _) in got.units.iter().zip(&taken).filter(|(_, t)| !**t) {
+            out.push(format!("{half:?}: extra {}", describe(g)));
         }
         placed_differences(half, &want.buildings, &got.buildings, &mut out);
         placed_differences(half, &want.devices, &got.devices, &mut out);
@@ -221,5 +232,22 @@ mod tests {
         assert!(d.iter().any(|l| l.contains("missing Fang")), "{d:?}");
         assert!(d.iter().any(|l| l.contains("extra Hound")), "{d:?}");
         assert!(d.iter().any(|l| l.contains("not rotated")), "{d:?}");
+    }
+
+    #[test]
+    fn test_one_off_unit_is_one_line() {
+        // Three Arclights in a row; the middle one landed far away. Only it is reported, not
+        // its neighbours as well.
+        let planned = Board::parse(
+            "[board][side half=south][unit=Arclight at=-16,-17][unit=Arclight at=-16,-19][unit=Arclight at=-12,-19][/side][/board]",
+        )
+        .unwrap();
+        let got = Board::parse(
+            "[board][side half=south][unit=Arclight at=-16,-19][unit=Arclight at=-12,-19][unit=Arclight at=-19,-17][/side][/board]",
+        )
+        .unwrap();
+        let d = differences(&planned, &got);
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert!(d[0].contains("-16.0,-17.0 landed at Arclight at -19.0,-17.0"), "{d:?}");
     }
 }
