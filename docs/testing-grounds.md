@@ -221,6 +221,11 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   the spawn pad first, then big models last; not in the code's order.)
   `grounds click-map --tower cc --reach 3 --step 0.5` on Night (one Arclight moved spot to
   spot) did take -16,-17, so how far a tower's click area reaches differs by map and side.
+  Flush board with the fixed check, 2026-10-02: Railway Town 11/16, Night 10, Dusk 13,
+  Forest Eye 10, Training Base 10, no unit left on the pad. Nearly every miss is the towers'
+  inner sides (x = +-12, landing at +-11 or nudged) plus, on Night, Dusk and Training Base,
+  the outer sides. Ranked replays allow those spots: of 94,476 units on 2,821 boards, about 700 stand flush against each
+  side of each tower (inner and outer alike), so it's the click, not a game rule.
 - **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
   x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
   ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours
