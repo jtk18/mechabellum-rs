@@ -984,7 +984,7 @@ fn click_map(
     let mut game = mechabellum_grounds::win::Game::find()?;
     // The unit is moved from spot to spot: picked up where it stands, dropped and confirmed at
     // the next spot. Where it ends up (its green tint) says whether the spot took it.
-    let (mut at, _) = spawn_unit(&mut game, unit)?;
+    let (mut at, _, _) = spawn_unit(&mut game, unit)?;
     let near = |a: (f64, f64), b: (f64, f64), d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
     println!(
         "{unit} centered at each spot near the {tower} (own {tx},{}): G it stood there, . it didn't",
@@ -1742,8 +1742,8 @@ fn spawn_and_place(
     targets: &[mechabellum_grounds::Px],
     turn_at: Option<mechabellum_grounds::Px>,
 ) -> Result<Option<usize>> {
-    let (spawn, grown) = spawn_unit(game, name)?;
-    move_unit(game, name, spawn, grown, targets, turn_at)
+    let (spawn, grown, pad_before) = spawn_unit(game, name)?;
+    move_unit(game, name, spawn, grown, pad_before, targets, turn_at)
 }
 
 /// How much green shows within 60 pixels of `at` (the biggest blob there).
@@ -1756,13 +1756,13 @@ fn blob_weight(blobs: &[(mechabellum_grounds::Px, usize)], at: mechabellum_groun
         .unwrap_or(0)
 }
 
-/// Spawn a unit from the Squad list. Returns where it showed up on the pad and how much green
-/// shows there with it.
+/// Spawn a unit from the Squad list. Returns where it showed up on the pad, how much green
+/// shows there with it, and how much showed there before it (a unit left on the pad earlier).
 #[cfg(windows)]
 fn spawn_unit(
     game: &mut mechabellum_grounds::win::Game,
     name: &str,
-) -> Result<(mechabellum_grounds::Px, usize)> {
+) -> Result<(mechabellum_grounds::Px, usize, usize)> {
     use mechabellum_grounds::{green_blobs, ui, Px};
 
     let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
@@ -1837,7 +1837,7 @@ fn spawn_unit(
     let Some(spawn) = found else {
         bail!("nothing appeared after spawning {name}");
     };
-    Ok((spawn, blob_weight(&after, spawn)))
+    Ok((spawn, blob_weight(&after, spawn), blob_weight(&before, spawn)))
 }
 
 /// Move the unit standing at `spawn` (with `grown` green showing there) to the first of
@@ -1849,6 +1849,7 @@ fn move_unit(
     name: &str,
     spawn: mechabellum_grounds::Px,
     grown: usize,
+    pad_before: usize,
     targets: &[mechabellum_grounds::Px],
     turn_at: Option<mechabellum_grounds::Px>,
 ) -> Result<Option<usize>> {
@@ -1904,11 +1905,12 @@ fn move_unit(
             );
         }
         // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
-        // Otherwise the pad must be empty: after a real move it reads 0, after a refused drop
+        // Otherwise the pad must be back to how it was: after a real move it reads 0, after a refused drop
         // 51 to 354 (2026-10-02). Relative tests (under 80%, then 30% of the green measured at
         // spawn) let refused drops beside other units read as placed: green is always near the
         // target there, and the spawn measure itself swung from 78 to 355.
-        let left_spawn = near(target, spawn, 120.0) || blob_weight(&now, spawn) < 20;
+        // A unit left on the pad earlier stays there, so compare with the pad before the spawn.
+        let left_spawn = near(target, spawn, 120.0) || blob_weight(&now, spawn) < pad_before + 20;
         let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
         if left_spawn && at_target {
             return Ok(Some(i));
