@@ -47,8 +47,9 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Board
 
-10. **Command Center and Research Center positions** on the map. Not in replays; per-map layouts
-    are needed.
+10. ~~Command Center and Research Center positions~~ Done: the same on every 2.0 map, mirrored
+    (centers at x = +-14, y = -17 in a side's own frame, each exactly 2x2; no unit covers them in
+    2,821 replay boards on 5 maps). `TOWER_X`/`TOWER_Y` in board.rs; Testing Grounds agrees (T3).
 11. **Verify inferred footprints** against the game and correct `game_data.rs`. 2026-09-30: five
     corrected from 2,821 replay boards (`check-board`); every footprint now fits the corpus. Still
     unconfirmed in game: exact sizes below the zone-edge bounds (e.g. Stormcaller and Wasp 3x2). 2026-10-01: Crawler is 5x2 (row spacing in replays, and Testing Grounds).
