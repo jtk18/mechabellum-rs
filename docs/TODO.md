@@ -178,6 +178,9 @@ Commit each step once it's verified.
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.
       - The tool doesn't recognize the "Network disconnected" dialog.
+      - 2026-10-02, after the landing-check fix (bb1a826): re-fought round 2 of a real Night
+        match (20 units, two buildings): every unit landed where planned except one Hound moved
+        in from the side edge, and the outcome matched the real round (lose / win).
 - [x] T6. Buildings in board codes: `[building=Name at=x,y]`, read from replays
       (`constructionSnapshotDatas`). They stand in fixed sockets beside the towers.
 - [x] T7. Place buildings in Testing Grounds: the Squad tab's Building section, then a click on
