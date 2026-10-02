@@ -52,6 +52,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 11. **Verify inferred footprints** against the game and correct `game_data.rs`. 2026-09-30: five
     corrected from 2,821 replay boards (`check-board`); every footprint now fits the corpus. Still
     unconfirmed in game: exact sizes below the zone-edge bounds (e.g. Stormcaller and Wasp 3x2). 2026-10-01: Crawler is 5x2 (row spacing in replays, and Testing Grounds).
+    2026-10-02: Stormcaller and Wasp are 5x2 and Phantom Ray 5x2 (was 2x2): row spacing in replays,
+    the half-square grid (odd widths center on half squares; every unit in 2,821 boards follows
+    it), and Testing Grounds refusals. A sweep of every unit's closest same-type pairs fits the
+    table now; `check-board` flags units off the grid.
 25. ~~Battle stats~~ Done 2026-10-01: the match list shows each player's starter pack (unit
     icons and counts) beside a Won/Lost tag; the board marks units new this round with a green
     border and the unit with the most XP each fight with a star (per side), with a legend.
