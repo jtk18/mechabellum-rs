@@ -1500,7 +1500,7 @@ good luck"#;
 
         // A 3-wide Stormcaller centered on a whole square can't stand there.
         let off = Board::parse(
-            "[board][side half=south][unit=Stormcaller at=-22,-24][unit=Stormcaller at=-18.5,-24][/side][/board]",
+            "[board][side half=south][unit=Stormcaller at=-22,-24][unit=Stormcaller at=-15.5,-24][/side][/board]",
         )
         .unwrap()
         .problems();

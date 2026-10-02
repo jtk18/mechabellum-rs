@@ -46,7 +46,9 @@ fn base_id(id: u32) -> u32 {
 /// 2026-10-02: Phantom Ray is 5 wide by 2 deep, not 2 by 2. Its centers sit on half squares across
 /// and whole squares front to back (1,211 of 1,272 unturned), which only an odd width and even
 /// depth allow, and side by side in a row they stand 5 squares apart or more, never closer (62
-/// pairs at 5).
+/// pairs at 5). Stormcaller and Wasp are 5 by 2 too, not 3 by 2: side by side in a row they
+/// stand 5 squares apart or more (17 and 12 pairs at 5), they reach x = 27.5, which leaves 2.5
+/// squares to the zone's edge, and Testing Grounds refused a second one 3 squares from the first.
 pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     Some(match base_id(unit_id) {
         1 => (4, 4),    // Fortress
@@ -54,13 +56,13 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
         3 => (4, 4),    // Vulcan
         4 => (4, 4),    // Melting Point
         5 => (3, 3),    // Rhino
-        6 => (3, 2),    // Wasp
+        6 => (5, 2),    // Wasp
         7 => (5, 2),    // Mustang
         8 => (5, 2),    // Steel Ball
         9 => (5, 2),    // Fang
         10 => (5, 2),   // Crawler
         11 => (5, 5),   // Overlord
-        12 => (3, 2),   // Stormcaller
+        12 => (5, 2),   // Stormcaller
         13 => (5, 2),   // Sledgehammer
         14 => (3, 3),   // Hacker
         15 => (2, 2),   // Arclight
