@@ -15,7 +15,7 @@ to outside servers; sync tests use a local server on 127.0.0.1.
 Then items 1, 2, 4, 5, 6, 7, 8, 9, 11, 13, 14 (single instance, autostart), 24, 21, 12.
 
 Needs the user (skip overnight): 15 (Mac/Linux machines), 16 (the Ubuntu server), 17 (Steam
-Web API key), 22 (drives the live game), 23 (deleting GitHub branches).
+Web API key), 22 (drives the live game), 23 done.
 
 ## In progress: sharing matches (trust phase 1)
 
@@ -193,6 +193,6 @@ Commit each step once it's verified.
 
 ## Housekeeping
 
-23. Delete the merged `version-compat` and `workspace` branches, locally and on GitHub.
+23. ~~Delete the merged `version-compat` and `workspace` branches~~ Done 2026-10-02, locally and on GitHub.
 24. ~~Clippy warnings~~ Done; CI now denies new ones. The old tester crate is excluded until it's
     reworked.
