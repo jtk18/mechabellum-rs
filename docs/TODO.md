@@ -165,6 +165,11 @@ Commit each step once it's verified.
         Tarantula's model, picked it up, and the first nudge put it down there (11.5,-15.5).
         2026-10-02: `place` now sets each side's big models (3x3 and up) down last, so no
         click can land on one. Not yet re-run on Dusk and Training Base.
+        2026-10-02: `place` reported units still on the spawn pad as placed (the landing check
+        trusted green near the target, which is always there beside a tower). Fixed (44630e4):
+        the pad must read empty. Earlier flush-board scores were too high. The spots flush
+        against a tower's side are refused even alone; only an off-spot aim takes, a square out,
+        and `place` now says so. Ordering by neighbours didn't help. See testing-grounds.md.
       - ~~Dusk's view differs from Railway Town's by a square~~ Done 2026-09-30: Dusk and
         Night each have their own calibration (two runs pooled, fit within 24 px), and a
         Crawler test board matches exactly on both, in round 1 and round 2.
