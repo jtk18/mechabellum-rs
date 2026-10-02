@@ -1665,6 +1665,14 @@ fn place(
                         "moved {:.1} squares, to {x:.1},{y:.1} (Testing Grounds' zone is a square smaller at the front and sides)",
                         step.moved_back
                     ),
+                    Some((x, y)) if (x, y) == step.board
+                        && landed.is_some_and(|i| tries[i].1 != step.board) =>
+                    {
+                        // Only a click aimed off the spot took; from here the calibration's
+                        // error can snap it a square out (2026-10-02, x = +-12 by the towers on
+                        // Railway Town landed at +-11). The verify step has the last word.
+                        "placed by aiming off the tower (may be a square out)".to_owned()
+                    }
                     Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
                     Some((x, y)) => format!("refused there; placed at {x:.1},{y:.1}"),
                     None => "NOT confirmed (check the screen)".to_owned(),
@@ -1896,8 +1904,11 @@ fn move_unit(
             );
         }
         // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
-        let left_spawn =
-            near(target, spawn, 120.0) || (blob_weight(&now, spawn) as f64) < grown as f64 * 0.8;
+        // Otherwise the pad must be empty: after a real move it reads 0, after a refused drop
+        // 51 to 354 (2026-10-02). Relative tests (under 80%, then 30% of the green measured at
+        // spawn) let refused drops beside other units read as placed: green is always near the
+        // target there, and the spawn measure itself swung from 78 to 355.
+        let left_spawn = near(target, spawn, 120.0) || blob_weight(&now, spawn) < 20;
         let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
         if left_spawn && at_target {
             return Ok(Some(i));

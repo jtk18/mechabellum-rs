@@ -624,10 +624,11 @@ pub fn plan(side: &mechabellum::board::Side, projection: &Projection) -> Vec<Pla
         .collect()
 }
 
-/// The order to place a side's units in: as written, but big models (3x3 and up) last. A
-/// click beside a big model can land on it and pick it up instead of dropping the unit being
-/// placed (an Arclight beside a Tarantula did). Ordering by neighbours didn't help: with the
-/// faces of a tower placed first, its corners failed more often (2026-10-02).
+/// The order to place a side's units in, given as written (`place` sorts them farthest from the
+/// spawn pad first): big models (3x3 and up) last, as a click beside one can land on it and
+/// pick it up (an Arclight beside a Tarantula did). Ordering by neighbours didn't help
+/// (2026-10-02): the spots flush against a tower's side are refused even with nothing else on
+/// the board, so it's the tower that takes those clicks.
 pub fn placement_order(units: &[mechabellum::board::BoardUnit]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..units.len()).collect();
     order.sort_by_key(|&i| {

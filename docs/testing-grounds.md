@@ -206,15 +206,21 @@ Placement details learned re-fighting real rounds (2026-09-28, 29):
   Command Center's outer side (-16,-17, refused) and the Research Center's two inner corners
   (land a square farther out). A strict landing check (tile within half a square) made it worse:
   tiles beside a tower are partly hidden, so their centers read off.
-- **The refused outer side is about neighbours, not the tower (2026-10-02).** `grounds
-  click-map --tower cc --reach 3 --step 0.5` on Night (an Arclight dropped alone at each spot)
-  took -16,-17 at once, and every spot 2 squares out from the Command Center's center on all
-  four sides. In the flush board it's refused only after Arclights already stand at -16,-19
-  and -16,-15; its mirror, 16,-17 between 16,-19 and 16,-15, lands. So a neighbour's model
-  takes the click, depending on where on screen it is (models lean away from the screen's
-  center). Placing units with the most neighbours first made things worse (the corners, now
-  boxed in by a face on two sides, failed more), so `place` keeps the code's order and only
-  puts big models (3x3 and up) last.
+- **Tower sides, 2026-10-02 (Railway Town and Night).** Earlier flush-board scores were too
+  generous: `place` counted a drop as landed when the green near the target was there and the
+  spawn pad's green had shrunk by a fifth. Beside a tower or other units there's always green
+  near the target, and the pad's reading swings (78 to 355 for one Arclight), so units still
+  on the pad were reported placed (three per 16-unit board). Now the pad must read empty
+  (under 20; it reads 0 after every real move, 51 to 354 after refused drops).
+  With that, the spots flush against a tower's side (x = +-12, y = -17 on the south half) are
+  refused even with nothing else on the board: the tower takes the click. Only the aim 0.4
+  squares away from the tower goes through, and it lands a square out (+-11). Corners and the
+  front and back faces mostly land. Neither ordering by neighbours nor sliding the click along
+  the face helped. `place` now says "placed by aiming off the tower (may be a square out)"
+  for such units; `verify` gives the truth from the replay. (Units are placed farthest from
+  the spawn pad first, then big models last; not in the code's order.)
+  `grounds click-map --tower cc --reach 3 --step 0.5` on Night (one Arclight moved spot to
+  spot) did take -16,-17, so how far a tower's click area reaches differs by map and side.
 - **The side edges are a square in, too** (2026-10-01, Night round 2): Crawlers flush with
   x = ±30, which ranked allows, were refused; a square in, they land exactly. The back edge is
   ranked's. So `place` moves units in from x = ±29 (`SIDE_EDGE`), pushing packed neighbours
