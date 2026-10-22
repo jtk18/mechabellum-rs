@@ -616,27 +616,6 @@ pub fn run() {
             let art_dir = data_dir.join("art");
             let manifest = art::ArtManifest::load(&art_dir);
 
-            // No replay folder yet (the game creates it on first launch): keep looking, and
-            // start watching once Steam's install has one. The UI polls status, so it follows.
-            {
-                let app = app.handle().clone();
-                std::thread::Builder::new()
-                    .name("replay-finder".into())
-                    .spawn(move || loop {
-                        let state = app.state::<AppState>();
-                        if state.watching.lock().unwrap().is_some() {
-                            // Found, or set by hand; a later "choose folder" handles itself.
-                            std::thread::sleep(std::time::Duration::from_secs(5));
-                            continue;
-                        }
-                        if steam::find_replay_dir().is_some() {
-                            log::info!("replay folder appeared");
-                            start_watching(&app, &state);
-                        }
-                        std::thread::sleep(std::time::Duration::from_secs(5));
-                    })?;
-            }
-
             // Ratings (MMR) from the game's log, which replays don't carry.
             {
                 let store = store.clone();
@@ -694,6 +673,28 @@ pub fn run() {
             start_watching(app.handle(), &app.state::<AppState>());
             if manifest.is_none() {
                 start_art_extraction(app.handle(), &app.state::<AppState>());
+            }
+
+            // No replay folder yet (the game creates it on first launch): keep looking, and
+            // start watching once Steam's install has one. The UI polls status, so it follows.
+            // Spawned only after `manage`, since it reads AppState straight away.
+            {
+                let app = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("replay-finder".into())
+                    .spawn(move || loop {
+                        let state = app.state::<AppState>();
+                        if state.watching.lock().unwrap().is_some() {
+                            // Found, or set by hand; a later "choose folder" handles itself.
+                            std::thread::sleep(std::time::Duration::from_secs(5));
+                            continue;
+                        }
+                        if steam::find_replay_dir().is_some() {
+                            log::info!("replay folder appeared");
+                            start_watching(&app, &state);
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                    })?;
             }
 
             let show = MenuItem::with_id(app, "show", "Show stats", true, None::<&str>)?;
