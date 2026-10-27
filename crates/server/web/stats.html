@@ -149,7 +149,7 @@
     <section class="panel wide">
       <h2>Deployments <small>each player's round 1 layout. <a href="/matches" style="color: var(--muted)">How they're classed</a></small></h2>
       <div class="scroll"><table class="plain" id="deployments" aria-label="Win rate by round 1 deployment"></table></div>
-      <p class="note">A match is classed by how each player deployed for round 1. Matches: player results that deployed round 1 this way, and the share that won the match. Round 1: the share that won round 1's fight. 1v1 on the 2.0 board only; replays without a round 1 record aren't classed.</p>
+      <p class="note">A match is classed by how each player deployed for round 1. Results: player results that deployed round 1 this way (a match counts once per player), and the share that won the match. Won round 1: the share that won round 1's fight. Under 10 results, the record is shown instead of a rate. 1v1 on the 2.0 board (build 2259 on); replays without a round 1 record aren't classed.</p>
     </section>
     <section class="panel">
       <h2>Deployment against deployment <small>round 1 layouts; match win rate of the row</small></h2>
@@ -287,7 +287,8 @@ function renderHeat(trends) {
   table.replaceChildren(head, ...rows);
 }
 
-const BAND_COLORS = ["#d55181", "#c98500", "#008300", "#3987e5"];
+// Deployment bands front to back: one ordinal ramp in a hue no win/loss color uses.
+const BAND_COLORS = ["#c4f2df", "#6fd9b0", "#25b07f", "#137d58"];
 const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard", "Backboard"];
 function bandOf(label) {
   // "Sym midboard" and "Asym midboard" are the midboard band, and likewise aggressive.
@@ -306,13 +307,20 @@ function rate(n, d) { return d ? n / d : null; }
 function renderDeployments(g) {
   const table = $("deployments");
   const head = el("tr");
-  for (const h of ["Round 1 deployment", "Matches", "Match win rate", "Won round 1"]) head.append(el("th", "", h));
-  const rows = g.deployments.map((d) => {
-    const tr = el("tr", d.matches < SMALL ? "row-small" : "");
+  for (const h of ["Round 1 deployment", "Results", "Match win rate", "Won round 1"]) head.append(el("th", "", h));
+  head.children[1].title = "Player results: a match counts once for each player, so a match where both deployed the same way counts twice, one win and one loss";
+  // Front to back, as the legend and the grid run, whatever the counts.
+  const ordered = DEPLOYMENTS.flatMap((label) => g.deployments.filter((d) => d.label === label));
+  const rows = ordered.map((d) => {
+    const small = d.results < SMALL;
+    const tr = el("tr");
     const win = el("td", "barcell");
-    win.append(winBar(rate(d.wins, d.matches)));
-    tr.title = `${d.label} in round 1: won ${d.wins} of ${d.matches} matches, and round 1 itself in ${d.round_one_wins}`;
-    tr.append(labelCell(d.label), el("td", "", d.matches.toLocaleString()), win, el("td", "", pct(rate(d.round_one_wins, d.matches))));
+    // A handful of results only allows a few rates (1-0 reads 100%), so show the record instead.
+    if (small) win.append(el("span", "muted", `${d.wins}–${d.results - d.wins} (too few for a rate)`));
+    else win.append(winBar(rate(d.wins, d.results)));
+    tr.title = `${d.label} in round 1: won ${d.wins} of ${d.results} player results, and round 1 itself in ${d.round_one_wins}`;
+    tr.append(labelCell(d.label), el("td", "", d.results.toLocaleString()), win,
+      el("td", "", small ? `${d.round_one_wins}–${d.results - d.round_one_wins}` : pct(rate(d.round_one_wins, d.results))));
     return tr;
   });
   table.replaceChildren(head, ...rows);
@@ -337,16 +345,24 @@ function renderMatchups(g) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const td = el("td");
       if (m) {
-        const r = m.wins / m.matches;
-        // A few matches only allow a few percentages (1-0 reads 100%), so show the record.
-        if (m.matches < SMALL) {
-          td.textContent = `${m.wins}–${m.matches - m.wins}`;
+        const r = m.wins / m.results;
+        // A mirror counts each match twice, one win and one loss: 50% by construction, so show
+        // only how many matches there were.
+        const mirror = row === col && m.results === 2 * m.matches;
+        if (mirror) {
+          td.textContent = `mirror · ${m.matches}`;
           td.className = "thin";
+          td.title = `Round 1: ${m.matches} matches where both players deployed ${row}`;
+        } else if (m.results < SMALL) {
+          // A few results only allow a few percentages (1-0 reads 100%), so show the record.
+          td.textContent = `${m.wins}–${m.results - m.wins}`;
+          td.className = "thin";
+          td.title = `Round 1 ${row} against ${col}: won ${m.wins} of ${m.results}, from ${m.matches} matches`;
         } else {
           td.textContent = pct(r);
           td.style.background = heatColor(r);
+          td.title = `Round 1 ${row} against ${col}: won ${m.wins} of ${m.results} (${pct(r)}), from ${m.matches} matches`;
         }
-        td.title = `Round 1 ${row} against ${col}: won ${m.wins} of ${m.matches} matches (${pct(r)})`;
       }
       tr.append(td);
     }

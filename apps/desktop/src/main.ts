@@ -78,10 +78,12 @@ interface GameStats {
   matches: number;
   player_results: number;
   lengths: [number, number][];
-  /** Per round 1 deployment: matches are classed by round 1's layout. */
-  deployments: { label: string; matches: number; wins: number; round_one_wins: number }[];
-  /** 1v1 matches by both players' round 1 deployments. */
-  matchups: { deployment: string; against: string; matches: number; wins: number }[];
+  /** Per round 1 deployment: matches are classed by round 1's layout. `results` counts a match
+   * once for each player in the filter. */
+  deployments: { label: string; results: number; wins: number; round_one_wins: number }[];
+  /** 1v1 matches by both players' round 1 deployments: results, the matches they come from, and
+   * the row's wins. */
+  matchups: { deployment: string; against: string; results: number; matches: number; wins: number }[];
   winners: ArmyMeans | null;
   losers: ArmyMeans | null;
   units: {
@@ -492,9 +494,9 @@ function renderMatchList() {
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
       open.type = "button";
-      open.setAttribute("aria-label", `Open the board for ${m.winners.join(", ")} vs ${m.losers.join(", ")} on ${when.toLocaleDateString()}`);
+      open.setAttribute("aria-label", `Open the board for ${m.winners.join(", ")} vs ${m.losers.join(", ")} on ${when.toLocaleDateString(undefined, { timeZone: "UTC" })}`);
       open.addEventListener("click", () => showMatch(m.battle_id));
-      item.append(el("span", "when", when.toLocaleDateString()), outcome, players, details, open);
+      item.append(el("span", "when", when.toLocaleDateString(undefined, { timeZone: "UTC" })), outcome, players, details, open);
       item.addEventListener("dblclick", () => showMatch(m.battle_id));
       return item;
     }),
@@ -602,26 +604,32 @@ let lastTrends: VersionTrends | null = null;
 function renderDeployments(g: GameStats) {
   $("deploy-legend").replaceChildren(bandLegend());
   const container = $("deployments");
-  const heads = ["Round 1 deployment", "Matches", "Match win rate", "Won round 1"].map((h, i) =>
+  const heads = ["Round 1 deployment", "Results", "Match win rate", "Won round 1"].map((h, i) =>
     el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h),
   );
-  const rows = g.deployments.flatMap((d) => {
-    const small = d.matches < SMALL_SAMPLE;
+  heads[1].dataset.tip = JSON.stringify({
+    title: "Results",
+    lines: ["Player results: a match counts once for each player in the view, so in Everyone a match where both players deployed the same way counts twice, one win and one loss."],
+  } satisfies Tip);
+  // Front to back, as the legend and the grid run, whatever the counts.
+  const ordered = DEPLOYMENT_ORDER.flatMap((label) => g.deployments.filter((d) => d.label === label));
+  const rows = ordered.flatMap((d) => {
+    const small = d.results < SMALL_SAMPLE;
+    const losses = d.results - d.wins;
+    // A handful of results only allows a few rates (1-0 reads 100%), so show the record instead.
+    const record = el("div", "record", `${d.wins}–${losses} (fewer than ${SMALL_SAMPLE}: no rate)`);
     const cells = [
       deploymentPill(d.label),
-      el("div", "num", String(d.matches)),
-      winBar(d.matches ? d.wins / d.matches : 0.5),
-      el("div", "num", d.matches ? pct(d.round_one_wins / d.matches) : "–"),
+      el("div", "num", String(d.results)),
+      small ? record : winBar(d.results ? d.wins / d.results : 0.5),
+      el("div", "num", small ? `${d.round_one_wins}–${d.results - d.round_one_wins}` : pct(d.round_one_wins / d.results)),
     ];
     const tip: Tip = {
       title: `${d.label} in round 1`,
-      lines: [`Won ${d.wins} of ${d.matches} matches`, `Won round 1 itself in ${d.round_one_wins}`],
-      note: small ? `Fewer than ${SMALL_SAMPLE} matches: treat the win rate as noise.` : undefined,
+      lines: [`Won ${d.wins} of ${d.results} results`, `Won round 1 itself in ${d.round_one_wins}`],
+      note: small ? `Fewer than ${SMALL_SAMPLE} results: shown as wins–losses, too few for a rate.` : undefined,
     };
-    for (const c of cells) {
-      if (small) c.classList.add("muted");
-      c.dataset.tip = JSON.stringify(tip);
-    }
+    for (const c of cells) c.dataset.tip = JSON.stringify(tip);
     return cells;
   });
   container.replaceChildren(...heads, ...rows);
@@ -645,16 +653,24 @@ function renderMatchups(g: GameStats) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const cell = el("div", "cell");
       if (m) {
-        const r = m.wins / m.matches;
-        // A few matches only allow a few percentages (1-0 reads 100%), so show the record.
-        if (m.matches < SMALL_SAMPLE) {
-          cell.textContent = `${m.wins}–${m.matches - m.wins}`;
+        const r = m.wins / m.results;
+        // A mirror with both players in the view is each match twice, one win and one loss: its
+        // rate is 50% by construction, so show only how many matches there were.
+        const mirror = row === col && m.results === 2 * m.matches;
+        if (mirror) {
+          cell.textContent = `mirror · ${m.matches}`;
+          cell.classList.add("thin", "mirror");
+        } else if (m.results < SMALL_SAMPLE) {
+          // A few results only allow a few percentages (1-0 reads 100%), so show the record.
+          cell.textContent = `${m.wins}–${m.results - m.wins}`;
           cell.classList.add("thin");
         } else {
           cell.textContent = pct(r);
           cell.style.background = trendColor(r);
         }
-        const tip: Tip = { title: `Round 1: ${row} against ${col}`, lines: [`Won ${m.wins} of ${m.matches} matches (${pct(r)})`] };
+        const tip: Tip = mirror
+          ? { title: `Round 1: ${row} against ${row}`, lines: [`${m.matches} matches where both players deployed this way`] }
+          : { title: `Round 1: ${row} against ${col}`, lines: [`Won ${m.wins} of ${m.results} (${pct(r)}), from ${m.matches} matches`] };
         cell.dataset.tip = JSON.stringify(tip);
       }
       cells.push(cell);
@@ -662,7 +678,7 @@ function renderMatchups(g: GameStats) {
   }
   container.replaceChildren(...cells);
   $("matchups-note").textContent = g.matchups.length
-    ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE} matches, shown as wins–losses.`
+    ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE}, shown as wins–losses.`
     : "No 1v1 matches with both round 1 layouts classed fit these filters.";
 }
 
@@ -913,23 +929,34 @@ function showArtProgress(progress: ArtProgress | null) {
 
 function setupTooltip() {
   const tip = $("tooltip");
+  const show = (target: HTMLElement, x: number, y: number) => {
+    const content = JSON.parse(target.dataset.tip!) as Tip;
+    tip.replaceChildren(el("strong", "", content.title), ...content.lines.map((l) => el("div", "", l)));
+    if (content.note) {
+      tip.append(el("div", "muted", content.note));
+    }
+    tip.hidden = false;
+    tip.style.left = `${Math.max(8, Math.min(x + 14, window.innerWidth - tip.offsetWidth - 8))}px`;
+    tip.style.top = `${Math.max(8, Math.min(y + 14, window.innerHeight - tip.offsetHeight - 8))}px`;
+  };
   document.addEventListener("mousemove", (event) => {
     const target = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
     if (!target?.dataset.tip) {
       tip.hidden = true;
       return;
     }
-    const content = JSON.parse(target.dataset.tip) as Tip;
-    tip.replaceChildren(el("strong", "", content.title), ...content.lines.map((l) => el("div", "", l)));
-    if (content.note) {
-      tip.append(el("div", "muted", content.note));
-    }
-    tip.hidden = false;
-    const x = Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
-    const y = Math.min(event.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
-    tip.style.left = `${x}px`;
-    tip.style.top = `${y}px`;
+    show(target, event.clientX, event.clientY);
   });
+  // Keyboard users get the same explanations: focusing an element with one shows it beside it.
+  document.addEventListener("focusin", (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+    if (!target?.dataset.tip) return;
+    const box = target.getBoundingClientRect();
+    show(target, box.left, box.bottom);
+  });
+  document.addEventListener("focusout", () => (tip.hidden = true));
+  // A tooltip left behind by scrolling explains whatever slid under it.
+  document.addEventListener("scroll", () => (tip.hidden = true), true);
 }
 
 const PALETTE_KEY = "palette";

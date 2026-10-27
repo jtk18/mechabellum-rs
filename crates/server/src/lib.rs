@@ -11,7 +11,7 @@ pub use games::{
 pub use store::{
     Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand, Rejection,
     RobustStats, Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell,
-    UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends,
+    UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends, MAX_DOCUMENT_BYTES,
 };
 
 /// Header naming the Mechabellum account (user ID) a shared upload is for.
@@ -90,7 +90,9 @@ impl IntoResponse for ApiError {
 
 impl From<anyhow::Error> for ApiError {
     fn from(e: anyhow::Error) -> Self {
-        ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}"))
+        // The details go to the log, not to the client: they can quote SQL and internals.
+        log::error!("{e:#}");
+        ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
     }
 }
 
@@ -146,19 +148,35 @@ async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<Option<St
 }
 
 /// Bodies may be gzip-compressed (the desktop app sends them that way).
+/// A gzipped body is inflated up to the largest replay accepted, and refused past it: a small
+/// gzip of repeated bytes once made the server allocate 256 MB per request (red team,
+/// 2026-10-27).
 fn decompress(body: Bytes) -> Result<Bytes, ApiError> {
+    let too_large = || {
+        ApiError(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("replays are at most {MAX_DOCUMENT_BYTES} bytes uncompressed"),
+        )
+    };
     if !body.starts_with(&[0x1f, 0x8b]) {
-        return Ok(body);
+        return if body.len() > MAX_DOCUMENT_BYTES {
+            Err(too_large())
+        } else {
+            Ok(body)
+        };
     }
     let mut out = Vec::new();
     std::io::Read::read_to_end(
         &mut std::io::Read::take(
             flate2::read::GzDecoder::new(&body[..]),
-            MAX_REPLAY_BYTES as u64 * 8,
+            MAX_DOCUMENT_BYTES as u64 + 1,
         ),
         &mut out,
     )
     .map_err(|e| ApiError(StatusCode::BAD_REQUEST, format!("bad gzip body: {e}")))?;
+    if out.len() > MAX_DOCUMENT_BYTES {
+        return Err(too_large());
+    }
     Ok(out.into())
 }
 
@@ -351,7 +369,7 @@ async fn cards(
     Query(filter): Query<StatsFilter>,
     Query(page): Query<CardQuery>,
 ) -> Result<Json<CardPage>, ApiError> {
-    let limit = page.limit.unwrap_or(24).min(100);
+    let limit = page.limit.unwrap_or(24).min(50);
     let offset = page.offset.unwrap_or(0);
     let store = state.store.clone();
     Ok(Json(
@@ -615,7 +633,8 @@ mod tests {
         // 2340 lists the deciding fight, so one player won and one lost.
         let won: Vec<bool> = newest.players.iter().map(|p| p.won).collect();
         assert_eq!(won, [true, false], "winners first");
-        let game = newest.players[0].game.as_ref().unwrap();
+        let game: serde_json::Value =
+            serde_json::from_str(newest.players[0].game.as_ref().unwrap().get()).unwrap();
         assert_eq!(game["fights"].as_array().unwrap().len(), 8);
         assert!(game["opening"].is_string(), "classed by round 1");
         // Cards name players by name only, never by account ID.
@@ -635,11 +654,12 @@ mod tests {
         // Matches are classed by round 1: only 2340's, since the 2324 fixture has no record of
         // round 1 and a later round doesn't stand in. The control: one winner per 1v1 match and
         // per fight, so wins across labels are half the results.
-        let matches: u64 = stats.deployments.iter().map(|d| d.matches).sum();
+        let results: u64 = stats.deployments.iter().map(|d| d.results).sum();
         let wins: u64 = stats.deployments.iter().map(|d| d.wins).sum();
         let round_one: u64 = stats.deployments.iter().map(|d| d.round_one_wins).sum();
-        assert_eq!((matches, wins, round_one), (2, 1, 1));
-        // Each match counts once from each side: A against B mirrors B against A.
+        assert_eq!((results, wins, round_one), (2, 1, 1));
+        // One classified match, seen from both sides: A against B mirrors B against A, and the
+        // cells together hold one match.
         assert!(!stats.matchups.is_empty());
         for m in &stats.matchups {
             let other = stats
@@ -647,8 +667,9 @@ mod tests {
                 .iter()
                 .find(|o| o.deployment == m.against && o.against == m.deployment)
                 .unwrap();
-            assert_eq!(other.matches, m.matches);
-            assert_eq!(other.wins + m.wins, m.matches);
+            assert_eq!(other.results, m.results);
+            assert_eq!(other.wins + m.wins, m.results);
+            assert_eq!(m.matches, 1);
         }
         let (w, l) = (stats.winners.unwrap(), stats.losers.unwrap());
         assert_eq!((w.results, l.results), (3, 3));
@@ -670,6 +691,99 @@ mod tests {
         assert!(stats.units.iter().all(|u| u.kept <= u.games && u.games > 0));
     }
 
+    /// A mirror match on the matchup grid's diagonal is one match, though it's two results.
+    #[test]
+    fn test_mirror_matches_count_once() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
+            .unwrap();
+        // Make both openings the same class.
+        store
+            .conn()
+            .execute_batch("UPDATE player_games SET opening = 'Standard'")
+            .unwrap();
+        let stats = store.game_stats(&StatsFilter::default()).unwrap();
+        assert_eq!(stats.matchups.len(), 1);
+        let m = &stats.matchups[0];
+        assert_eq!((m.results, m.matches, m.wins), (2, 1, 1));
+    }
+
+    /// Red team findings, 2026-10-27, each proven against a running server.
+    #[test]
+    fn test_impossible_ratings_are_refused() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
+            .unwrap();
+        let battle_id = store.battle_ids().unwrap().remove(0);
+        let players: Vec<String> = store
+            .conn()
+            .prepare("SELECT player_id FROM players")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        let rating = |player_id: &str, elo| Rating {
+            player_id: player_id.to_owned(),
+            elo: Some(elo),
+            rank_point: None,
+            level: None,
+            elo_games: None,
+        };
+        let stored = store
+            .add_ratings(
+                &battle_id,
+                &[rating(&players[0], i64::MAX), rating(&players[1], i64::MIN)],
+            )
+            .unwrap();
+        assert_eq!(stored, 0);
+        // The MMR difference no longer overflows into a failing stats query.
+        store.stats(&StatsFilter::default()).unwrap();
+        assert_eq!(
+            store
+                .add_ratings(&battle_id, &[rating(&players[0], 1500)])
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_names_cannot_forge_match_list_entries() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
+            .unwrap();
+        let forged = "me\u{1e}3999\u{1e}Backboard\u{1e}\u{1f}GhostWinner\u{1e}2800";
+        store
+            .conn()
+            .execute("UPDATE players SET name = ?1 WHERE won = 1", [forged])
+            .unwrap();
+        let rows = store.recent_matches(10).unwrap();
+        assert_eq!(rows[0].winners.len(), 1, "{:?}", rows[0].winners);
+        assert!(rows[0].winners[0].contains("GhostWinner"));
+        assert_eq!(rows[0].winner_elos, [None]);
+    }
+
+    /// A replay whose match row is gone but whose blob stayed (a rebuild that lost the race) can
+    /// be stored again, and a rebuild restores it too.
+    #[test]
+    fn test_orphaned_blobs_recover() {
+        let store = Store::open_in_memory().unwrap();
+        let bytes = fixture("battle_record_2340.xml");
+        store.ingest(&bytes, Path::new("a"), None).unwrap();
+        store.conn().execute_batch("DELETE FROM matches").unwrap();
+        assert_eq!(count(&store, "replay_blobs"), 1);
+        assert!(matches!(
+            store.ingest(&bytes, Path::new("a"), None).unwrap(),
+            IngestOutcome::Added { .. }
+        ));
+        store.conn().execute_batch("DELETE FROM matches").unwrap();
+        assert_eq!(store.reindex().unwrap(), 1);
+        assert_eq!(count(&store, "matches"), 1);
+    }
+
     /// A database derived before schema 10 has no match summaries; upgrading rebuilds them.
     #[test]
     fn test_upgrade_adds_match_summaries() {
@@ -677,16 +791,29 @@ mod tests {
         store
             .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
             .unwrap();
+        // An older database: summaries missing, and a stale row a rebuild must not keep.
         store
             .conn()
             .execute_batch(
-                "DELETE FROM player_games; DELETE FROM player_fights; PRAGMA user_version = 9;",
+                "DELETE FROM player_games; DELETE FROM player_fights;
+                 INSERT INTO player_unit_use
+                     SELECT battle_id, player_id, 'Stale', 0, 0, 0, 0, 0 FROM players LIMIT 1;
+                 PRAGMA user_version = 9;",
             )
             .unwrap();
         assert!(store.needs_upgrade().unwrap());
         assert!(store.upgrade().unwrap());
         assert_eq!(count(&store, "player_games"), 2);
         assert_eq!(count(&store, "player_fights"), 16);
+        let stale: u64 = store
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM player_unit_use WHERE unit = 'Stale'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stale, 0);
     }
 
     #[test]
@@ -1152,5 +1279,13 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(status(&app, broken).await, StatusCode::UNPROCESSABLE_ENTITY);
+
+        // A small gzip that inflates past the largest replay is refused, not inflated.
+        let bomb = gzip(&vec![b'A'; MAX_DOCUMENT_BYTES + 1]);
+        assert!(bomb.len() < 100_000);
+        let request = Request::post("/api/replays")
+            .body(Body::from(bomb))
+            .unwrap();
+        assert_eq!(status(&app, request).await, StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

@@ -6,9 +6,10 @@
 //! the techs researched by then.
 
 use super::battle_record::{
-    ActiveTechnologiesUnitData, PlayerData, PlayerRecord, PlayerRoundRecord, UnitsNewUnitData,
+    known_result, ActiveTechnologiesUnitData, PlayerData, PlayerRecord, PlayerRoundRecord,
+    UnitsNewUnitData, FIGHT_RESULTS_LISTED_FROM,
 };
-use super::final_round::replay_deployment;
+use super::final_round::{replay_deployment, techs_bought, upgrades_bought};
 use super::game_data::{footprint, xp_to_next_level};
 use super::names::{resolve, GameNames, NameKind};
 use super::{BattleRecord, Item, Unit};
@@ -113,7 +114,8 @@ pub struct Structure {
 
 #[derive(Debug, Serialize)]
 pub struct SideLayout {
-    /// "Win", "Lose" or "Deuce" for this round's fight. For the last round, the match result.
+    /// "Win", "Lose" or "Deuce" for this round's fight, or empty when unknown. Before version
+    /// 2340 the last fight's is the match result (see `BattleRecord::match_results`).
     pub result: String,
     /// Reactor core HP going into the fight.
     pub hp: i32,
@@ -138,6 +140,8 @@ pub struct SideLayout {
     pub rebuilt: bool,
     /// Index of the unit that earned the most XP in this fight, when any did.
     pub most_xp: Option<u32>,
+    /// Unit upgrades bought while deploying for this fight (undone ones left out).
+    pub upgrades_bought: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -302,6 +306,30 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
     })
 }
 
+/// Techs researched by the end of a round's deployment: those at its start plus the round's own
+/// research. For the last round, which has no record after it to read them from.
+pub(crate) fn techs_after_round(record: &PlayerRoundRecord) -> Vec<UnitTechs> {
+    let mut techs = enabled_techs(&record.player_data.active_technologies.unit_data);
+    for (raw_unit, tech) in techs_bought(&record.action_records.match_action_data) {
+        let Some(unit_id) = base_unit_id(raw_unit) else {
+            continue;
+        };
+        match techs.iter_mut().find(|t| t.unit_id == unit_id) {
+            Some(unit) => {
+                if !unit.techs.iter().any(|t| t.id.trim() == tech) {
+                    unit.techs.push(tech_ref(tech));
+                }
+            }
+            None => techs.push(UnitTechs {
+                unit_id,
+                unit_name: unit_name(raw_unit),
+                techs: vec![tech_ref(tech)],
+            }),
+        }
+    }
+    techs
+}
+
 pub(crate) fn enabled_techs(units: &[ActiveTechnologiesUnitData]) -> Vec<UnitTechs> {
     units
         .iter()
@@ -403,6 +431,9 @@ impl BattleRecord {
         let players: Vec<&PlayerRecord> = self.player_records.player_record.iter().collect();
         let mut rounds: BTreeMap<u32, Vec<Option<SideLayout>>> = BTreeMap::new();
         let version: u32 = self.version.trim().parse().unwrap_or(0);
+        let results = self.match_results();
+        // A concession during the last round's deployment means that round was never fought.
+        let fought_last = self.last_round_fought();
 
         // Cards offered in round r's preparation, per player (the fight of round r).
         let offers: BTreeMap<u32, &Vec<super::battle_record::IntList>> = self
@@ -447,15 +478,20 @@ impl BattleRecord {
             let Some(&last) = records.keys().next_back() else {
                 continue;
             };
-            let won = player.final_result().map(|r| r == "Win");
-            // Version 2340 on, one result per fight. Trusted only when the count matches the
-            // fights drawn here, so the list and the records can't fall out of step.
-            let listed = player
-                .fight_results()
-                .filter(|results| results.len() == last as usize);
+            let won = results.get(i).copied().flatten();
+            // Version 2340 on, results come from the listed ones only: a fight the list doesn't
+            // cover, or a value the game doesn't write, is unknown. `pre_round_fight_result`
+            // reads "Win" for both players there.
+            let listed = (version >= FIGHT_RESULTS_LISTED_FROM)
+                .then(|| player.fight_results().unwrap_or_default());
+            let last_fight = if fought_last {
+                last
+            } else {
+                last.saturating_sub(1)
+            };
             // The previous fight's units for this player, by index, once one has been drawn.
             let mut previous: Option<(u32, BTreeMap<u32, u32>)> = None;
-            for fight in 1..=last {
+            for fight in 1..=last_fight {
                 let Some(&entering) = records.get(&fight) else {
                     continue;
                 };
@@ -480,9 +516,14 @@ impl BattleRecord {
                         true,
                     ),
                 };
-                let result = listed
-                    .and_then(|results| results.get(fight as usize - 1))
-                    .map_or(result, |r| r.trim().to_owned());
+                let result = match listed {
+                    Some(listed) => listed
+                        .get(fight as usize - 1)
+                        .and_then(|r| known_result(r))
+                        .unwrap_or_default()
+                        .to_owned(),
+                    None => result,
+                };
                 if units.is_empty() {
                     continue;
                 }
@@ -626,7 +667,12 @@ impl BattleRecord {
                         }
                         devices
                     },
-                    enabled_techs: enabled_techs(&data.active_technologies.unit_data),
+                    enabled_techs: if rebuilt {
+                        techs_after_round(entering)
+                    } else {
+                        enabled_techs(&data.active_technologies.unit_data)
+                    },
+                    upgrades_bought: upgrades_bought(&entering.action_records.match_action_data),
                     specialists: data
                         .officers
                         .int
@@ -651,11 +697,12 @@ impl BattleRecord {
             game_mode: self.battle_info.game_mode.clone(),
             players: players
                 .iter()
-                .map(|p| PlayerInfo {
+                .enumerate()
+                .map(|(i, p)| PlayerInfo {
                     id: p.id.clone(),
                     name: p.name.clone(),
                     team: p.data.team.clone(),
-                    won: p.final_result().map(|r| r == "Win"),
+                    won: results.get(i).copied().flatten(),
                     loadout: loadout(p),
                     starter_pack: starter_pack(p),
                 })

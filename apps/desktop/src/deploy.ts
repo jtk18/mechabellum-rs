@@ -60,8 +60,9 @@ export const RULES: Tip = {
     "Aggressive: front edge within 3 squares of the line, or in a flank column.",
     "Midboard: from 5 squares in front of the towers back to their centers.",
     "Backboard: behind the towers' centers.",
-    "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of it and at least 40%; otherwise standard.",
-    "Aggressive and midboard armies are sym when that band's units span both sides, asym when three quarters of them are on one side. Standard and backboard aren't split.",
+    "Standard ground is the rest of the zone, between aggressive and midboard.",
+    "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of its ground and at least 40%; otherwise it's standard, even if little of it stands on standard ground.",
+    "Aggressive and midboard armies are asym when three quarters or more of that band's ground stands on one side of the board, and sym otherwise. Standard and backboard aren't split.",
   ],
   note: "A match is classed by round 1's layout; later fights are classed the same way to show how the board grew. 1v1 on the 2.0 board, build 2259 on.",
 };
@@ -74,7 +75,8 @@ export function labelBand(label: string | null | undefined) {
   return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
 
-export const bandColor = (band: number) => (band >= 0 && band < 4 ? `var(--band-${band})` : "var(--track)");
+/** A band's color; unclassified marks get the muted ink (3:1 on the panel), not the near-invisible track. */
+export const bandColor = (band: number) => (band >= 0 && band < 4 ? `var(--band-${band})` : "var(--text-muted)");
 
 /** A swatch and a label, e.g. ■ Standard. */
 export function deploymentPill(label: string | null | undefined) {
@@ -124,10 +126,10 @@ export const MEASURES: Record<string, string> = {
   "Peak army": "Most units fielded in any one fight.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
-  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Level-ups": "Unit upgrades bought over the match, units later sold included. Levels units arrive with, from cards or techs, don't count.",
   "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
   "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
-  Techs: "Techs researched by the last fight, across all unit types.",
+  Techs: "Techs researched by the last fight, its own round's research included, across all unit types.",
   "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
 };
 
@@ -152,10 +154,13 @@ export function renderTale(
       t.append(fill);
       return t;
     };
+    const name = el("div", "tale-label", label);
+    // One keyboard stop per row, so the explanation is reachable without a mouse.
+    name.tabIndex = 0;
     const row = [
       el("div", `tale-value left${a > b ? " hi" : ""}`, a.toFixed(digits)),
       track(a, a > b, "left"),
-      el("div", "tale-label", label),
+      name,
       track(b, b > a, "right"),
       el("div", `tale-value${b > a ? " hi" : ""}`, b.toFixed(digits)),
     ];

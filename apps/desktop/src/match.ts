@@ -89,7 +89,14 @@ const ZONE_HALF_WIDTH = 300;
 const ZONE_FRONT = 10;
 const ZONE_BACK = 310;
 const FLANK_OUTER = 360;
-const FLANK_OPENS_ROUND = 3;
+/** Fight 2, not 3: 9 units stand in flank columns in fight 2 across 6 of the 13 2.0 replays on
+ * hand, the fight reports agreeing (red team, 2026-10-27). board.rs's board-code check still
+ * says round 3; that's J's to settle. */
+const FLANK_OPENS_ROUND = 2;
+/** Command Center and Research Center: centered 14 squares either side, 17 back, 2x2 (board.rs). */
+const TOWER_X = 140;
+const TOWER_Y = 170;
+const TOWER_SIZE = 20;
 /** Why the board ranks units by XP and not damage. */
 const NO_DAMAGE_NOTE = "Replays record each unit's XP but not its damage: fight reports only total each side.";
 
@@ -247,6 +254,12 @@ function drawZones(board: SVGSVGElement, sides: (SideLayout | null)[], fight: nu
     grid.append(svg("line", { x1: minX, y1: y, x2: maxX, y2: y, class: y % 50 === 0 ? "major" : "" }));
   }
   layers.push(grid, svg("line", { class: "midline", x1: minX, y1: 0, x2: maxX, y2: 0 }));
+  // The towers both halves deploy around; midboard and backboard are measured from them.
+  for (const sy of [1, -1]) {
+    for (const sx of [1, -1]) {
+      layers.push(svg("rect", { class: "tower", x: sx * TOWER_X - TOWER_SIZE / 2, y: sy * TOWER_Y - TOWER_SIZE / 2, width: TOWER_SIZE, height: TOWER_SIZE, rx: 2 }));
+    }
+  }
   if (classified()) layers.push(bandGuides());
   layers.push(drawUnits(sides));
   board.replaceChildren(...layers);
@@ -267,8 +280,8 @@ function bandGuides() {
     }
     bands.forEach(([from, to], i) => {
       const y = sign * (from + to) / 2;
-      g.append(svg("rect", { x: -ZONE_HALF_WIDTH + 3, y: y - 3, width: 6, height: 6, rx: 1.2, fill: bandColor(i) }));
-      const label = svg("text", { class: "band-label", x: -ZONE_HALF_WIDTH + 12, y: y + 2.5 });
+      g.append(svg("rect", { x: -ZONE_HALF_WIDTH + 4, y: y - 5, width: 10, height: 10, rx: 2, fill: bandColor(i) }));
+      const label = svg("text", { class: "band-label", x: -ZONE_HALF_WIDTH + 19, y: y + 4.5 });
       label.textContent = BANDS[i];
       g.append(label);
     });
@@ -372,7 +385,7 @@ function renderUnitPanel() {
         return block;
       }
       block.append(
-        el("p", "", `${side.result === "Win" ? "Won" : "Lost"} the round with ${side.hp.toLocaleString()} HP left`),
+        el("p", "", `${side.result === "Win" ? "Won" : side.result === "Lose" ? "Lost" : side.result === "Deuce" ? "Drew" : "No result for"} the fight, with ${side.hp.toLocaleString()} HP going in`),
         el("p", "muted", `${side.units.length} units${side.specialists.length ? `, specialists: ${side.specialists.join(", ")}` : ""}`),
       );
       const top = side.units.find((u) => u.index === side.most_xp);
@@ -517,7 +530,8 @@ function renderRoundBar() {
   const m = detail!;
   const round = m.rounds[roundIndex];
   // Count positions rather than trusting round numbers: some modes start at 0.
-  $("round-label").textContent = `Round ${roundIndex + 1} of ${m.rounds.length}`;
+  // Fight numbers, as the tape and the website count them: a replay can start after fight 1.
+  $("round-label").textContent = `Fight ${round.round + 1} of ${m.rounds[m.rounds.length - 1].round + 1}`;
   const input = $<HTMLInputElement>("round-input");
   input.max = String(m.rounds.length - 1);
   input.value = String(roundIndex);
@@ -575,6 +589,7 @@ function renderSummary() {
           bar.style.background = bandColor(labelBand(f.deployment?.label));
           box.append(bar);
           if (f.result === "Win") box.append(el("span", "fight-win", "W"));
+          if (f.result === "Deuce") box.append(el("span", "fight-win", "D"));
         }
         return box;
       };
@@ -595,7 +610,7 @@ function renderSummary() {
       return button;
     }),
   );
-  $("fight-tape-note").textContent = `Top: ${m.players[far].name}. Bottom: ${m.players[near].name}. W marks the fight's winner.`;
+  $("fight-tape-note").textContent = `Top: ${m.players[far].name}. Bottom: ${m.players[near].name}. W marks the fight's winner, D a draw. Bars are reactor HP going in, scaled to the match's highest.`;
 
   const [a, b] = [games[near], games[far]];
   const rows: [string, number | null, number | null, number][] = [
@@ -713,7 +728,8 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   detail = await invoke<MatchDetail>("match_detail", { battleId });
   const m = detail;
   bottom = Math.max(0, m.players.findIndex((p) => p.id === mainPlayerId));
-  roundIndex = Math.max(0, m.rounds.length - 1);
+  // Open on round 1: the layout the match is classed by (J: judge the layout by round 1).
+  roundIndex = 0;
   selected = null;
   setupFrame(m);
 

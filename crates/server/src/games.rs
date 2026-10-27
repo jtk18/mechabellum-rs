@@ -35,9 +35,9 @@ pub struct CardPlayer {
     /// MMR at match start, when the game's log had it.
     pub elo: Option<i64>,
     pub starter_pack: Option<mechabellum::StarterPack>,
-    /// `mechabellum::PlayerGame` as stored; `None` for a match stored before schema 10 that
-    /// hasn't been rebuilt.
-    pub game: Option<serde_json::Value>,
+    /// `mechabellum::PlayerGame` as stored, passed through without re-parsing it; `None` for a
+    /// match stored before schema 10 that hasn't been rebuilt.
+    pub game: Option<Box<serde_json::value::RawValue>>,
 }
 
 /// Stats over whole matches.
@@ -61,8 +61,10 @@ pub struct GameStats {
 #[derive(Debug, Serialize)]
 pub struct DeploymentStat {
     pub label: String,
-    /// Player results whose round 1 was deployed this way, and how many won the match.
-    pub matches: u64,
+    /// Player results whose round 1 was deployed this way, and how many won the match. A match
+    /// counts once for each player in the filter, so with both players in it a match where both
+    /// deployed the same way counts twice (one win, one loss).
+    pub results: u64,
     pub wins: u64,
     /// Of those, how many won round 1's fight.
     pub round_one_wins: u64,
@@ -73,8 +75,12 @@ pub struct Matchup {
     /// Round 1 deployments: this player's and the opponent's.
     pub deployment: String,
     pub against: String,
+    /// Player results, as for `DeploymentStat::results`, and the matches they come from. On the
+    /// diagonal with both players in the filter, results are twice the matches and the wins
+    /// are half the results by construction.
+    pub results: u64,
     pub matches: u64,
-    /// Matches `deployment` won.
+    /// Results `deployment` won.
     pub wins: u64,
 }
 
@@ -177,7 +183,7 @@ impl Store {
                         won: r.get(1)?,
                         elo: r.get(2)?,
                         starter_pack: pack.and_then(|p| serde_json::from_str(&p).ok()),
-                        game: game.and_then(|g| serde_json::from_str(&g).ok()),
+                        game: game.and_then(|g| serde_json::value::RawValue::from_string(g).ok()),
                     })
                 })?
                 .collect::<rusqlite::Result<_>>()?;
@@ -222,7 +228,7 @@ impl Store {
             .query_map(args, |r| {
                 Ok(DeploymentStat {
                     label: r.get(0)?,
-                    matches: r.get(1)?,
+                    results: r.get(1)?,
                     wins: r.get(2)?,
                     round_one_wins: r.get(3)?,
                 })
@@ -231,7 +237,7 @@ impl Store {
 
         let matchups = conn
             .prepare(&format!(
-                "{scope} SELECT a.opening, b.opening, COUNT(*), SUM(s.won)
+                "{scope} SELECT a.opening, b.opening, COUNT(*), COUNT(DISTINCT s.battle_id), SUM(s.won)
                  FROM scope s
                  JOIN matches m ON m.battle_id = s.battle_id AND m.match_mode = 'VS_1_1'
                  JOIN player_games a ON a.battle_id = s.battle_id AND a.player_id = s.player_id
@@ -243,8 +249,9 @@ impl Store {
                 Ok(Matchup {
                     deployment: r.get(0)?,
                     against: r.get(1)?,
-                    matches: r.get(2)?,
-                    wins: r.get(3)?,
+                    results: r.get(2)?,
+                    matches: r.get(3)?,
+                    wins: r.get(4)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

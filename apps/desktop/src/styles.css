@@ -29,13 +29,14 @@
   --board: #10161a;
   --board-line: rgb(150 200 230 / 0.06);
   --board-line-major: rgb(150 200 230 / 0.13);
-  /* Deployment bands, front to back (aggressive, standard, midboard, backboard): dataviz
-     categorical slots magenta, yellow, green, blue, which pass every check as a set on a dark
-     panel. Classes are always named in text beside the color. */
-  --band-0: #d55181;
-  --band-1: #c98500;
-  --band-2: #008300;
-  --band-3: #3987e5;
+  /* Deployment bands, front to back (aggressive, standard, midboard, backboard): one ordinal
+     ramp, light to dark, in a hue no side color or win/loss color uses (the old categorical set
+     put backboard on the same blue as you, win and pick rate). Validated as an ordinal ramp on
+     the dark panel. Classes are always named in text beside the color. */
+  --band-0: #c4f2df;
+  --band-1: #6fd9b0;
+  --band-2: #25b07f;
+  --band-3: #137d58;
 
   font-family: "Bahnschrift", "DIN Alternate", "D-DIN", "Barlow", "Roboto Condensed", system-ui, sans-serif;
   font-size: 14px;
@@ -377,10 +378,11 @@ select:hover {
   max-width: 280px;
   padding: 6px 9px;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  /* Solid: the panels under it are translucent, and their figures printed through. */
+  background: var(--surface-solid);
   color: var(--text-primary);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1927,6 +1929,11 @@ h1 {
   grid-template-columns: minmax(150px, 1fr) 64px minmax(160px, 2fr) 96px;
 }
 
+.deploy-table .record {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .used-table {
   grid-template-columns: minmax(120px, 1.4fr) 44px minmax(90px, 1.3fr) 44px 64px 54px;
 }
@@ -2066,7 +2073,8 @@ h1 {
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--track);
+  /* The smaller value's bar: --track was 1.35:1 on the panel, too faint to compare. */
+  background: #4a555d;
 }
 
 .tale-track span.hi {
@@ -2299,16 +2307,24 @@ h1 {
 
 /* Where the deployment bands meet on the 2.0 board. */
 .board .band-edge {
-  stroke: var(--text-muted);
-  stroke-width: 0.6;
-  stroke-dasharray: 2 3;
-  stroke-opacity: 0.6;
+  stroke: var(--text-secondary);
+  stroke-width: 1px;
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .board .band-label {
-  font-size: 7px;
-  fill: var(--text-muted);
+  font-size: 13px;
+  fill: var(--text-secondary);
   pointer-events: none;
+}
+
+.board .tower {
+  fill: var(--board);
+  stroke: var(--text-secondary);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
 }
 
 /* Views and sections with their own display stay hidden when the hidden attribute says so. */

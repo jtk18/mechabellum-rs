@@ -110,6 +110,41 @@ pub(crate) fn replay_deployment(
         .collect()
 }
 
+/// The round's actions still standing after undos. Each `PAD_Undo` takes back the latest action
+/// still standing, of any kind, as `replay_deployment` does.
+pub(crate) fn standing_actions(actions: &[MatchActionData]) -> Vec<&MatchActionData> {
+    let mut standing = Vec::new();
+    for action in actions {
+        match action.xsi_type.trim_start_matches("PAD_") {
+            "Undo" => {
+                standing.pop();
+            }
+            "FinishDeploy" => {}
+            _ => standing.push(action),
+        }
+    }
+    standing
+}
+
+/// Techs researched during a round, as (raw unit ID, tech ID). Checked against the next record
+/// in every round that has one: 170 of 170 rounds over the 13 2.0 replays on hand (2026-10-27).
+pub(crate) fn techs_bought(actions: &[MatchActionData]) -> Vec<(&str, &str)> {
+    standing_actions(actions)
+        .into_iter()
+        .filter(|a| a.xsi_type.ends_with("UpgradeTechnology"))
+        .filter_map(|a| Some((a.uid.as_deref()?.trim(), a.tech_id.as_deref()?.trim())))
+        .collect()
+}
+
+/// Unit upgrades bought during a round. Levels units arrive with (from cards or techs) aren't
+/// upgrades and aren't counted.
+pub(crate) fn upgrades_bought(actions: &[MatchActionData]) -> u32 {
+    standing_actions(actions)
+        .into_iter()
+        .filter(|a| a.xsi_type.ends_with("UpgradeUnit"))
+        .count() as u32
+}
+
 #[derive(Clone)]
 struct Deployment {
     units: BTreeMap<i64, UnitsNewUnitData>,

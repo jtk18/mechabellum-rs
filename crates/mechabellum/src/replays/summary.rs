@@ -12,9 +12,10 @@ use serde::Serialize;
 
 use std::collections::BTreeMap;
 
-/// Earliest build whose deployment geometry this module knows: the 2.0 board, measured on
-/// versions 2259 and later. Older replays use a larger board with no towers (coordinates past
-/// ±1,000 in 1.x replays against ±350 in 2.0), so their deployments aren't classified.
+/// Earliest build whose deployment geometry this module knows: the 2.0 board with its Command
+/// and Research Centers, measured on versions 2259 and later. Midboard and backboard are defined
+/// by the towers, so older replays aren't classified. (1.x 1v1 replays stay within the same
+/// coordinates; only 2v2 and brawls reach past ±1,000.)
 pub const DEPLOYMENT_GEOMETRY_FROM: u32 = 2259;
 
 /// A unit is aggressive when its front edge is within this of the zone's front edge (J: "within
@@ -116,10 +117,10 @@ pub struct FightSummary {
 pub struct UnitUse {
     pub unit_id: u32,
     pub name: String,
-    /// Copies added over the match: the starter pack's, purchases, and cards'. 0 in AsyncBattle
-    /// (see `PlayerGame::units_added`).
+    /// Copies added over the match: the starter pack's, purchases, and cards'. 0 when
+    /// `PlayerGame::units_added` is `None`.
     pub added: u32,
-    /// Copies sold. 0 in AsyncBattle.
+    /// Copies sold. 0 when `PlayerGame::units_sold` is `None`.
     pub sold: u32,
     /// Most copies fielded in one fight.
     pub peak: u32,
@@ -145,11 +146,14 @@ pub struct PlayerGame {
     pub peak_units: u32,
     /// Mean level of the last fight's army, 1-based.
     pub mean_level: f32,
+    /// Highest level in the last fight's army, 1-based. (`UnitUse::max_level` covers the match.)
     pub max_level: u32,
-    /// Levels gained over the match, counting units later sold.
+    /// Unit upgrades bought over the recorded rounds, units later sold included. Levels units
+    /// arrive with, from cards or techs, aren't upgrades.
     pub level_ups: u32,
-    /// Units added over the match (starter pack, purchases, cards). `None` in AsyncBattle, whose
-    /// opponents' rounds come from different games and don't follow on from each other.
+    /// Units added over the match (starter pack, purchases, cards). `None` unless the fights run
+    /// from the first without a gap, and in AsyncBattle, whose opponents' rounds come from
+    /// different games and don't follow on from each other.
     pub units_added: Option<u32>,
     /// Units sold over the match: in one fight's army and gone from the next. `None` in
     /// AsyncBattle, as for `units_added`.
@@ -295,7 +299,9 @@ impl MatchDetail {
     /// The match from each player's side, in `players` order.
     pub fn player_games(&self) -> Vec<PlayerGame> {
         let classify_deployments = self.deployments_known();
-        let comparable = self.game_mode != "AsyncBattle";
+        // Flank columns turn units on end on the 2.0 board in every mode, classified or not.
+        let board_2 = self.version >= DEPLOYMENT_GEOMETRY_FROM;
+        let async_battle = self.game_mode.trim() == "AsyncBattle";
         (0..self.players.len())
             .map(|i| {
                 let sides: Vec<(u32, &SideLayout)> = self
@@ -305,18 +311,23 @@ impl MatchDetail {
                     .filter(|(_, side)| !side.units.is_empty())
                     .collect();
                 let half = sides.first().and_then(|(_, side)| half_of(&side.units));
+                // Units added and sold are diffs between consecutive armies, which only add up
+                // when the fights run from the first without a gap: a missing round 1 would leave
+                // the starting army uncounted. AsyncBattle opponents' rounds come from different
+                // games, so their armies don't follow on from each other at all.
+                let comparable = !async_battle
+                    && sides
+                        .iter()
+                        .enumerate()
+                        .all(|(n, (fight, _))| *fight == n as u32 + 1);
 
                 let mut uses: BTreeMap<u32, UnitUse> = BTreeMap::new();
-                // Highest level seen per copy, by index and type, to count level-ups once.
-                let mut levels: BTreeMap<(u32, u32), u32> = BTreeMap::new();
                 let mut sold = 0;
                 let mut added = 0;
                 for (n, (fight, side)) in sides.iter().enumerate() {
                     let mut counts: BTreeMap<u32, u32> = BTreeMap::new();
                     for unit in &side.units {
                         *counts.entry(unit.unit_id).or_default() += 1;
-                        let level = levels.entry((unit.index, unit.unit_id)).or_default();
-                        *level = (*level).max(unit.level);
                         let entry = uses.entry(unit.unit_id).or_insert_with(|| UnitUse {
                             unit_id: unit.unit_id,
                             name: unit.name.clone(),
@@ -327,7 +338,7 @@ impl MatchDetail {
                             max_level: 0,
                             first_fight: *fight,
                         });
-                        entry.max_level = entry.max_level.max(unit.level + 1);
+                        entry.max_level = entry.max_level.max(unit.level.saturating_add(1));
                         if unit.is_new {
                             entry.added += 1;
                             added += 1;
@@ -375,7 +386,8 @@ impl MatchDetail {
                 let fights: Vec<FightSummary> = sides
                     .iter()
                     .map(|(fight, side)| {
-                        let half = half.filter(|_| classify_deployments);
+                        // Each fight's own half: AsyncBattle rounds can come from either side.
+                        let half = half_of(&side.units).filter(|_| classify_deployments);
                         FightSummary {
                             fight: *fight,
                             result: side.result.clone(),
@@ -386,14 +398,14 @@ impl MatchDetail {
                                 .units
                                 .iter()
                                 .map(|u| {
-                                    let (w, d) = extent(u, classify_deployments);
+                                    let (w, d) = extent(u, board_2);
                                     [
                                         u.unit_id as i32,
                                         u.x,
                                         u.y,
                                         w / GRID_SQUARE,
                                         d / GRID_SQUARE,
-                                        u.level as i32 + 1,
+                                        (u.level as i32).saturating_add(1),
                                         half.map_or(-1, |half| unit_depth(u, half) as i32),
                                     ]
                                 })
@@ -415,13 +427,16 @@ impl MatchDetail {
                     final_units,
                     peak_units: fights.iter().map(|f| f.units).max().unwrap_or(0),
                     mean_level: last.map_or(0.0, |side| {
-                        side.units.iter().map(|u| u.level + 1).sum::<u32>() as f32
+                        side.units
+                            .iter()
+                            .map(|u| u.level.saturating_add(1))
+                            .sum::<u32>() as f32
                             / side.units.len().max(1) as f32
                     }),
                     max_level: last
-                        .and_then(|side| side.units.iter().map(|u| u.level + 1).max())
+                        .and_then(|side| side.units.iter().map(|u| u.level.saturating_add(1)).max())
                         .unwrap_or(0),
-                    level_ups: levels.values().sum(),
+                    level_ups: sides.iter().map(|(_, side)| side.upgrades_bought).sum(),
                     units_added: comparable.then_some(added),
                     units_sold: comparable.then_some(sold),
                     techs: last.map_or(0, |side| {
@@ -514,24 +529,37 @@ mod tests {
         assert!((d.bands[0] - 4.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
         assert!((d.bands[3] - 32.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
 
-        // J's example of an asym midboard (2026-10-27, round 1 of a 2340 game): two 3x3 units and
-        // a turned Fang in midboard, all on one side, with a little in front and behind. Shared
-        // frame, south half; ids: 21 Sabertooth 3x3, 9 Fang 5x2, 2 Marksman 2x2.
+        // J's example of an asym midboard (2026-10-27): the opponent's round 1 in
+        // 20261027--67342143, exactly as recorded (shared frame, south half). Ids: 9 Fang 5x2
+        // (the first one turned), 21 Sabertooth 3x3, 2 Marksman 2x2.
+        let mut turned = unit(9, 0, -205);
+        turned.rotated = true;
         let one_side = [
-            unit(21, 75, -125),
-            unit(21, 205, -125),
-            unit(9, 175, -165),
-            unit(2, 55, -105),
-            unit(2, 225, -105),
-            unit(9, 145, -85),
+            turned,
+            unit(9, -175, -170),
+            unit(9, -145, -80),
+            unit(21, -75, -125),
+            unit(21, -215, -125),
+            unit(2, -240, -100),
+            unit(2, -50, -100),
         ];
         let d = classify(&one_side, Half::South).unwrap();
         assert_eq!(d.depth, Depth::Midboard, "{:?}", d.bands);
         assert_eq!(d.label, "Asym midboard");
-        assert_eq!(d.lean, Some(1.0));
+        // All its midboard ground (a Fang beside the tower, both Sabertooths) is on its left.
+        assert_eq!(d.lean, Some(-1.0));
+        let expected = [0.0, 18.0 / 56.0, 28.0 / 56.0, 10.0 / 56.0];
+        assert!(
+            d.bands
+                .iter()
+                .zip(expected)
+                .all(|(a, b)| (a - b).abs() < 1e-6),
+            "{:?}",
+            d.bands
+        );
         // The same midboard group split across both sides is sym.
         let mut split = one_side;
-        split[0].x = -205;
+        split[4].x = 215;
         assert_eq!(classify(&split, Half::South).unwrap().label, "Sym midboard");
         // Standard is never sided, however lopsided: nothing is "asym standard".
         let standard = [unit(2, 100, -80), unit(2, 150, -80), unit(2, 200, -80)];
@@ -634,9 +662,10 @@ mod tests {
             assert_eq!(last.result == "Win", player.won == Some(true));
             assert!(game.fights.iter().all(|f| f.deployment.is_some()));
             // This fixture has no record of round 1, so the match isn't classed, though later
-            // rounds are.
+            // rounds are, and units added and sold can't be counted.
             assert_eq!(game.fights[0].fight, 2);
             assert_eq!(game.opening, None);
+            assert_eq!((game.units_added, game.units_sold), (None, None));
         }
     }
 
@@ -656,6 +685,130 @@ mod tests {
         assert!(games
             .iter()
             .all(|g| g.final_units > 0 && g.opening.is_none()));
+    }
+
+    fn fixture(name: &str) -> BattleRecord {
+        BattleRecord::new_from_file(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("fixtures")
+                .join(name),
+            false,
+        )
+        .unwrap()
+    }
+
+    /// A concession during the last round's deployment: that round is never fought, the player
+    /// who conceded loses, and their final army is the one that fought the round before.
+    #[test]
+    fn test_concession_during_deployment() {
+        let mut record = fixture("battle_record_2340.xml");
+        let last = record.player_records.player_record[0]
+            .player_round_records
+            .player_round_record
+            .last_mut()
+            .unwrap();
+        let give_up = super::super::battle_record::MatchActionData {
+            xsi_type: "PAD_GiveUp".into(),
+            ..Default::default()
+        };
+        last.action_records.match_action_data.insert(0, give_up);
+
+        assert!(!record.last_round_fought());
+        assert_eq!(record.match_results(), [Some(false), Some(true)]);
+        let detail = record.match_detail();
+        assert_eq!(detail.rounds.len(), 7, "fight 8 never happened");
+        assert_eq!(detail.players[0].won, Some(false));
+        let games = detail.player_games();
+        assert!(games.iter().all(|g| g.fights.len() == 7));
+        let overview = record.get_battle_overview().unwrap();
+        assert_eq!(overview.losers[0].id, detail.players[0].id);
+        // The final army is the one that fought fight 7: record 8's snapshot.
+        assert_eq!(
+            overview.losers[0].last_round_units.len() as u32,
+            games[0].final_units
+        );
+    }
+
+    /// From 2340, a fight the list doesn't cover is unknown. It never falls back to
+    /// `preRoundFightResult`, which reads "Win" for both players.
+    #[test]
+    fn test_short_or_strange_result_lists_stay_unknown() {
+        let mut record = fixture("battle_record_2340.xml");
+        for player in &mut record.player_records.player_record {
+            for round in &mut player.player_round_records.player_round_record {
+                round.player_data.round_fight_result.results.pop();
+            }
+        }
+        assert_eq!(record.match_results(), [None, None]);
+        let detail = record.match_detail();
+        let last = detail.rounds.last().unwrap();
+        assert!(last.sides.iter().flatten().all(|s| s.result.is_empty()));
+        for round in &detail.rounds {
+            let wins = round
+                .sides
+                .iter()
+                .flatten()
+                .filter(|s| s.result == "Win")
+                .count();
+            assert!(wins <= 1, "fight {}: two winners", round.round + 1);
+        }
+
+        let mut strange = fixture("battle_record_2340.xml");
+        for round in &mut strange.player_records.player_record[0]
+            .player_round_records
+            .player_round_record
+        {
+            round.player_data.round_fight_result.results[0] = "Banana".into();
+        }
+        let detail = strange.match_detail();
+        assert_eq!(detail.rounds[0].sides[0].as_ref().unwrap().result, "");
+    }
+
+    /// Before 2340 the match is judged by the result of the fight before the last round. A last
+    /// record of round 1 has none: its `preRoundFightResult` reads "Win" for both players.
+    #[test]
+    fn test_no_fight_to_judge_by() {
+        let mut record = fixture("battle_record.xml");
+        for player in &mut record.player_records.player_record {
+            player
+                .player_round_records
+                .player_round_record
+                .retain(|r| r.round.trim().parse::<u32>().is_ok_and(|n| n <= 1));
+        }
+        assert!(record.match_results().iter().all(Option::is_none));
+    }
+
+    /// The control for the last round's techs: what a round researched, added to what it began
+    /// with, is what the next record holds, in every round that has a next record.
+    #[test]
+    fn test_techs_after_a_round_match_the_next_record() {
+        use super::super::detail::{enabled_techs, techs_after_round};
+        let count = |techs: &[super::super::UnitTechs]| -> usize {
+            techs.iter().map(|t| t.techs.len()).sum()
+        };
+        let mut checked = 0;
+        for name in ["battle_record_2340.xml", "battle_record_2324.xml"] {
+            let record = fixture(name);
+            for player in &record.player_records.player_record {
+                let rounds = &player.player_round_records.player_round_record;
+                for pair in rounds.windows(2) {
+                    let next = enabled_techs(&pair[1].player_data.active_technologies.unit_data);
+                    assert_eq!(
+                        count(&techs_after_round(&pair[0])),
+                        count(&next),
+                        "{name} round {}",
+                        pair[0].round.trim()
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 30, "{checked}");
+        // So the last fight's techs include the last round's research.
+        let detail = fixture("battle_record_2340.xml").match_detail();
+        let games = detail.player_games();
+        let last = detail.rounds.last().unwrap().sides[0].as_ref().unwrap();
+        assert_eq!(games[0].techs as usize, count(&last.enabled_techs));
     }
 
     /// Deployment labels and fight results over a folder of extracted replays:

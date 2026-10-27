@@ -2,6 +2,7 @@
 //! replays always pass them, and a hand-edited one usually breaks at least one. See
 //! docs/upload-trust.md.
 
+use super::battle_record::{known_result, FIGHT_RESULTS_LISTED_FROM};
 use super::game_data::{xp_to_next_level, XP_TABLE_VERIFIED_THROUGH};
 use super::names::{GameNames, NameKind};
 use super::{BattleRecord, Unit};
@@ -21,6 +22,11 @@ pub struct Problem {
 /// after `XP_TABLE_VERIFIED_THROUGH` skip the check: a balance patch can raise a unit's caps, and
 /// real replays must never be rejected for that.
 const XP_CHECKS_FROM: u32 = 2259;
+
+/// Most units one side fields in a round. Real armies stay far below it (the board code caps a
+/// side at 300 too); a crafted replay with thousands bloats every card and match view built
+/// from it.
+const MAX_ARMY: usize = 300;
 
 fn problem(code: &'static str, detail: impl Into<String>) -> Problem {
     Problem {
@@ -192,8 +198,120 @@ impl BattleRecord {
             }
         }
 
+        for player in players {
+            for record in &player.player_round_records.player_round_record {
+                let units = record.player_data.units.new_unit_data.len();
+                if units > MAX_ARMY {
+                    problems.push(problem(
+                        "army-size",
+                        format!(
+                            "{} fields {units} units in round {}, more than {MAX_ARMY}",
+                            player.name,
+                            record.round.trim()
+                        ),
+                    ));
+                }
+            }
+        }
+
+        if version >= FIGHT_RESULTS_LISTED_FROM && !asynchronous {
+            problems.extend(self.result_problems());
+        }
+
         problems.sort_by(|a, b| a.code.cmp(b.code).then_with(|| a.detail.cmp(&b.detail)));
         problems.dedup();
+        problems
+    }
+}
+
+impl BattleRecord {
+    /// From version 2340 the listed fight results decide every fight and the match, so they must
+    /// agree with what else the replay records: a lost fight costs reactor HP and a won one
+    /// doesn't (110 of 110 fights in the 9 replays of version 2340 on hand, 2026-10-27), and in
+    /// a 1v1 the two lists are opposite fight for fight.
+    fn result_problems(&self) -> Vec<Problem> {
+        let mut problems = Vec::new();
+        let players = &self.player_records.player_record;
+        let mut lists = Vec::new();
+        for player in players {
+            let results = player.fight_results().unwrap_or_default();
+            let fights = player.last_round().unwrap_or(0).saturating_sub(1) as usize;
+            // A concession during deployment ends the match a fight early.
+            let fought = if self.last_round_fought() {
+                fights + 1
+            } else {
+                fights
+            };
+            if results.len() != fought && fought > 0 {
+                problems.push(problem(
+                    "fight-results",
+                    format!(
+                        "{} lists {} fight results for {fought} fights",
+                        player.name,
+                        results.len()
+                    ),
+                ));
+            }
+            if let Some(bad) = results.iter().find(|r| known_result(r).is_none()) {
+                problems.push(problem(
+                    "fight-results",
+                    format!("{} has fight result {bad:?}", player.name),
+                ));
+            }
+            let hp: BTreeMap<u32, i64> = player
+                .player_round_records
+                .player_round_record
+                .iter()
+                .filter_map(|r| {
+                    Some((
+                        r.round.trim().parse().ok()?,
+                        r.player_data.reactor_core.trim().parse().ok()?,
+                    ))
+                })
+                .collect();
+            for (n, result) in results.iter().enumerate() {
+                let fight = n as u32 + 1;
+                let (Some(before), Some(after)) = (hp.get(&fight), hp.get(&(fight + 1))) else {
+                    continue;
+                };
+                let explained = match known_result(result) {
+                    Some("Lose") => after < before,
+                    Some("Win") => after >= before,
+                    _ => true,
+                };
+                if !explained {
+                    problems.push(problem(
+                        "results-hp",
+                        format!(
+                            "{} {} fight {fight}, but reactor HP went from {before} to {after}",
+                            player.name,
+                            if result.trim() == "Win" {
+                                "won"
+                            } else {
+                                "lost"
+                            }
+                        ),
+                    ));
+                }
+            }
+            lists.push(results);
+        }
+        if let [a, b] = lists.as_slice() {
+            let opposite = |x: &str, y: &str| {
+                matches!(
+                    (known_result(x), known_result(y)),
+                    (Some("Win"), Some("Lose"))
+                        | (Some("Lose"), Some("Win"))
+                        | (Some("Deuce"), Some("Deuce"))
+                )
+            };
+            if let Some(n) = a.iter().zip(b.iter()).position(|(x, y)| !opposite(x, y)) {
+                problems.push(problem(
+                    "fight-results",
+                    format!("the players' results for fight {} don't oppose", n + 1),
+                ));
+            }
+        }
         problems
     }
 }
@@ -217,6 +335,7 @@ mod tests {
     fn test_real_replays_pass() {
         for name in [
             "battle_record_2324.xml",
+            "battle_record_2340.xml",
             "1425_20241123--67298547_[小疯子]VS[kaltorak18].grbr",
             "battle_record.xml",
             "4player_brawl2.xml",
@@ -255,5 +374,51 @@ mod tests {
         let mut bad_id = fixture("battle_record_2324.xml");
         bad_id.battle_info.battle_id = "not-a-battle".into();
         assert!(bad_id.validate().iter().any(|p| p.code == "battle-id"));
+    }
+
+    /// The red team's forgery (2026-10-27): the loser of a 2340 match flips every listed result
+    /// to claim the win. HP still records the losses, and the lists no longer oppose.
+    #[test]
+    fn test_forged_results_are_caught() {
+        let flip = |r: &str| if r == "Win" { "Lose" } else { "Win" }.to_owned();
+        let mut forged = fixture("battle_record_2340.xml");
+        for record in &mut forged.player_records.player_record[0]
+            .player_round_records
+            .player_round_record
+        {
+            let results = &mut record.player_data.round_fight_result.results;
+            *results = results.iter().map(|r| flip(r.trim())).collect();
+        }
+        let codes: Vec<&str> = forged.validate().iter().map(|p| p.code).collect();
+        assert!(codes.contains(&"results-hp"), "{codes:?}");
+        assert!(codes.contains(&"fight-results"), "{codes:?}");
+
+        // Both lists flipped consistently still contradict the HP record.
+        let mut both = fixture("battle_record_2340.xml");
+        for player in &mut both.player_records.player_record {
+            for record in &mut player.player_round_records.player_round_record {
+                let results = &mut record.player_data.round_fight_result.results;
+                *results = results.iter().map(|r| flip(r.trim())).collect();
+            }
+        }
+        assert!(both.validate().iter().any(|p| p.code == "results-hp"));
+
+        // A list one short, or a value the game doesn't write, is flagged too.
+        let mut short = fixture("battle_record_2340.xml");
+        for record in &mut short.player_records.player_record[1]
+            .player_round_records
+            .player_round_record
+        {
+            record.player_data.round_fight_result.results.pop();
+        }
+        assert!(short.validate().iter().any(|p| p.code == "fight-results"));
+        let mut garbage = fixture("battle_record_2340.xml");
+        for record in &mut garbage.player_records.player_record[0]
+            .player_round_records
+            .player_round_record
+        {
+            record.player_data.round_fight_result.results[0] = "Banana".into();
+        }
+        assert!(garbage.validate().iter().any(|p| p.code == "fight-results"));
     }
 }

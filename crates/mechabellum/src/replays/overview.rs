@@ -29,6 +29,10 @@ impl BattleRecord {
 
         let mut last_round: usize = 0;
         let mut need_last_round_set = true;
+        let results = self.match_results();
+        // A concession during the last round's deployment means it was never fought: the final
+        // army is the one that fought the round before, as the last record's snapshot holds it.
+        let fought_last = self.last_round_fought();
 
         for (i, player) in self.player_records.player_record.iter().enumerate() {
             let name: PlayerName = player.name.clone().into();
@@ -45,7 +49,7 @@ impl BattleRecord {
             let Some(last_round_snapshot) = self.match_datas.match_snapshot_data.last() else {
                 continue;
             };
-            let last_round_result = player.final_result().unwrap_or_default();
+            let won = results.get(i).copied().flatten() == Some(true);
 
             let unlocked_units: Vec<Unit> = rounds[rounds.len() - 1]
                 .player_data
@@ -87,25 +91,30 @@ impl BattleRecord {
                 // The report holds the army as the last round began; the army that fought it
                 // is rebuilt from that round's actions (see final_round).
                 let last = &rounds[rounds.len() - 1];
-                let last_round_units: Vec<UnitInstance> = super::final_round::replay_deployment(
-                    &last.player_data,
-                    &last.action_records.match_action_data,
-                )
-                .iter()
-                .map(|data| UnitInstance {
-                    unit_type: Unit::from_replay_id(&data.id),
-                    xp: data.exp.parse().unwrap_or(0),
-                    position: MapPoint(
-                        data.position.x.parse().unwrap_or(0),
-                        data.position.y.parse().unwrap_or(0),
-                    ),
-                    equipment: data
-                        .equipments
-                        .ids(&data.equipment_id)
-                        .filter_map(|id| Item::from_str(id).ok())
-                        .collect(),
-                })
-                .collect();
+                let army = if fought_last {
+                    super::final_round::replay_deployment(
+                        &last.player_data,
+                        &last.action_records.match_action_data,
+                    )
+                } else {
+                    last.player_data.units.new_unit_data.clone()
+                };
+                let last_round_units: Vec<UnitInstance> = army
+                    .iter()
+                    .map(|data| UnitInstance {
+                        unit_type: Unit::from_replay_id(&data.id),
+                        xp: data.exp.parse().unwrap_or(0),
+                        position: MapPoint(
+                            data.position.x.parse().unwrap_or(0),
+                            data.position.y.parse().unwrap_or(0),
+                        ),
+                        equipment: data
+                            .equipments
+                            .ids(&data.equipment_id)
+                            .filter_map(|id| Item::from_str(id).ok())
+                            .collect(),
+                    })
+                    .collect();
                 let summary = PlayerSummary {
                     id: player.id.clone(),
                     name,
@@ -151,14 +160,16 @@ impl BattleRecord {
                         .map(super::detail::card_ref)
                         .collect(),
                     starter_pack: super::detail::starter_pack(player),
-                    enabled_techs: super::detail::enabled_techs(
-                        &rounds[rounds.len() - 1]
-                            .player_data
-                            .active_technologies
-                            .unit_data,
-                    ),
+                    // Including what the last round researched, when it was fought.
+                    enabled_techs: if fought_last {
+                        super::detail::techs_after_round(last)
+                    } else {
+                        super::detail::enabled_techs(
+                            &last.player_data.active_technologies.unit_data,
+                        )
+                    },
                 };
-                if last_round_result == "Win" {
+                if won {
                     winners.push(summary);
                 } else {
                     losers.push(summary);

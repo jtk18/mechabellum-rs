@@ -187,7 +187,7 @@ pub struct PlayerData {
     pub reactor_core: String,
     pub supply: String,
     /// The previous fight's result. Since version 2340 it always reads "Win"; use
-    /// `PlayerRecord::fight_results` there.
+    /// `PlayerRecord::fight_results` there (see `FIGHT_RESULTS_LISTED_FROM`).
     #[serde(rename = "preRoundFightResult")]
     pub pre_round_fight_result: String,
     /// Every fight's result for this player (version 2340 on), the last fight included.
@@ -624,11 +624,27 @@ pub struct RoundFightResult {
     pub results: Vec<String>,
 }
 
+/// First version whose round records list every fight's result (`roundFightResult`). From it
+/// on, `preRoundFightResult` reads "Win" for both players in every round and is never used.
+pub const FIGHT_RESULTS_LISTED_FROM: u32 = 2340;
+
+/// A fight result the game writes: "Win", "Lose" or "Deuce". Anything else (a crafted or future
+/// value) is unknown.
+pub(crate) fn known_result(value: &str) -> Option<&'static str> {
+    match value.trim() {
+        "Win" => Some("Win"),
+        "Lose" => Some("Lose"),
+        "Deuce" => Some("Deuce"),
+        _ => None,
+    }
+}
+
 impl PlayerRecord {
-    /// Every fight's result ("Win", "Lose" or "Deuce") in order, when the replay lists them
-    /// (version 2340 on). Each round record carries the same full list. In all 9 replays of
-    /// version 2340 checked (2026-10-27), each lost fight matched a drop in reactor HP, and the
-    /// two players' lists were opposite fight for fight.
+    /// Every fight's result in order, as the replay lists it (version 2340 on). Each round
+    /// record carries the same full list. In all 9 replays of version 2340 checked
+    /// (2026-10-27), each lost fight matched a drop in reactor HP (110 of 110 fights), and the
+    /// two players' lists were opposite fight for fight. Values aren't checked; see
+    /// `known_result`.
     pub fn fight_results(&self) -> Option<&[String]> {
         self.player_round_records
             .player_round_record
@@ -637,17 +653,83 @@ impl PlayerRecord {
             .find(|results| !results.is_empty())
     }
 
-    /// The match result for this player: the last fight's where the replay lists every fight.
-    /// Older replays only have the result of the fight before the last round (its record's
-    /// `pre_round_fight_result`), which is what they're judged by.
-    pub fn final_result(&self) -> Option<&str> {
-        if let Some(last) = self.fight_results().and_then(<[String]>::last) {
-            return Some(last.trim());
+    /// Whether the player conceded during the last round's deployment (`PAD_GiveUp` before
+    /// they finished deploying). That round's fight never happened, and they lost.
+    pub fn gave_up_deploying(&self) -> bool {
+        let Some(last) = self.player_round_records.player_round_record.last() else {
+            return false;
+        };
+        for action in &last.action_records.match_action_data {
+            match action.xsi_type.trim_start_matches("PAD_") {
+                "FinishDeploy" => return false,
+                "GiveUp" => return true,
+                _ => {}
+            }
         }
+        false
+    }
+
+    /// The highest round number recorded.
+    pub(crate) fn last_round(&self) -> Option<u32> {
         self.player_round_records
             .player_round_record
-            .last()
-            .map(|r| r.player_data.pre_round_fight_result.trim())
+            .iter()
+            .filter_map(|r| r.round.trim().parse().ok())
+            .max()
+    }
+}
+
+impl BattleRecord {
+    pub(crate) fn version_number(&self) -> u32 {
+        self.version.trim().parse().unwrap_or(0)
+    }
+
+    /// Whether the last recorded round's fight happened. It didn't when a player conceded
+    /// during its deployment; the last fight is then the one before.
+    pub fn last_round_fought(&self) -> bool {
+        !self
+            .player_records
+            .player_record
+            .iter()
+            .any(PlayerRecord::gave_up_deploying)
+    }
+
+    /// Each player's match result, in `player_records` order: `Some(true)` won, `Some(false)`
+    /// lost, `None` unknown (a draw, an unknown value, or nothing to judge by).
+    ///
+    /// - A player who conceded during deployment lost, and everyone else won.
+    /// - From version 2340: the listed result of the last fight that happened.
+    /// - Before: the last record's `pre_round_fight_result`, which is the result of the fight
+    ///   before the last round. The match is judged by it, as it always has been here. A last
+    ///   record of round 1 or earlier has no fight before it to judge by.
+    pub fn match_results(&self) -> Vec<Option<bool>> {
+        let players = &self.player_records.player_record;
+        if players.iter().any(PlayerRecord::gave_up_deploying) {
+            return players
+                .iter()
+                .map(|p| Some(!p.gave_up_deploying()))
+                .collect();
+        }
+        let version = self.version_number();
+        players
+            .iter()
+            .map(|p| {
+                let last = p.last_round()?;
+                if version >= FIGHT_RESULTS_LISTED_FROM {
+                    let result = p.fight_results()?.get(last.checked_sub(1)? as usize)?;
+                    return match known_result(result)? {
+                        "Win" => Some(true),
+                        "Lose" => Some(false),
+                        _ => None,
+                    };
+                }
+                if last <= 1 {
+                    return None;
+                }
+                let record = p.player_round_records.player_round_record.last()?;
+                Some(record.player_data.pre_round_fight_result.trim() == "Win")
+            })
+            .collect()
     }
 }
 

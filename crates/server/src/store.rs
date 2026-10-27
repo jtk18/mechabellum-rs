@@ -183,8 +183,11 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// 9: starter packs. 10: whole-match summaries and deployments per fight (`player_games`,
 /// `player_fights`, `player_unit_use`); version 2340's fight results, which 9 misread as wins
 /// for both players. 11: a match is classed by round 1's deployment (`opening`), not the one used
-/// in the most fights. 12: midboard armies are sym or asym too.
-const SCHEMA_VERSION: i64 = 12;
+/// in the most fights. 12: midboard armies are sym or asym too. 13: the review's fixes: version
+/// 2340 results never fall back to "Win", a concession during deployment ends the match a fight
+/// early, techs include the last round's research, level-ups count upgrades bought, units
+/// added and sold need fights from the first; the derived tables are recreated.
+const SCHEMA_VERSION: i64 = 13;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -232,6 +235,24 @@ pub struct Rating {
     /// Ranked games played, when known.
     pub elo_games: Option<i64>,
 }
+
+/// Largest value a rating field may hold. Real MMR, rank points and game counts are far below
+/// it; an upload key once stored i64::MAX and i64::MIN, and the MMR difference in `stats`
+/// overflowed into a REAL that failed every stats query (red team, 2026-10-27).
+const MAX_RATING: i64 = 1_000_000;
+
+impl Rating {
+    fn plausible(&self) -> bool {
+        [self.elo, self.rank_point, self.level, self.elo_games]
+            .into_iter()
+            .flatten()
+            .all(|v| (0..=MAX_RATING).contains(&v))
+    }
+}
+
+/// Largest replay document accepted, uncompressed. Real ones are 0.3-2 MB of XML; a crafted one
+/// with thousands of units bloats every card and match view built from it.
+pub const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct StatsFilter {
@@ -612,6 +633,12 @@ impl Store {
         }
         log::info!("rebuilding stats for schema version {SCHEMA_VERSION}");
         let started = std::time::Instant::now();
+        // Derived tables that changed shape since schema 10 are rebuilt from scratch: CREATE TABLE
+        // IF NOT EXISTS never alters a table that's already there.
+        self.conn().execute_batch(&format!(
+            "DROP TABLE IF EXISTS player_games; DROP TABLE IF EXISTS player_fights;
+             DROP TABLE IF EXISTS player_unit_use; {SCHEMA}"
+        ))?;
         let count = self.reindex()?;
         self.mark_current()?;
         log::info!("rebuilt {count} matches in {:.1?}", started.elapsed());
@@ -642,6 +669,12 @@ impl Store {
         // the actual writes.
         let document = BattleRecord::extract_document(bytes)
             .with_context(|| format!("{}: no battle record found", source.display()))?;
+        anyhow::ensure!(
+            document.len() <= MAX_DOCUMENT_BYTES,
+            "{}: replay of {} bytes is larger than {MAX_DOCUMENT_BYTES}",
+            source.display(),
+            document.len()
+        );
         let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
         let detail = record.match_detail();
         let battle_id = match record.battle_info.battle_id.trim() {
@@ -661,8 +694,9 @@ impl Store {
             return Ok(IngestOutcome::Duplicate { battle_id });
         }
         insert_record(&tx, &battle_id, &record, &detail, uploaded_by)?;
+        // A blob with no match row is left from a failed rebuild; this copy replaces it.
         tx.execute(
-            "INSERT INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
+            "INSERT OR REPLACE INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
             params![battle_id, xml_gz],
         )?;
         tx.commit()?;
@@ -806,7 +840,7 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut stored = 0;
-        for r in ratings {
+        for r in ratings.iter().filter(|r| r.plausible()) {
             let in_match = tx
                 .prepare_cached("SELECT 1 FROM players WHERE battle_id = ?1 AND player_id = ?2")?
                 .exists(params![battle_id, r.player_id])?;
@@ -844,7 +878,7 @@ impl Store {
     pub fn put_ratings(&self, battle_id: &str, ratings: &[Rating]) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        for r in ratings {
+        for r in ratings.iter().filter(|r| r.plausible()) {
             tx.execute(
                 "INSERT OR REPLACE INTO player_ratings
                      (battle_id, player_id, elo, rank_point, level, elo_games)
@@ -1428,79 +1462,126 @@ impl Store {
     /// Replays are decompressed and parsed on every core without holding the database; only
     /// the final rewrite is one locked transaction, so readers wait briefly if at all.
     pub fn reindex(&self) -> Result<usize> {
-        let (uploaders, blobs) = {
-            let conn = self.conn();
-            let uploaders: BTreeMap<String, Option<String>> = conn
-                .prepare("SELECT battle_id, uploaded_by FROM matches")?
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<rusqlite::Result<_>>()?;
-            let blobs: Vec<(String, Vec<u8>)> = conn
-                .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<rusqlite::Result<_>>()?;
-            (uploaders, blobs)
-        };
+        let blobs: Vec<(String, Vec<u8>)> = self
+            .conn()
+            .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
 
-        let records: Vec<(String, BattleRecord, MatchDetail)> = blobs
-            .into_par_iter()
-            .filter_map(|(battle_id, gz)| {
-                let parsed = (|| -> Result<BattleRecord> {
-                    let mut xml = String::new();
-                    GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
-                    Ok(BattleRecord::from_bytes(
-                        xml.as_bytes(),
-                        Path::new(&battle_id),
-                    )?)
-                })();
-                match parsed {
-                    Ok(record) => {
-                        let detail = record.match_detail();
-                        Some((battle_id, record, detail))
-                    }
-                    // Keep the rest of the database usable if one stored replay is unreadable.
-                    Err(e) => {
-                        log::warn!("reindex {battle_id}: {e:#}");
-                        None
-                    }
+        let parse = |battle_id: &str, gz: &[u8]| -> Option<(BattleRecord, MatchDetail)> {
+            let parsed = (|| -> Result<BattleRecord> {
+                let mut xml = String::new();
+                GzDecoder::new(gz).read_to_string(&mut xml)?;
+                Ok(BattleRecord::from_bytes(
+                    xml.as_bytes(),
+                    Path::new(battle_id),
+                )?)
+            })();
+            match parsed {
+                Ok(record) => {
+                    let detail = record.match_detail();
+                    Some((record, detail))
                 }
-            })
+                // Keep the rest of the database usable if one stored replay is unreadable.
+                Err(e) => {
+                    log::warn!("reindex {battle_id}: {e:#}");
+                    None
+                }
+            }
+        };
+        let mut records: BTreeMap<String, (BattleRecord, MatchDetail)> = blobs
+            .into_par_iter()
+            .filter_map(|(battle_id, gz)| Some((battle_id.clone(), parse(&battle_id, &gz)?)))
             .collect();
 
         let mut conn = self.conn();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // The replays stored now, with their uploaders. Uploads and the desktop app's replay
+        // watcher keep storing while the others are parsed above (the app upgrades in the
+        // background): ones stored meanwhile are parsed here, under the lock, and ones removed
+        // meanwhile aren't brought back.
+        let stored: BTreeMap<String, Option<String>> = tx
+            .prepare(
+                "SELECT b.battle_id, m.uploaded_by FROM replay_blobs b
+                 LEFT JOIN matches m ON m.battle_id = b.battle_id",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        records.retain(|battle_id, _| stored.contains_key(battle_id));
+        let late: Vec<(String, Vec<u8>)> = {
+            let mut stmt = tx.prepare("SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1")?;
+            stored
+                .keys()
+                .filter(|battle_id| !records.contains_key(*battle_id))
+                .filter_map(|battle_id| {
+                    let gz: Vec<u8> = stmt.query_row([battle_id], |r| r.get(0)).ok()?;
+                    Some((battle_id.clone(), gz))
+                })
+                .collect()
+        };
+        for (battle_id, gz) in late {
+            if let Some(parsed) = parse(&battle_id, &gz) {
+                records.insert(battle_id, parsed);
+            }
+        }
+
         tx.execute("DELETE FROM matches", [])?;
-        for (battle_id, record, detail) in &records {
-            let uploaded_by = uploaders.get(battle_id).cloned().flatten();
-            insert_record(&tx, battle_id, record, detail, uploaded_by.as_deref())?;
+        let mut inserted = 0;
+        for (battle_id, (record, detail)) in &records {
+            let uploaded_by = stored.get(battle_id).cloned().flatten();
+            // One record that won't insert is logged and skipped, not allowed to undo the rest:
+            // every command upgrades first, so a failure here would stop the server starting.
+            let savepoint = tx.savepoint()?;
+            match insert_record(
+                &savepoint,
+                battle_id,
+                record,
+                detail,
+                uploaded_by.as_deref(),
+            ) {
+                Ok(()) => {
+                    savepoint.commit()?;
+                    inserted += 1;
+                }
+                Err(e) => log::warn!("reindex {battle_id}: not stored: {e:#}"),
+            }
         }
         tx.commit()?;
-        Ok(records.len())
+        Ok(inserted)
     }
 
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
-                    COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
-                                                  || char(30) || COALESCE(g.opening, '')
-                                                  || char(30) || COALESCE(p.starter_pack, ''), char(31))
+                    COALESCE((SELECT json_group_array(json_object(
+                                  'name', p.name, 'elo', r.elo, 'deployment', g.opening,
+                                  'pack', json(p.starter_pack)))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
                               LEFT JOIN player_games g
                                 ON g.battle_id = p.battle_id AND g.player_id = p.player_id
-                              WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
-                    COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
-                                                  || char(30) || COALESCE(g.opening, '')
-                                                  || char(30) || COALESCE(p.starter_pack, ''), char(31))
+                              WHERE p.battle_id = m.battle_id AND p.won = 1), '[]'),
+                    COALESCE((SELECT json_group_array(json_object(
+                                  'name', p.name, 'elo', r.elo, 'deployment', g.opening,
+                                  'pack', json(p.starter_pack)))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
                               LEFT JOIN player_games g
                                 ON g.battle_id = p.battle_id AND g.player_id = p.player_id
-                              WHERE p.battle_id = m.battle_id AND p.won = 0), '')
-             FROM matches m ORDER BY m.occurred_on DESC LIMIT ?1",
+                              WHERE p.battle_id = m.battle_id AND p.won = 0), '[]')
+             FROM matches m ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?1",
         )?;
-        // "name\x1eelo\x1edeployment\x1epack" entries joined by \x1f; the elo, deployment and pack
-        // parts are empty when unknown. The pack is JSON, which never holds either separator unescaped.
+        // Each side as a JSON array of players. JSON, not separator characters: names come
+        // from uploaded replays, and a name holding a separator once forged a second player
+        // with any MMR it liked (review, 2026-10-27).
+        #[derive(Deserialize)]
+        struct Entry {
+            name: String,
+            elo: Option<i64>,
+            deployment: Option<String>,
+            pack: Option<mechabellum::StarterPack>,
+        }
         type Side = (
             Vec<String>,
             Vec<Option<i64>>,
@@ -1508,22 +1589,13 @@ impl Store {
             Vec<Option<mechabellum::StarterPack>>,
         );
         let split = |s: String| -> Side {
+            let entries: Vec<Entry> = serde_json::from_str(&s).unwrap_or_default();
             let mut side: Side = Default::default();
-            for entry in s.split('\u{1f}').filter(|entry| !entry.is_empty()) {
-                let mut parts = entry.splitn(4, '\u{1e}');
-                side.0.push(parts.next().unwrap_or_default().to_owned());
-                side.1.push(parts.next().and_then(|elo| elo.parse().ok()));
-                side.2.push(
-                    parts
-                        .next()
-                        .filter(|deployment| !deployment.is_empty())
-                        .map(str::to_owned),
-                );
-                side.3.push(
-                    parts
-                        .next()
-                        .and_then(|pack| serde_json::from_str(pack).ok()),
-                );
+            for e in entries {
+                side.0.push(e.name);
+                side.1.push(e.elo);
+                side.2.push(e.deployment);
+                side.3.push(e.pack);
             }
             side
         };
@@ -1642,7 +1714,7 @@ fn ratio(n: u64, d: u64) -> f64 {
 }
 
 fn insert_record(
-    tx: &rusqlite::Transaction,
+    tx: &Connection,
     battle_id: &str,
     record: &BattleRecord,
     detail: &MatchDetail,
@@ -1677,7 +1749,7 @@ fn insert_record(
 
 /// The match from each stored player's side (`mechabellum::PlayerGame`). Players the overview
 /// left out (no fight report) have no `players` row, so they're skipped too.
-fn insert_games(tx: &rusqlite::Transaction, battle_id: &str, detail: &MatchDetail) -> Result<()> {
+fn insert_games(tx: &Connection, battle_id: &str, detail: &MatchDetail) -> Result<()> {
     let stored: std::collections::BTreeSet<String> = tx
         .prepare_cached("SELECT player_id FROM players WHERE battle_id = ?1")?
         .query_map([battle_id], |r| r.get(0))?
@@ -1751,7 +1823,7 @@ fn insert_games(tx: &rusqlite::Transaction, battle_id: &str, detail: &MatchDetai
 }
 
 fn insert_player(
-    tx: &rusqlite::Transaction,
+    tx: &Connection,
     battle_id: &str,
     player: &PlayerSummary,
     won: bool,
