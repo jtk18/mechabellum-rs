@@ -55,6 +55,7 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
     };
     Router::new()
         .route("/", get(website))
+        .route("/stats", get(stats_page))
         .route("/health", get(|| async { "ok" }))
         .route("/api/facets", get(facets))
         .route("/api/replays", get(list_replays).post(upload_replay))
@@ -280,9 +281,15 @@ async fn list_replays(
     Ok(Json(blocking(move || store.recent_matches(limit)).await?))
 }
 
-/// The public stats page (crates/server/web/index.html), built into the binary.
+/// The public landing page (crates/server/web/index.html), built into the binary.
 async fn website() -> axum::response::Html<&'static str> {
     axum::response::Html(include_str!("../web/index.html"))
+}
+
+/// The stats page (crates/server/web/stats.html), not linked from the landing page
+/// while the stats are being worked on.
+async fn stats_page() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../web/stats.html"))
 }
 
 /// Patches and modes that have matches, for filters. Unlike `Store::facets`, it doesn't name any
@@ -938,23 +945,39 @@ mod tests {
         assert_eq!(status(&app, stats).await, StatusCode::OK);
     }
 
-    /// The public page loads, and its filter data doesn't name any player.
+    /// The landing page and the stats page load, and the filter data doesn't name any player.
     #[tokio::test]
     async fn test_website_and_public_facets() {
         let store = Arc::new(Store::open_in_memory().unwrap());
         store.ingest(&fixture(NEW), Path::new("a"), None).unwrap();
         let app = router(store, UploadAuth::Open);
 
-        let page = app
-            .clone()
-            .oneshot(Request::get("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(page.status(), StatusCode::OK);
-        let html = axum::body::to_bytes(page.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        assert!(String::from_utf8_lossy(&html).contains("Community Stats"));
+        let page = |path: &'static str| {
+            let app = app.clone();
+            async move {
+                let page = app
+                    .oneshot(Request::get(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(page.status(), StatusCode::OK, "{path}");
+                let html = axum::body::to_bytes(page.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
+                String::from_utf8_lossy(&html).into_owned()
+            }
+        };
+        let landing = page("/").await;
+        assert!(landing.contains("How it works"));
+        assert!(landing.contains("github.com/jtk18/mechabellum-rs"));
+        assert!(
+            !landing.contains("/api/"),
+            "the landing page calls no API yet"
+        );
+        let stats = page("/stats").await;
+        assert!(
+            stats.contains("/api/stats"),
+            "the stats page is the one with data"
+        );
 
         let facets = app
             .oneshot(Request::get("/api/facets").body(Body::empty()).unwrap())

@@ -4,21 +4,18 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mechabellum Community Stats</title>
+<meta name="description" content="Win rates for Mechabellum, built from replays that players share." />
 <style>
   :root {
     color-scheme: dark;
     --page: #0a0d10;
     --panel: #12171b;
-    --panel-2: #171d22;
     --border: rgb(160 190 210 / 0.14);
     --text: #eef3f6;
     --text-2: #b9c4cb;
     --muted: #7f8c94;
-    --track: #2a3136;
-    --pick: #3987e5;
-    --win: #3987e5;
-    --loss: #e66767;
     --accent: #d95926;
+    --link: #6cc6e0;
     --focus: #6cc6e0;
   }
   * { box-sizing: border-box; }
@@ -26,243 +23,65 @@
     margin: 0;
     background: var(--page);
     color: var(--text);
-    font: 15px/1.45 Bahnschrift, "DIN Alternate", "Segoe UI", Roboto, system-ui, sans-serif;
+    font: 16px/1.55 Bahnschrift, "DIN Alternate", "Segoe UI", Roboto, system-ui, sans-serif;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
-  header.top {
-    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px;
-    border-bottom: 2px solid var(--accent); padding-bottom: 12px;
-  }
-  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: 0.02em; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 14px; }
+  h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: 0.02em; }
   h1 span { color: var(--accent); }
-  .counts { color: var(--text-2); font-variant-numeric: tabular-nums; }
-  .intro { color: var(--text-2); max-width: 70ch; margin: 14px 0 0; }
-  .filters {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
-    margin: 18px 0 0; padding: 10px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  }
-  .filters label { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
-  select, button {
-    font: inherit; color: var(--text); background: var(--panel-2);
-    border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px;
-  }
-  select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-  @media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
-  section.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
-  section.wide { grid-column: 1 / -1; }
-  h2 { margin: 0 0 8px; font-size: 17px; }
-  h2 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
-  .rows { display: grid; grid-template-columns: minmax(110px, 1.2fr) minmax(90px, 1fr) minmax(120px, 1.3fr) 56px; gap: 6px 10px; align-items: center; }
-  .head { color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .row-small { opacity: 0.55; }
-  .bar { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-2); }
-  .track { position: relative; flex: 1; height: 8px; background: var(--track); border-radius: 4px; overflow: hidden; }
-  .fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--pick); border-radius: 4px; }
-  .mid { position: absolute; top: -2px; bottom: -2px; left: 50%; width: 1px; background: var(--muted); }
-  .div { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
-  .val { min-width: 3.2em; text-align: right; }
-  .empty { grid-column: 1 / -1; color: var(--muted); padding: 12px 0; }
-  .scroll { overflow-x: auto; }
-  table.heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
-  table.heat th { color: var(--muted); font-weight: 400; padding: 0 4px; white-space: nowrap; }
-  table.heat th.name { text-align: left; color: var(--text-2); font-size: 13px; }
-  table.heat td { width: 34px; height: 20px; border-radius: 3px; background: #1c2227; }
-  table.heat td.thin { background: repeating-linear-gradient(45deg, #1c2227 0 4px, #232a30 4px 8px); }
-  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
-  .ramp { width: 160px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #e66767, #3a4046 50%, #3987e5); }
-  .note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
-  footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
-  [hidden] { display: none !important; }
+  .lede { color: var(--text-2); margin: 10px 0 0; font-size: 18px; }
+  h2 { margin: 0 0 10px; font-size: 19px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin-top: 16px; }
+  ol { margin: 0; padding-left: 22px; }
+  li { margin: 6px 0; color: var(--text-2); }
+  li strong { color: var(--text); }
+  p { margin: 8px 0 0; color: var(--text-2); }
+  p:first-of-type { margin-top: 0; }
+  a { color: var(--link); }
+  a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+  .soon { border-style: dashed; }
+  .soon h2 { color: var(--muted); }
+  footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header class="top">
+  <header>
     <h1>Mechabellum <span>Community Stats</span></h1>
-    <div class="counts" id="counts" aria-live="polite">Loading…</div>
+    <p class="lede">Win rates for Mechabellum, built from replays that players share.</p>
   </header>
-  <p class="intro">
-    Win rates from matches players shared from their own replays. Each player's weight is capped
-    and the headline rate is the median across players, so no single account can move the
-    numbers. Opponents' names are never shared.
-  </p>
 
-  <div class="filters" role="group" aria-label="Filters">
-    <label>Patch <select id="patch"></select></label>
-    <label>Mode <select id="mode"></select></label>
-    <label><input type="checkbox" id="corroborated" /> Only matches both players shared</label>
-  </div>
+  <main>
+    <section aria-labelledby="how">
+      <h2 id="how">How it works</h2>
+      <ol>
+        <li><strong>A small desktop app</strong> finds your Mechabellum replay folder and watches it.</li>
+        <li><strong>It shares your replays</strong> with this site, with every other player's name removed first. Only replays are sent.</li>
+        <li><strong>The site adds them up</strong> into shared stats: which units and techs win, patch by patch.</li>
+      </ol>
+    </section>
 
-  <div class="grid">
-    <section class="panel">
-      <h2>Units <small>in the final army</small></h2>
-      <div class="rows" id="units" role="table" aria-label="Unit win rates"></div>
+    <section class="soon" aria-labelledby="stats">
+      <h2 id="stats">Stats: coming soon</h2>
+      <p>We're still building the stats pages. Once enough replays are in, they'll appear here.</p>
     </section>
-    <section class="panel">
-      <h2>Specialists <small>held at the end</small></h2>
-      <div class="rows" id="specialists" role="table" aria-label="Specialist win rates"></div>
-    </section>
-    <section class="panel wide">
-      <h2>Unit win rate by month</h2>
-      <div class="scroll"><table class="heat" id="heat" aria-label="Unit win rate by month"></table></div>
-      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 games</span></div>
-    </section>
-  </div>
 
-  <footer>
-    Shared with the Mechabellum Stats desktop app. Data: <a href="/api/stats/robust" style="color: var(--text-2)">/api/stats/robust</a>.
-    Not affiliated with Game River.
-  </footer>
+    <section aria-labelledby="get">
+      <h2 id="get">Get the app</h2>
+      <p>Downloads for Windows, macOS and Linux will be on the
+        <a href="https://github.com/jtk18/mechabellum-rs/releases">GitHub releases page</a>.
+        While we test, sharing replays needs an upload key.</p>
+    </section>
+
+    <section aria-labelledby="code">
+      <h2 id="code">Check the code</h2>
+      <p>The app, the replay parser and this server are on GitHub, so you can see exactly what
+        the app reads and what it sends:
+        <a href="https://github.com/jtk18/mechabellum-rs">github.com/jtk18/mechabellum-rs</a>.</p>
+    </section>
+  </main>
+
+  <footer>A fan project. Not made by or affiliated with Game River.</footer>
 </div>
-
-<script>
-"use strict";
-const $ = (id) => document.getElementById(id);
-function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text !== undefined) n.textContent = text;
-  return n;
-}
-const pct = (x) => (x == null ? "–" : Math.round(x * 100) + "%");
-const SMALL = 10;
-const MODES = { VS_1_1: "1v1", VS_2_2: "2v2", VS_4_Scuffle: "4-player Brawl" };
-const modeLabel = (m, g) => `${MODES[m] || m} ${g.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
-
-async function get(path, params) {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params || {})) if (v !== undefined && v !== "" && v !== null) q.set(k, v);
-  const r = await fetch(path + (q.toString() ? "?" + q : ""));
-  if (!r.ok) throw new Error(`${path}: ${r.status}`);
-  return r.json();
-}
-
-function filter() {
-  const f = {};
-  const patch = $("patch").value;
-  if (patch) { f.min_version = patch; f.max_version = patch; }
-  const mode = $("mode").value;
-  if (mode) { const [m, g] = mode.split("|"); f.match_mode = m; f.game_mode = g; }
-  if ($("corroborated").checked) f.corroborated_only = true;
-  return f;
-}
-
-function bar(rate) {
-  const b = el("div", "bar");
-  const t = el("div", "track");
-  const f = el("div", "fill");
-  f.style.width = `${Math.min(100, rate * 100)}%`;
-  t.append(f);
-  b.append(t, el("span", "val", pct(rate)));
-  return b;
-}
-
-function winBar(rate) {
-  const b = el("div", "bar");
-  const t = el("div", "track");
-  if (rate != null) {
-    const d = el("div", "div");
-    const delta = Math.max(-0.5, Math.min(0.5, rate - 0.5));
-    d.style.left = `${50 + Math.min(0, delta) * 100}%`;
-    d.style.width = `${Math.abs(delta) * 100}%`;
-    d.style.background = delta >= 0 ? "var(--win)" : "var(--loss)";
-    t.append(d);
-  }
-  t.append(el("div", "mid"));
-  b.append(t, el("span", "val", pct(rate)));
-  return b;
-}
-
-function renderRows(container, rows, total) {
-  const heads = ["Name", "Pick rate", "Win rate", "Games"].map((h, i) => el("div", "head" + (i === 3 ? " num" : ""), h));
-  const body = rows.slice(0, 40).flatMap((r) => {
-    const headline = r.median_uploader_win_rate ?? r.capped_win_rate;
-    const cls = r.games < SMALL ? "row-small" : "";
-    const name = el("div", cls, r.name);
-    name.title = `Plain rate ${pct(r.win_rate)}, capped ${pct(r.capped_win_rate)}, median of ${r.uploaders} players ${pct(r.median_uploader_win_rate)}`;
-    const pick = bar(total ? r.games / total : 0);
-    const win = winBar(headline);
-    const games = el("div", "num " + cls, String(r.games));
-    for (const n of [pick, win]) if (cls) n.classList.add(cls);
-    return [name, pick, win, games];
-  });
-  container.replaceChildren(...heads, ...body);
-  if (rows.length === 0) container.append(el("div", "empty", "No matches fit these filters yet."));
-}
-
-function heatColor(rate) {
-  const d = Math.max(-1, Math.min(1, (rate - 0.5) / 0.25));
-  const [from, to] = d >= 0 ? [[58, 64, 70], [57, 135, 229]] : [[58, 64, 70], [230, 103, 103]];
-  const k = Math.abs(d);
-  const c = from.map((v, i) => Math.round(v + (to[i] - v) * k));
-  return `rgb(${c.join(",")})`;
-}
-
-function renderHeat(trends) {
-  const table = $("heat");
-  const head = el("tr");
-  head.append(el("th", "name", ""));
-  for (const v of trends.versions) {
-    const th = el("th", "", v.label.replace(/^20(\d\d)-/, "$1/"));
-    th.title = `${v.label}: ${v.matches} matches`;
-    head.append(th);
-  }
-  const rows = trends.units.slice(0, 24).map((u) => {
-    const tr = el("tr");
-    tr.append(el("th", "name", u.name));
-    u.cells.forEach((c, i) => {
-      const td = el("td");
-      if (c) {
-        const rate = c.wins / c.picks;
-        if (c.picks < SMALL) td.className = "thin";
-        else td.style.background = heatColor(rate);
-        td.title = `${u.name}, ${trends.versions[i].label}: won ${c.wins} of ${c.picks} (${pct(rate)})`;
-      }
-      tr.append(td);
-    });
-    return tr;
-  });
-  table.replaceChildren(head, ...rows);
-}
-
-async function refresh() {
-  const f = filter();
-  try {
-    const [robust, stats, trends] = await Promise.all([
-      get("/api/stats/robust", f),
-      get("/api/stats", f),
-      get("/api/stats/versions", { ...f, min_version: undefined, max_version: undefined, period: "month" }),
-    ]);
-    const total = stats.player_results;
-    renderRows($("units"), robust.units, total);
-    renderRows($("specialists"), robust.specialists, total);
-    renderHeat(trends);
-    $("counts").textContent = `${stats.matches.toLocaleString()} matches, ${total.toLocaleString()} player results`;
-  } catch (e) {
-    $("counts").textContent = `Couldn't load stats: ${e.message}`;
-  }
-}
-
-async function start() {
-  try {
-    const facets = await get("/api/facets");
-    $("patch").replaceChildren(el("option", "", "All patches"), ...facets.versions.map(([v, n]) => {
-      const o = el("option", "", `${v} (${n})`); o.value = v; return o;
-    }));
-    $("patch").firstChild.value = "";
-    $("mode").replaceChildren(el("option", "", "All modes"), ...facets.modes.map(([m, g, n]) => {
-      const o = el("option", "", `${modeLabel(m, g)} (${n})`); o.value = `${m}|${g}`; return o;
-    }));
-    $("mode").firstChild.value = "";
-  } catch (e) {
-    /* Filters stay empty; stats still load. */
-  }
-  for (const id of ["patch", "mode", "corroborated"]) $(id).addEventListener("change", refresh);
-  refresh();
-}
-start();
-</script>
 </body>
 </html>

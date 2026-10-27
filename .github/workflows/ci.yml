@@ -21,7 +21,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-24.04]
+        # A push to main tests on Linux only. Pull requests and manual runs test all
+        # three: on a private repo, macOS minutes cost 10x and Windows 2x (J: keep CI
+        # from being excessive, 2026-10-26). Releases still build all three.
+        os: ${{ fromJSON(github.event_name == 'push' && '["ubuntu-24.04"]' || '["windows-latest", "macos-latest", "ubuntu-24.04"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
