@@ -136,7 +136,7 @@
           <p class="panel-note" id="matchups-note"></p>
         </section>
         <section class="panel">
-          <h2>Winners and losers <small>mean per player</small></h2>
+          <h2>Winners and losers <small>mean per player result</small></h2>
           <div class="tale" id="army" role="table" aria-label="Winners and losers"></div>
         </section>
         <section class="panel">
@@ -182,6 +182,13 @@
         <button type="button" id="copy-board" class="quiet" title="Copy this round as board code, for sharing or Testing Grounds">Copy board code</button>
       </div>
 
+      <!-- Above the board, so picking a fight changes the board in view. -->
+      <section class="tape-row" id="tape-row" aria-label="Fights" hidden>
+        <h3>Fights <small>reactor HP going in, colored by that fight's deployment (grey: not classed); pick one to see it</small></h3>
+        <div class="fight-tape" id="fight-tape" role="group" aria-label="Fights"></div>
+        <div class="fight-tape-note" id="fight-tape-note"></div>
+      </section>
+
       <div class="match-body">
         <div class="match-main">
           <div class="board-wrap">
@@ -201,11 +208,7 @@
             </p>
           </div>
           <section class="match-summary" id="match-summary" aria-label="The whole match" hidden>
-            <div class="summary-col">
-              <h3>Fights <small>reactor HP going in, colored by deployment; click one to see it</small></h3>
-              <div class="fight-tape" id="fight-tape" role="group" aria-label="Fights"></div>
-              <div class="fight-tape-note" id="fight-tape-note"></div>
-            </div>
+
             <div class="summary-col">
               <h3>Tale of the tape</h3>
               <div class="tale" id="match-tale" role="table" aria-label="Both players over the match"></div>

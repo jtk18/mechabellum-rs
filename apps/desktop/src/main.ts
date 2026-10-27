@@ -6,7 +6,7 @@ import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
 import { renderLoadout } from "./loadout";
 import { bandLegend, deploymentPill, renderTale } from "./deploy";
-import { $, el, modeLabel, pct, type Tip } from "./util";
+import { $, el, iso, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
   upgrading: boolean;
@@ -244,10 +244,11 @@ function pickBar(rate: number) {
   return bar;
 }
 
-function winBar(rate: number) {
+/** A win rate as a bar growing from `base` (50% unless given) toward win or loss. */
+function winBar(rate: number, base = 0.5) {
   const bar = el("div", "bar diverging");
   const track = el("div", "track");
-  const delta = rate - 0.5;
+  const delta = Math.max(-0.5, Math.min(0.5, rate - base));
   const fill = el("div", `fill ${delta >= 0 ? "win" : "loss"}`);
   fill.style.width = `${Math.abs(delta) * 100}%`;
   track.append(fill, el("div", "midline"));
@@ -477,6 +478,7 @@ function renderMatchList() {
         const row = el("span", `player-line${won ? " winner" : ""}`);
         row.append(el("span", "result-tag", won ? "Won" : "Lost"));
         const who = el("span", "name", name);
+        who.title = name;
         if (elo != null) {
           const badge = el("span", "elo", String(elo));
           badge.title = "MMR at match start";
@@ -494,7 +496,7 @@ function renderMatchList() {
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
       open.type = "button";
-      open.setAttribute("aria-label", `Open the board for ${m.winners.join(", ")} vs ${m.losers.join(", ")} on ${when.toLocaleDateString(undefined, { timeZone: "UTC" })}`);
+      open.setAttribute("aria-label", `Open the board for ${m.winners.map(iso).join(", ")} vs ${m.losers.map(iso).join(", ")} on ${when.toLocaleDateString(undefined, { timeZone: "UTC" })}`);
       open.addEventListener("click", () => showMatch(m.battle_id));
       item.append(el("span", "when", when.toLocaleDateString(undefined, { timeZone: "UTC" })), outcome, players, details, open);
       item.addEventListener("dblclick", () => showMatch(m.battle_id));
@@ -712,8 +714,13 @@ function renderLengths(g: GameStats) {
   const container = $("lengths");
   const max = Math.max(1, ...g.lengths.map(([, n]) => n));
   const total = g.lengths.reduce((sum, [, n]) => sum + n, 0);
+  // Every length from the shortest to the longest, so a missing one shows as a gap.
+  const counts = new Map(g.lengths);
+  const lo = Math.min(...g.lengths.map(([f]) => f));
+  const hi = Math.max(...g.lengths.map(([f]) => f));
+  const filled: [number, number][] = g.lengths.length ? Array.from({ length: hi - lo + 1 }, (_, i) => [lo + i, counts.get(lo + i) ?? 0]) : [];
   container.replaceChildren(
-    ...g.lengths.map(([fights, n]) => {
+    ...filled.map(([fights, n]) => {
       const col = el("div", "length-col");
       const bar = el("span", "length-bar");
       bar.style.height = `${(n / max) * 100}%`;
@@ -729,14 +736,18 @@ function renderLengths(g: GameStats) {
 
 function renderUsed(g: GameStats) {
   const container = $("used");
-  const heads = ["Unit", "Used", "Win rate", "Kept", "Sold", "Top level"].map((h, i) => el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h));
+  // Centre the bars on the share of results that won in these filters: a brawl has three losers
+  // per winner, so under all modes 50% would paint nearly every unit as losing.
+  const base = g.winners && g.losers ? g.winners.results / (g.winners.results + g.losers.results) : 0.5;
+  const heads = ["Unit", "Used", `Win rate (centre ${pct(base)})`, "Kept", "Sold", "Top level"].map((h, i) => el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h));
+  heads[2].dataset.tip = JSON.stringify({ title: "Win rate", lines: ["Bars grow from the share of all player results in these filters that won."] } satisfies Tip);
   const rows = g.units.slice(0, 40).flatMap((u) => {
     const name = el("div", "name");
     name.append(nameIcon(art.unitIconByName(u.name)), el("span", "", u.name));
     const cells = [
       name,
       el("div", "num", pct(u.use_rate)),
-      winBar(u.win_rate),
+      winBar(u.win_rate, base),
       el("div", "num", pct(u.games ? u.kept / u.games : 0)),
       el("div", "num", `${u.sold} of ${u.added}`),
       el("div", "num", u.mean_max_level.toFixed(1)),
@@ -840,7 +851,12 @@ async function refreshStatus(): Promise<Status> {
 
 type View = "stats" | "matches" | "match" | "sharing" | "loadout";
 
+/** Where the match list was scrolled to, so coming back from a match lands there again. */
+let matchListScroll = 0;
+
 function showView(view: View) {
+  const leavingList = !$("view-matches").hidden && view !== "matches";
+  if (leavingList) matchListScroll = window.scrollY;
   if (view === "matches" && !matchListLoaded) {
     $("match-list").replaceChildren(el("li", "empty", "Loading matches…"));
     refreshMatchList();
@@ -856,7 +872,7 @@ function showView(view: View) {
     if (current) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
   }
-  window.scrollTo(0, 0);
+  window.scrollTo(0, view === "matches" ? matchListScroll : 0);
 }
 
 async function showMatch(battleId: string) {
@@ -955,6 +971,7 @@ function setupTooltip() {
     show(target, box.left, box.bottom);
   });
   document.addEventListener("focusout", () => (tip.hidden = true));
+  document.addEventListener("mouseleave", () => (tip.hidden = true));
   // A tooltip left behind by scrolling explains whatever slid under it.
   document.addEventListener("scroll", () => (tip.hidden = true), true);
 }

@@ -1,7 +1,7 @@
 // One match, redrawn round by round on a schematic board.
 import { invoke } from "@tauri-apps/api/core";
 import { art, artImage } from "./art";
-import { $, el, modeLabel, type Tip } from "./util";
+import { $, el, iso, modeLabel, type Tip } from "./util";
 import { BANDS, bandColor, deploymentPill, labelBand, renderTale, shareBar, type FightSummary, type PlayerGame } from "./deploy";
 
 interface TechRef {
@@ -260,8 +260,9 @@ function drawZones(board: SVGSVGElement, sides: (SideLayout | null)[], fight: nu
       layers.push(svg("rect", { class: "tower", x: sx * TOWER_X - TOWER_SIZE / 2, y: sy * TOWER_Y - TOWER_SIZE / 2, width: TOWER_SIZE, height: TOWER_SIZE, rx: 2 }));
     }
   }
-  if (classified()) layers.push(bandGuides());
   layers.push(drawUnits(sides));
+  // After the units, so a unit standing on a label doesn't hide it.
+  if (classified()) layers.push(bandGuides());
   board.replaceChildren(...layers);
 }
 
@@ -301,7 +302,7 @@ function drawUnits(sides: (SideLayout | null)[]) {
         class: `unit ${sideClass(s)}${isSelected ? " selected" : ""}${u.is_new ? " new" : ""}`,
         tabindex: 0,
         role: "button",
-        "aria-label": `${u.name}, level ${u.level + 1}, ${detail!.players[s].name}`,
+        "aria-label": `${u.name}, level ${u.level + 1}, ${iso(detail!.players[s].name)}`,
       });
       const box = { x: bx - w / 2 + 0.6, y: by - h / 2 + 0.6, width: w - 1.2, height: h - 1.2 };
       g.append(svg("rect", { ...box, rx: 1.6 }));
@@ -331,7 +332,7 @@ function drawUnits(sides: (SideLayout | null)[]) {
         star.textContent = "★";
         g.append(star);
       }
-      const lines = [`Level ${u.level + 1}`, `Owned by ${detail!.players[s].name}`];
+      const lines = [`Level ${u.level + 1}`, `Owned by ${iso(detail!.players[s].name)}`];
       if (u.is_new) lines.push("New this round");
       if (u.xp_gained !== null) lines.push(`${u.xp_gained.toLocaleString()} XP earned this fight${isTop ? ", the most on its side" : ""}`);
       const tip: Tip = { title: u.name, lines };
@@ -541,7 +542,7 @@ function renderRoundBar() {
     ...round.sides.map((side, s) => {
       const chip = el("span", `result-chip ${sideClass(s)}`);
       const result = side?.result === "Win" ? "won" : side?.result === "Deuce" ? "drew" : "lost";
-      chip.append(el("span", "swatch"), document.createTextNode(`${m.players[s].name}: ${side ? `${result}, ${side.hp.toLocaleString()} HP going in` : "no record"}`));
+      chip.append(el("span", "swatch"), document.createTextNode(`${iso(m.players[s].name)}: ${side ? `${result}, ${side.hp.toLocaleString()} HP going in` : "no record"}`));
       const deployment = fightOf(s, round.round + 1)?.deployment;
       if (deployment) chip.append(deploymentPill(deployment.label), shareBar(deployment.bands));
       return chip;
@@ -567,6 +568,7 @@ function renderSummary() {
   const m = detail!;
   const section = $("match-summary");
   section.hidden = m.players.length !== 2 || games.length !== 2;
+  $("tape-row").hidden = section.hidden;
   if (section.hidden) return;
   const [far, near] = boardOrder();
   const fights = [...new Set(games.flatMap((g) => g.fights.map((f) => f.fight)))].sort((a, b) => a - b);
@@ -596,9 +598,9 @@ function renderSummary() {
       button.append(half(far, "top"), el("span", "fight-number", String(n)), half(near, "bottom"));
       const describe = (side: number) => {
         const f = fightOf(side, n);
-        if (!f) return `${m.players[side].name}: no record`;
+        if (!f) return `${iso(m.players[side].name)}: no record`;
         const result = f.result === "Win" ? "won" : f.result === "Deuce" ? "drew" : "lost";
-        return `${m.players[side].name} ${result}, ${f.hp.toLocaleString()} HP going in, ${f.deployment?.label.toLowerCase() ?? "not classed"}`;
+        return `${iso(m.players[side].name)} ${result}, ${f.hp.toLocaleString()} HP going in, ${f.deployment?.label.toLowerCase() ?? "not classed"}`;
       };
       const tip: Tip = { title: `Fight ${n}`, lines: [describe(far), describe(near)] };
       button.dataset.tip = JSON.stringify(tip);
@@ -610,9 +612,10 @@ function renderSummary() {
       return button;
     }),
   );
-  $("fight-tape-note").textContent = `Top: ${m.players[far].name}. Bottom: ${m.players[near].name}. W marks the fight's winner, D a draw. Bars are reactor HP going in, scaled to the match's highest.`;
+  $("fight-tape-note").textContent = `Top: ${iso(m.players[far].name)}. Bottom: ${iso(m.players[near].name)}. W marks the fight's winner, D a draw. Bars are reactor HP going in, scaled to the match's highest.`;
 
-  const [a, b] = [games[near], games[far]];
+  // One order throughout: the player at the top of the board and tape is on the left.
+  const [a, b] = [games[far], games[near]];
   const rows: [string, number | null, number | null, number][] = [
     ["Fights won", a.fights_won, b.fights_won, 0],
     ["Final army", a.final_units, b.final_units, 0],
@@ -630,7 +633,7 @@ function renderSummary() {
     h.append(el("span", "swatch"), document.createTextNode(m.players[side].name));
     return h;
   };
-  renderTale($("match-tale"), [head(near), head(far)], [m.players[near].name, m.players[far].name], rows);
+  renderTale($("match-tale"), [head(far), head(near)], [iso(m.players[far].name), iso(m.players[near].name)], rows);
 
   const used = (side: number, cls: string) => {
     const col = el("div", `used-side ${cls}`);
@@ -660,7 +663,7 @@ function renderSummary() {
     col.append(list);
     return col;
   };
-  $("units-used").replaceChildren(used(near, "left"), used(far, "right"));
+  $("units-used").replaceChildren(used(far, "left"), used(near, "right"));
 }
 
 /** Mark the open round on the fight tape. */
@@ -741,7 +744,7 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   games = loaded;
   const titled = (p: { id: string; name: string }) => {
     const elo = ratings.find((r) => r.player_id === p.id)?.elo;
-    return elo == null ? p.name : `${p.name} (${elo} MMR)`;
+    return elo == null ? iso(p.name) : `${iso(p.name)} (${elo} MMR)`;
   };
   $("match-title").textContent = `${titled(near)} vs ${others.map(titled).join(", ")}`;
   const outcome = near.won === null ? "" : near.won ? `${near.name} won. ` : `${near.name} lost. `;

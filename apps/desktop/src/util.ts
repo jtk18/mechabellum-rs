@@ -2,6 +2,10 @@ export const $ = <T extends HTMLElement>(id: string) => document.getElementById(
 
 export const pct = (x: number) => `${Math.round(x * 100)}%`;
 
+/** A name set apart from the text around it: an uploaded name with direction controls (U+202E)
+ * otherwise turns the rest of the sentence around. */
+export const iso = (name: string) => `\u2068${name}\u2069`;
+
 export function el(tag: string, className?: string, text?: string) {
   const node = document.createElement(tag);
   if (className) node.className = className;

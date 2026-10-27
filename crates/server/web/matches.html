@@ -75,10 +75,13 @@
   @media (max-width: 820px) { .body { grid-template-columns: minmax(0, 1fr); } }
   .board-col { display: flex; flex-direction: column; gap: 6px; }
   .fight-label { font-size: 13px; color: var(--text-2); font-weight: 700; }
-  .side-cap { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; min-height: 22px; }
-  .side-cap .who { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-cap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: 13px; min-height: 22px; }
+  .side-cap .who { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 4em; max-width: 100%; }
+  .side-cap .pill { flex-wrap: wrap; }
+  /* Names come from uploads: keep one with direction controls from turning the text around it. */
+  .who, .name, .chip, .tag { unicode-bidi: isolate; }
   svg.board { width: 100%; height: auto; display: block; background: #0d1115; border-radius: 6px; }
-  .shares { display: flex; height: 8px; gap: 2px; border-radius: 4px; overflow: hidden; width: 110px; flex: none; }
+  .shares { display: flex; height: 8px; gap: 2px; border-radius: 4px; overflow: hidden; width: 110px; max-width: 40vw; flex: none; }
   .shares span { display: block; height: 100%; }
   .pill { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--text); font-size: 13px; }
   .pill .swatch { width: 10px; height: 10px; }
@@ -122,7 +125,7 @@
   .tale .label { font-size: 12px; color: var(--text-2); text-align: center; white-space: nowrap; }
   .tale .track { height: 6px; display: flex; }
   .tale .track.l { justify-content: flex-end; }
-  .tale .track span { display: block; height: 100%; border-radius: 3px; background: #4a555d; }
+  .tale .track span { display: block; height: 100%; border-radius: 3px; background: #5d6870; }
   .tale .track span.hi { background: var(--text-2); }
 
   .units { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 4px; }
@@ -237,6 +240,10 @@ async function get(path, params) {
   return r.json();
 }
 
+/** A name set apart from the text around it: an uploaded name with direction controls (U+202E)
+ * otherwise turns the rest of the sentence around. */
+const iso = (name) => `\u2068${name}\u2069`;
+
 function pill(label) {
   const p = el("span", "pill" + (label ? "" : " none"));
   const s = el("span", "swatch");
@@ -268,7 +275,11 @@ function renderLegend() {
     k.append(s, document.createTextNode(name));
     return k;
   });
-  $("legend").replaceChildren(...parts);
+  const none = el("span", "key");
+  const sw = el("span", "swatch");
+  sw.style.background = bandColor(-1);
+  none.append(sw, document.createTextNode("Not classed"));
+  $("legend").replaceChildren(...parts, none);
 }
 
 /** Players top to bottom on the board: north first. */
@@ -287,7 +298,8 @@ function drawBoard(svgEl, players, fight) {
     for (let i = 0; i < 4; i++) {
       const [from, to] = STRIPES[i];
       const y0 = Math.min(yOf(from), yOf(to));
-      parts.push(svg("rect", { x: -ZONE_HALF_WIDTH, y: y0, width: 2 * ZONE_HALF_WIDTH, height: to - from, fill: bandColor(i), "fill-opacity": 0.09 }));
+      parts.push(svg("rect", { x: -ZONE_HALF_WIDTH, y: y0, width: 2 * ZONE_HALF_WIDTH, height: to - from, fill: bandColor(i), "fill-opacity": 0.16 }));
+      if (i > 0) parts.push(svg("line", { x1: -ZONE_HALF_WIDTH, x2: ZONE_HALF_WIDTH, y1: yOf(from), y2: yOf(from), stroke: "#7f8c94", "stroke-width": 2, "stroke-dasharray": "8 8" }));
     }
     parts.push(svg("rect", { x: -ZONE_HALF_WIDTH, y: Math.min(yOf(ZONE_FRONT), yOf(ZONE_BACK)), width: 2 * ZONE_HALF_WIDTH, height: ZONE_BACK - ZONE_FRONT, fill: "none", stroke: "#3a454d", "stroke-width": 2 }));
     for (const x of fight >= FLANK_OPENS ? [-FLANK_OUTER, ZONE_HALF_WIDTH] : []) {
@@ -307,7 +319,8 @@ function drawBoard(svgEl, players, fight) {
     for (const [id, x, y, w, d, level, band] of f.board) {
       const W = w * 10, D = d * 10;
       const r = svg("rect", { x: x - W / 2 + 1.5, y: -y - D / 2 + 1.5, width: Math.max(2, W - 3), height: Math.max(2, D - 3), rx: 2.5, fill: bandColor(band) });
-      if (level > 1) { r.setAttribute("stroke", "#eef3f6"); r.setAttribute("stroke-width", Math.min(6, 1.5 * (level - 1))); }
+      // Level 2 and up: a light outline, thicker with each level (at least 2 board units, about 1px).
+      if (level > 1) { r.setAttribute("stroke", "#eef3f6"); r.setAttribute("stroke-width", Math.min(6, 1 + 1.5 * (level - 1))); }
       const t = svg("title");
       t.textContent = `${names.get(id) || "Unit " + id}, level ${level}${band >= 0 ? ", " + BANDS[band].toLowerCase() + " band" : ""}`;
       r.append(t);
@@ -357,13 +370,17 @@ function taleRows(a, b) {
       t.append(s);
       return t;
     };
-    const row = [el("div", "v l" + (hiA ? " hi" : ""), fmt(va)), track(va, hiA, "l"), el("div", "label", label), track(vb, hiB, "r"), el("div", "v" + (hiB ? " hi" : ""), fmt(vb))];
-    for (const cell of row) cell.title = `${label}: ${MEASURES[label]}\n${a.name}: ${fmt(va)}, ${b.name}: ${fmt(vb)}`;
+    const name = el("div", "label", label);
+    const row = [el("div", "v l" + (hiA ? " hi" : ""), fmt(va)), track(va, hiA, "l"), name, track(vb, hiB, "r"), el("div", "v" + (hiB ? " hi" : ""), fmt(vb))];
+    const text = `${label}: ${MEASURES[label]}\n${iso(a.name)}: ${fmt(va)}, ${iso(b.name)}: ${fmt(vb)}`;
+    for (const cell of row) cell.title = text;
+    // Screen readers hear each row once, from its label; the bars and figures are decoration to them.
+    name.setAttribute("aria-label", text.replace("\n", ". "));
+    for (const cell of row) if (cell !== name) cell.setAttribute("aria-hidden", "true");
     out.push(...row);
   }
   const tale = el("div", "tale");
-  tale.setAttribute("role", "table");
-  tale.setAttribute("aria-label", `${a.name} against ${b.name}`);
+  tale.setAttribute("aria-label", `${iso(a.name)} against ${iso(b.name)}`);
   tale.append(...out);
   return tale;
 }
@@ -414,9 +431,8 @@ function sideCaption(p, fight) {
     const d = f.deployment;
     right.append(el("span", "meta", `Fight ${fight}:`), pill(d.label));
     if (d.lean != null && Math.abs(d.lean) >= 0.5) {
-      // Lean is from the player's own view; north faces the viewer, so its right is the board's left.
-      const boardRight = (d.lean > 0) === (p.game.half !== "north");
-      right.append(el("span", "meta", boardRight ? "right side" : "left side"));
+      // From the player's own view, as they saw it in game (the board here is drawn north up).
+      right.append(el("span", "meta", d.lean > 0 ? "their right" : "their left"));
     }
     right.append(shareBar(d.bands));
   }
@@ -445,7 +461,7 @@ function twoPlayerCard(card, players) {
   heads.append(playerHead(a, "left"), playerHead(b, "right"));
   right.append(heads);
 
-  right.append(el("h3", "", "Fights: reactor HP going in, colored by deployment"));
+  right.append(el("h3", "", "Fights: reactor HP going in, colored by deployment (grey: not classed)"));
   const tape = el("div", "tape");
   tape.setAttribute("role", "group");
   tape.setAttribute("aria-label", "Fights");
@@ -467,12 +483,14 @@ function twoPlayerCard(card, players) {
       return h;
     };
     btn.append(half(fa, "top"), el("div", "n", String(n)), half(fb, "bottom"));
-    const describe = (p, f) => (f ? `${p.name} ${f.result === "Win" ? "won" : f.result === "Lose" ? "lost" : f.result.toLowerCase()} with ${f.hp} HP, ${f.deployment ? f.deployment.label.toLowerCase() : "not classed"}` : `${p.name}: no record`);
+    const outcome = (r) => (r === "Win" ? "won" : r === "Lose" ? "lost" : r === "Deuce" ? "drew" : "no result");
+    const describe = (p, f) => (f ? `${iso(p.name)} ${outcome(f.result)}, ${f.hp.toLocaleString()} HP going in, ${f.deployment ? f.deployment.label.toLowerCase() : "not classed"}` : `${iso(p.name)}: no record`);
     btn.setAttribute("aria-label", `Fight ${n}: ${describe(a, fa)}; ${describe(b, fb)}`);
     btn.title = btn.getAttribute("aria-label");
     btn.addEventListener("click", () => select(n));
     btn.addEventListener("keydown", (e) => {
-      const i = fights.indexOf(selected);
+      // From the focused fight, not the selected one.
+      const i = buttons.indexOf(e.currentTarget);
       if (e.key === "ArrowRight" && i < fights.length - 1) { select(fights[i + 1]); buttons[i + 1].focus(); e.preventDefault(); }
       if (e.key === "ArrowLeft" && i > 0) { select(fights[i - 1]); buttons[i - 1].focus(); e.preventDefault(); }
     });
@@ -480,19 +498,23 @@ function twoPlayerCard(card, players) {
   });
   tape.append(...buttons);
   right.append(tape);
-  right.append(el("div", "tape-note", `Top: ${a.name}. Bottom: ${b.name}. W marks who won the fight, D a draw. Bars are reactor HP going in, scaled to the match's highest; players can start at different HP.`));
+  right.append(el("div", "tape-note", `Top: ${iso(a.name)}. Bottom: ${iso(b.name)}. W marks who won the fight, D a draw. Bars are reactor HP going in, scaled to the match's highest; players can start at different HP.`));
 
   right.append(el("h3", "", "Tale of the tape"), taleRows(a, b));
 
   function select(n) {
     selected = n;
-    buttons.forEach((btn, i) => btn.setAttribute("aria-pressed", String(fights[i] === n)));
+    buttons.forEach((btn, i) => {
+      btn.setAttribute("aria-pressed", String(fights[i] === n));
+      // One tab stop per tape: the selected fight; arrows move between fights.
+      btn.tabIndex = fights[i] === n ? 0 : -1;
+    });
     if (!drawn) return;
     fightLabel.textContent = `Fight ${n} of ${fights[fights.length - 1]}`;
     capTop.replaceChildren(sideCaption(a, n));
     capBottom.replaceChildren(sideCaption(b, n));
     drawBoard(board, players, n);
-    board.setAttribute("aria-label", `Board for fight ${n}: ${a.name} on top, ${b.name} below`);
+    board.setAttribute("aria-label", `Board for fight ${n}: ${iso(a.name)} on top, ${iso(b.name)} below`);
   }
   select(selected);
 
@@ -532,14 +554,14 @@ function renderCard(card) {
   if (players.length === 2 && players.every((p) => p.game)) {
     // Reactor HP decides a match, not fights won, so the headline is who won.
     const winner = players.find((p) => p.won);
-    const score = el("div", "score", winner ? `${winner.name} won` : "No result");
+    const score = el("div", "score", winner ? `${iso(winner.name)} won` : "No result");
     score.append(el("small", "", `${fightNumbers(players).length} fights · ${players[0].game.fights_won}–${players[1].game.fights_won} in fights`));
     head.append(score);
     art.append(head, twoPlayerCard(card, players));
   } else {
     art.append(head, multiPlayerCard(players));
   }
-  art.setAttribute("aria-label", `${card.map}, ${players.map((p) => `${p.name} ${p.won ? "won" : "lost"}`).join(", ")}`);
+  art.setAttribute("aria-label", `${card.map}, ${players.map((p) => `${iso(p.name)} ${p.won ? "won" : "lost"}`).join(", ")}`);
   return art;
 }
 
@@ -555,10 +577,20 @@ function filter() {
   return f;
 }
 
+let loading = false;
+let generation = 0;
+
 async function load(reset) {
+  // A second click while a page loads would fetch the same offset twice.
+  if (loading && !reset) return;
+  // A response for filters that have since changed is dropped, not shown under the new ones.
+  const mine = reset ? ++generation : generation;
   if (reset) { offset = 0; $("cards").replaceChildren(); }
+  loading = true;
+  $("more").disabled = true;
   try {
     const page = await get("/api/cards", { ...filter(), limit: PAGE, offset });
+    if (mine !== generation) return;
     total = page.total;
     $("cards").append(...page.cards.map(renderCard));
     offset += page.cards.length;
@@ -566,7 +598,12 @@ async function load(reset) {
     $("count").textContent = `${total.toLocaleString()} matches`;
     $("more").hidden = offset >= total;
   } catch (e) {
-    $("count").textContent = `Couldn't load matches: ${e.message}`;
+    if (mine === generation) $("count").textContent = `Couldn't load matches: ${e.message}`;
+  } finally {
+    if (mine === generation) {
+      loading = false;
+      $("more").disabled = false;
+    }
   }
 }
 

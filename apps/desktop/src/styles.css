@@ -1168,7 +1168,8 @@ h1 {
 
 .match-row {
   display: grid;
-  grid-template-columns: 92px 48px minmax(0, 1.2fr) minmax(0, 1.6fr) auto;
+  /* The players column gets the room: names were crushed to 3 letters at 1000px. */
+  grid-template-columns: 92px 48px minmax(0, 2fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 7px 0;
@@ -1200,7 +1201,7 @@ h1 {
 /* Tag, name, deployment, pack: packs line up in a column across rows. */
 .player-line {
   display: grid;
-  grid-template-columns: 34px minmax(0, 170px) 124px auto;
+  grid-template-columns: 34px minmax(80px, 170px) auto auto;
   justify-content: start;
   align-items: center;
   gap: 8px;
@@ -2132,6 +2133,45 @@ h1 {
   min-width: 0;
 }
 
+/* Names come from uploads: keep one with direction controls from turning the text around it,
+   and a long one from pushing the page sideways. */
+.player-line .name,
+.tale-head,
+.used-name,
+.result-chip,
+#match-title {
+  unicode-bidi: isolate;
+}
+
+#match-title,
+.unit-panel h3 {
+  overflow-wrap: anywhere;
+}
+
+.tape-row {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(10px) saturate(1.1);
+}
+
+.tape-row[hidden] {
+  display: none;
+}
+
+.tape-row h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tape-row h3 small {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .match-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -2318,6 +2358,11 @@ h1 {
   font-size: 13px;
   fill: var(--text-secondary);
   pointer-events: none;
+  /* Drawn over the units, with a halo in the board's color so they stay readable. */
+  paint-order: stroke;
+  stroke: var(--board);
+  stroke-width: 4px;
+  stroke-linejoin: round;
 }
 
 .board .tower {

@@ -53,7 +53,7 @@
   section.wide { grid-column: 1 / -1; }
   h2 { margin: 0 0 8px; font-size: 17px; }
   h2 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
-  .rows { display: grid; grid-template-columns: minmax(110px, 1.2fr) minmax(90px, 1fr) minmax(120px, 1.3fr) 56px; gap: 6px 10px; align-items: center; }
+  .rows { display: grid; grid-template-columns: minmax(84px, 1.2fr) minmax(60px, 1fr) minmax(90px, 1.3fr) 44px; gap: 6px 10px; align-items: center; }
   .head { color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .row-small { opacity: 0.55; }
@@ -88,7 +88,8 @@
   table.plain .muted { color: var(--muted); }
   table.matrix { border-collapse: separate; border-spacing: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
   table.matrix th { color: var(--muted); font-weight: 400; padding: 2px 4px; line-height: 1.2; vertical-align: bottom; }
-  table.matrix th.row { text-align: left; color: var(--text-2); white-space: nowrap; }
+  /* The row labels stay put while a narrow screen scrolls the grid sideways. */
+  table.matrix th.row { text-align: left; color: var(--text-2); white-space: nowrap; position: sticky; left: 0; background: var(--panel); z-index: 1; }
   table.matrix td { min-width: 48px; height: 30px; text-align: center; border-radius: 3px; background: #1c2227; color: var(--text); }
   table.matrix td.thin { background: repeating-linear-gradient(45deg, #1c2227 0 4px, #232a30 4px 8px); color: var(--muted); }
   .hist { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding-top: 6px; }
@@ -161,7 +162,7 @@
       <div class="hist" id="lengths" role="img" aria-label="Matches by number of fights"></div>
     </section>
     <section class="panel">
-      <h2>Winners and losers <small>mean per player</small></h2>
+      <h2>Winners and losers <small>mean per player result</small></h2>
       <div class="vs" id="army"></div>
     </section>
     <section class="panel">
@@ -219,12 +220,13 @@ function bar(rate) {
   return b;
 }
 
-function winBar(rate) {
+/** A win rate as a bar growing from `base` (50% unless given) toward win or loss. */
+function winBar(rate, base = 0.5) {
   const b = el("div", "bar");
   const t = el("div", "track");
   if (rate != null) {
     const d = el("div", "div");
-    const delta = Math.max(-0.5, Math.min(0.5, rate - 0.5));
+    const delta = Math.max(-0.5, Math.min(0.5, rate - base));
     d.style.left = `${50 + Math.min(0, delta) * 100}%`;
     d.style.width = `${Math.abs(delta) * 100}%`;
     d.style.background = delta >= 0 ? "var(--win)" : "var(--loss)";
@@ -369,12 +371,25 @@ function renderMatchups(g) {
     return tr;
   });
   table.replaceChildren(head, ...rows);
+  if (!g.matchups.length) {
+    const tr = el("tr");
+    const td = el("td", "", "No 1v1 matches with both round 1 layouts classed fit these filters.");
+    td.colSpan = present.length + 1;
+    td.style.background = "none";
+    tr.append(td);
+    table.replaceChildren(tr);
+  }
 }
 
 function renderLengths(g) {
   const box = $("lengths");
   const max = Math.max(1, ...g.lengths.map(([, n]) => n));
-  const cols = g.lengths.map(([fights, n]) => {
+  // Every length from the shortest to the longest, so a missing one shows as a gap, not as
+  // its neighbours pushed together.
+  const counts = new Map(g.lengths);
+  const lo = Math.min(...g.lengths.map(([f]) => f)), hi = Math.max(...g.lengths.map(([f]) => f));
+  const filled = g.lengths.length ? Array.from({ length: hi - lo + 1 }, (_, i) => [lo + i, counts.get(lo + i) || 0]) : [];
+  const cols = filled.map(([fights, n]) => {
     const col = el("div", "col");
     col.title = `${n} matches lasted ${fights} fights`;
     const b = el("span", "b");
@@ -384,6 +399,7 @@ function renderLengths(g) {
   });
   box.replaceChildren(...cols);
   if (!cols.length) box.append(el("div", "note", "No matches fit these filters yet."));
+  box.setAttribute("aria-label", `Matches by fights played: ${filled.map(([f, n]) => `${f} fights, ${n}`).join("; ")}`);
 }
 
 /** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
@@ -393,10 +409,10 @@ const MEASURES = {
   "Peak army": "Most units fielded in any one fight.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
-  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Level-ups": "Unit upgrades bought over the match, units later sold included. Levels units arrive with, from cards or techs, don't count.",
   "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
   "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
-  Techs: "Techs researched by the last fight, across all unit types.",
+  Techs: "Techs researched by the last fight, its own round's research included, across all unit types.",
   "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
 };
 
@@ -426,20 +442,30 @@ function renderUsed(g) {
   const table = $("used");
   const head = el("tr");
   for (const h of ["Unit", "Used", "Win rate", "Kept", "Sold", "Top level"]) head.append(el("th", "", h));
+  // Centre the bars on the share of results that won in these filters: a brawl has three losers
+  // per winner, so under all modes 50% would paint nearly every unit as losing.
+  const base = g.winners && g.losers ? g.winners.results / (g.winners.results + g.losers.results) : 0.5;
+  head.children[2].textContent = `Win rate (centre ${pct(base)})`;
+  head.children[2].title = "Bars grow from the share of all player results in these filters that won";
   const rows = g.units.slice(0, 40).map((u) => {
     const tr = el("tr", u.games < SMALL ? "row-small" : "");
     const win = el("td", "barcell");
-    win.append(winBar(u.win_rate));
+    win.append(winBar(u.win_rate, base));
     tr.title = `${u.name}: fielded in ${u.games} results, won ${u.wins}; up to ${u.mean_peak.toFixed(1)} copies on average`;
     tr.append(el("td", "", u.name), el("td", "", pct(u.use_rate)), win, el("td", "", pct(rate(u.kept, u.games))),
       el("td", "", `${u.sold} of ${u.added}`), el("td", "", u.mean_max_level.toFixed(1)));
     return tr;
   });
   table.replaceChildren(head, ...rows);
+  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No matches fit these filters yet."); td.colSpan = 6; tr.append(td); table.append(tr); }
 }
+
+let generation = 0;
 
 async function refresh() {
   const f = filter();
+  // A response for filters that have since changed is dropped, not drawn under the new ones.
+  const mine = ++generation;
   try {
     const [robust, stats, trends, games] = await Promise.all([
       get("/api/stats/robust", f),
@@ -447,6 +473,7 @@ async function refresh() {
       get("/api/stats/versions", { ...f, min_version: undefined, max_version: undefined, period: "month" }),
       get("/api/stats/games", f),
     ]);
+    if (mine !== generation) return;
     renderDeployments(games);
     renderMatchups(games);
     renderLengths(games);
@@ -458,7 +485,7 @@ async function refresh() {
     renderHeat(trends);
     $("counts").textContent = `${stats.matches.toLocaleString()} matches, ${total.toLocaleString()} player results`;
   } catch (e) {
-    $("counts").textContent = `Couldn't load stats: ${e.message}`;
+    if (mine === generation) $("counts").textContent = `Couldn't load stats: ${e.message}`;
   }
 }
 
