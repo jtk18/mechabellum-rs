@@ -79,7 +79,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     bar. The desktop match view still opens on the last round, as before.
     Sym and asym apply to midboard as well as aggressive, never to standard (J: "that's an asym
     midboard; I'd hesitate to call anything asym standard"; schema 12). Checked on J's example,
-    DeathsWhim's round 1 on Forest Eye (`20261027--67342143`): Asym midboard, lean -1. Backboard
+    the opponent's round 1 on Forest Eye (`20261027--67342143`): Asym midboard, lean -1. Backboard
     isn't split until J rules on it.
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
