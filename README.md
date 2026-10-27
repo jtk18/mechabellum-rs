@@ -51,8 +51,9 @@ landing page yet.
 squares of the line, or in a flank column. **Midboard**: from 5 squares in front of the towers' front
 faces back to their centers. **Backboard**: behind the towers' centers. Everything else is the standard
 band. Units weigh by footprint area; the army takes the class of the band holding the most of it when that's
-aggressive, midboard or backboard with at least 40%, and is **standard** otherwise. An aggressive army is
-**asym** when three quarters or more of its forward group stands on one side, **sym** otherwise. A match is
+aggressive, midboard or backboard with at least 40%, and is **standard** otherwise. An aggressive or midboard
+army is **asym** when three quarters or more of that band's units stand on one side, **sym** otherwise (J: an
+asym midboard is a thing, an "asym standard" isn't; backboard isn't split yet). A match is
 classed by each player's **round 1** layout (J: judge the layout by round 1's positioning, not the last
 round's); a replay with no round 1 record isn't classed. Later fights are classed the same way, which the
 match cards' fight tape shows.

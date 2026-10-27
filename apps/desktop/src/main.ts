@@ -628,7 +628,7 @@ function renderDeployments(g: GameStats) {
   if (rows.length === 0) container.append(el("div", "empty", "No classified round 1 deployments fit these filters. Classes cover 1v1 on the 2.0 board."));
 }
 
-const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Midboard", "Backboard"];
+const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard", "Backboard"];
 
 function renderMatchups(g: GameStats) {
   const container = $("matchups");

@@ -183,8 +183,8 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// 9: starter packs. 10: whole-match summaries and deployments per fight (`player_games`,
 /// `player_fights`, `player_unit_use`); version 2340's fight results, which 9 misread as wins
 /// for both players. 11: a match is classed by round 1's deployment (`opening`), not the one used
-/// in the most fights.
-const SCHEMA_VERSION: i64 = 11;
+/// in the most fights. 12: midboard armies are sym or asym too.
+const SCHEMA_VERSION: i64 = 12;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");

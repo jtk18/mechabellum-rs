@@ -159,12 +159,13 @@
   <details class="rules">
     <summary>How deployments are classed</summary>
     <ul>
-      <li><strong>Aggressive</strong>: units whose front edge is within 3 squares of the line, or in a flank column.
-        <strong>Sym</strong> when that forward group spans both sides of the board, <strong>asym</strong> when three quarters or more of it stands on one side.</li>
+      <li><strong>Aggressive</strong>: units whose front edge is within 3 squares of the line, or in a flank column.</li>
       <li><strong>Midboard</strong>: units right in front of the towers, from 5 squares ahead of their front faces back to level with their centers.</li>
       <li><strong>Backboard</strong>: units behind the towers' centers.</li>
       <li>Each unit counts by the ground it covers. An army takes the class of the band holding most of it, when that's
         aggressive, midboard or backboard with at least 40% of it. Otherwise it's <strong>standard</strong>.</li>
+      <li>An aggressive or midboard army is <strong>sym</strong> when the units in that band span both sides of the board,
+        <strong>asym</strong> when three quarters or more of them stand on one side. Standard and backboard aren't split.</li>
       <li>A match is classed by how each player deployed for <strong>round 1</strong>. Later fights are classed the same
         way on the fight tape, to show how the board grew. 1v1 games on the 2.0 board (build 2259 on).</li>
     </ul>
@@ -206,11 +207,11 @@ const MODES = { VS_1_1: "1v1", VS_2_2: "2v2", VS_4_Scuffle: "4-player Brawl" };
 const modeLabel = (m, g) => `${MODES[m] || m} ${g.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
 const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
 const bandColor = (i) => (i >= 0 && i < 4 ? `var(--band-${i})` : "var(--band-none)");
-/** A deployment label's band: "Sym aggressive" and "Asym aggressive" are both the front band. */
+/** A deployment label's band: "Sym midboard" and "Asym midboard" are both midboard, and so on. */
 function labelBand(label) {
   if (!label) return -1;
-  if (label.endsWith("ggressive")) return 0;
-  return BANDS.indexOf(label);
+  const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
+  return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
 
 // Board geometry, replay units (10 per square), as crates/mechabellum/src/board.rs has it.

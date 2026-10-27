@@ -288,10 +288,11 @@ function renderHeat(trends) {
 }
 
 const BAND_COLORS = ["#d55181", "#c98500", "#008300", "#3987e5"];
-const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Midboard", "Backboard"];
+const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard", "Backboard"];
 function bandOf(label) {
-  if (label.endsWith("ggressive")) return 0;
-  return ["Aggressive", "Standard", "Midboard", "Backboard"].indexOf(label);
+  // "Sym midboard" and "Asym midboard" are the midboard band, and likewise aggressive.
+  const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
+  return ["aggressive", "standard", "midboard", "backboard"].indexOf(band);
 }
 function labelCell(label) {
   const td = el("td");

@@ -27,8 +27,9 @@ const MIDBOARD_REACH: i32 = 5 * GRID_SQUARE;
 /// and at least this much; otherwise it's standard. Without a floor, an army spread evenly
 /// (25/27/24/24) changed class from fight to fight on a percentage point.
 const DISTINCT_SHARE: f32 = 0.4;
-/// An aggressive deployment is asymmetric when its forward group leans at least this far to one
-/// side: (right - left) / total, by footprint area. 0.5 is three quarters on one side.
+/// An aggressive or midboard deployment is asymmetric when the units in that band lean at least
+/// this far to one side: (right - left) / total, by footprint area. 0.5 is three quarters on one
+/// side.
 const ASYM_LEAN: f32 = 0.5;
 
 /// How far forward a unit, or most of an army, stands. Front to back.
@@ -47,6 +48,13 @@ pub enum Depth {
 }
 
 impl Depth {
+    /// Whether an army of this class is called sym or asym (J, 2026-10-27): an aggressive or a
+    /// midboard army grouped on one side is a different deployment from one spread across both,
+    /// but nothing is "asym standard". Backboard hasn't been ruled on and stays plain.
+    fn has_sides(self) -> bool {
+        matches!(self, Depth::Aggressive | Depth::Midboard)
+    }
+
     const ALL: [Depth; 4] = [
         Depth::Aggressive,
         Depth::Standard,
@@ -67,13 +75,14 @@ impl Depth {
 /// How one player's army was deployed for one fight.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Deployment {
-    /// "Standard", "Sym aggressive", "Asym aggressive", "Midboard" or "Backboard".
+    /// "Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard" or
+    /// "Backboard".
     pub label: String,
     /// The band holding the largest share of the army (ties go to the one further forward), when
     /// that's aggressive, midboard or backboard with at least 40% of it; otherwise standard.
     pub depth: Depth,
-    /// For an aggressive deployment, how its forward group leans: -1 all on the player's own
-    /// left, 1 all on their right, by footprint area.
+    /// For an aggressive or midboard deployment, how the units in that band lean: -1 all on the
+    /// player's own left, 1 all on their right, by footprint area.
     pub lean: Option<f32>,
     /// Share of the army in each band, front to back, by footprint area.
     pub bands: [f32; 4],
@@ -222,23 +231,23 @@ fn unit_depth(unit: &PlacedUnit, half: Half) -> Depth {
 /// covers rather than what a Marksman does.
 pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     let mut bands = [0f32; 4];
-    let (mut left, mut right) = (0f32, 0f32);
+    // Area on the player's own left and right, per band.
+    let (mut left, mut right) = ([0f32; 4], [0f32; 4]);
     let mut flank = 0;
     for unit in units {
         let (x, _) = own_frame(half, unit.x, unit.y);
         let (w, d) = extent(unit, true);
         let area = (w * d) as f32;
         let depth = unit_depth(unit, half);
-        bands[depth as usize] += area;
+        let band = depth as usize;
+        bands[band] += area;
         flank += u32::from(in_flank_column(x));
-        if depth == Depth::Aggressive {
-            match x.signum() {
-                -1 => left += area,
-                1 => right += area,
-                _ => {
-                    left += area / 2.0;
-                    right += area / 2.0;
-                }
+        match x.signum() {
+            -1 => left[band] += area,
+            1 => right[band] += area,
+            _ => {
+                left[band] += area / 2.0;
+                right[band] += area / 2.0;
             }
         }
     }
@@ -259,16 +268,18 @@ pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     } else {
         Depth::Standard
     };
-    let lean = (left + right > 0.0).then(|| (right - left) / (right + left));
-    let label = match (depth, lean) {
-        (Depth::Aggressive, Some(lean)) if lean.abs() >= ASYM_LEAN => "Asym aggressive".to_owned(),
-        (Depth::Aggressive, _) => "Sym aggressive".to_owned(),
-        (other, _) => other.name().to_owned(),
+    // The lean of the units that give the army its class.
+    let (l, r) = (left[depth as usize], right[depth as usize]);
+    let lean = (depth.has_sides() && l + r > 0.0).then(|| (r - l) / (r + l));
+    let label = match lean {
+        Some(lean) if lean.abs() >= ASYM_LEAN => format!("Asym {}", depth.name().to_lowercase()),
+        Some(_) => format!("Sym {}", depth.name().to_lowercase()),
+        None => depth.name().to_owned(),
     };
     Some(Deployment {
         label,
         depth,
-        lean: (depth == Depth::Aggressive).then_some(lean).flatten(),
+        lean,
         bands,
         flank,
     })
@@ -502,6 +513,30 @@ mod tests {
         assert_eq!(d.lean, None);
         assert!((d.bands[0] - 4.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
         assert!((d.bands[3] - 32.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
+
+        // J's example of an asym midboard (2026-10-27, round 1 of a 2340 game): two 3x3 units and
+        // a turned Fang in midboard, all on one side, with a little in front and behind. Shared
+        // frame, south half; ids: 21 Sabertooth 3x3, 9 Fang 5x2, 2 Marksman 2x2.
+        let one_side = [
+            unit(21, 75, -125),
+            unit(21, 205, -125),
+            unit(9, 175, -165),
+            unit(2, 55, -105),
+            unit(2, 225, -105),
+            unit(9, 145, -85),
+        ];
+        let d = classify(&one_side, Half::South).unwrap();
+        assert_eq!(d.depth, Depth::Midboard, "{:?}", d.bands);
+        assert_eq!(d.label, "Asym midboard");
+        assert_eq!(d.lean, Some(1.0));
+        // The same midboard group split across both sides is sym.
+        let mut split = one_side;
+        split[0].x = -205;
+        assert_eq!(classify(&split, Half::South).unwrap().label, "Sym midboard");
+        // Standard is never sided, however lopsided: nothing is "asym standard".
+        let standard = [unit(2, 100, -80), unit(2, 150, -80), unit(2, 200, -80)];
+        let d = classify(&standard, Half::South).unwrap();
+        assert_eq!((d.label.as_str(), d.lean), ("Standard", None));
 
         // Spread evenly, front to back: no band leads with 40%, so standard.
         let spread = [

@@ -77,6 +77,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     last round"; schema 11). The headline everywhere, the stats, and the match-against-match grid
     use round 1; cards open on round 1. The per-fight classes stay on the fight tape and the round
     bar. The desktop match view still opens on the last round, as before.
+    Sym and asym apply to midboard as well as aggressive, never to standard (J: "that's an asym
+    midboard; I'd hesitate to call anything asym standard"; schema 12). Checked on J's example,
+    DeathsWhim's round 1 on Forest Eye (`20261027--67342143`): Asym midboard, lean -1. Backboard
+    isn't split until J rules on it.
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every

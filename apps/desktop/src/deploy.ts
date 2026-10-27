@@ -2,10 +2,10 @@
 import { el, pct, type Tip } from "./util";
 
 export interface Deployment {
-  /** "Standard", "Sym aggressive", "Asym aggressive", "Midboard" or "Backboard". */
+  /** "Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard" or "Backboard". */
   label: string;
   depth: "aggressive" | "standard" | "midboard" | "backboard";
-  /** Aggressive only: -1 all on the player's own left, 1 all on their right. */
+  /** Aggressive and midboard only: how that band's units lean, -1 all on the player's own left, 1 all on their right. */
   lean: number | null;
   /** Share of the army in each band, front to back, by footprint area. */
   bands: [number, number, number, number];
@@ -57,19 +57,21 @@ export const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
 export const RULES: Tip = {
   title: "Deployment classes",
   lines: [
-    "Aggressive: front edge within 3 squares of the line, or in a flank column. Sym when that group spans both sides, asym when three quarters of it is on one side.",
+    "Aggressive: front edge within 3 squares of the line, or in a flank column.",
     "Midboard: from 5 squares in front of the towers back to their centers.",
     "Backboard: behind the towers' centers.",
     "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of it and at least 40%; otherwise standard.",
+    "Aggressive and midboard armies are sym when that band's units span both sides, asym when three quarters of them are on one side. Standard and backboard aren't split.",
   ],
   note: "A match is classed by round 1's layout; later fights are classed the same way to show how the board grew. 1v1 on the 2.0 board, build 2259 on.",
 };
 
-/** The band of a deployment label: both aggressive labels are the front band. -1 when unknown. */
+/** The band of a deployment label: "Sym midboard" and "Asym midboard" are both midboard, and so
+ * on. -1 when unknown. */
 export function labelBand(label: string | null | undefined) {
   if (!label) return -1;
-  if (label.endsWith("ggressive")) return 0;
-  return BANDS.indexOf(label);
+  const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
+  return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
 
 export const bandColor = (band: number) => (band >= 0 && band < 4 ? `var(--band-${band})` : "var(--track)");
