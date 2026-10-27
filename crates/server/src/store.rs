@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-use mechabellum::{BattleRecord, PlayerSummary};
+use mechabellum::{BattleRecord, MatchDetail, PlayerSummary};
 use rayon::prelude::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,55 @@ CREATE TABLE IF NOT EXISTS player_cards (
     PRIMARY KEY (battle_id, player_id, card),
     FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
 );
+-- The whole match from each player's side, for match cards and whole-game stats.
+CREATE TABLE IF NOT EXISTS player_games (
+    battle_id   TEXT NOT NULL,
+    player_id   TEXT NOT NULL,
+    fights_won  INTEGER NOT NULL,
+    final_units INTEGER NOT NULL,
+    peak_units  INTEGER NOT NULL,
+    mean_level  REAL NOT NULL,
+    max_level   INTEGER NOT NULL,
+    level_ups   INTEGER NOT NULL,
+    -- NULL in AsyncBattle, whose opponents' rounds don't follow on from each other.
+    units_added INTEGER,
+    units_sold  INTEGER,
+    techs       INTEGER NOT NULL,
+    cards       INTEGER NOT NULL,
+    -- Deployment labels: the first fight's, and the one used in the most fights.
+    opening     TEXT,
+    style       TEXT,
+    -- JSON mechabellum::PlayerGame, which a match card draws.
+    card        TEXT NOT NULL,
+    PRIMARY KEY (battle_id, player_id),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
+-- Every fight from each side, with how the army was deployed (NULL off the 2.0 board or
+-- outside 1v1; see mechabellum::classify).
+CREATE TABLE IF NOT EXISTS player_fights (
+    battle_id  TEXT NOT NULL,
+    player_id  TEXT NOT NULL,
+    fight      INTEGER NOT NULL,
+    result     TEXT NOT NULL,
+    hp         INTEGER NOT NULL,
+    units      INTEGER NOT NULL,
+    deployment TEXT,
+    PRIMARY KEY (battle_id, player_id, fight),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
+-- Every unit type a player fielded during the match, not only in the final army.
+CREATE TABLE IF NOT EXISTS player_unit_use (
+    battle_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    unit      TEXT NOT NULL,
+    added     INTEGER NOT NULL,
+    sold      INTEGER NOT NULL,
+    peak      INTEGER NOT NULL,
+    last      INTEGER NOT NULL,
+    max_level INTEGER NOT NULL,
+    PRIMARY KEY (battle_id, player_id, unit),
+    FOREIGN KEY (battle_id, player_id) REFERENCES players(battle_id, player_id) ON DELETE CASCADE
+);
 -- Ratings at match start, captured from the game's log (replays don't record them).
 CREATE TABLE IF NOT EXISTS player_ratings (
     battle_id   TEXT NOT NULL,
@@ -132,8 +181,10 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// replays. 2: player_techs. 3: player_cards. 4: specialist names by game version.
 /// 5: starting specialists count as picks. 6: dates of offline games. 7: tech IDs.
 /// 8: the last round's army is rebuilt from its actions, not its starting snapshot.
-/// 9: starter packs.
-const SCHEMA_VERSION: i64 = 9;
+/// 9: starter packs. 10: whole-match summaries and deployments per fight (`player_games`,
+/// `player_fights`, `player_unit_use`); version 2340's fight results, which 9 misread as wins
+/// for both players.
+const SCHEMA_VERSION: i64 = 10;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -235,7 +286,7 @@ impl Period {
 /// The player results a stats query counts, as
 /// `scope(battle_id, player_id, won, version, occurred_on)`.
 /// Parameters come from `StatsFilter::params`.
-const SCOPE: &str = "WITH scope AS (
+pub(crate) const SCOPE: &str = "WITH scope AS (
     SELECT p.battle_id, p.player_id, p.won, m.version, m.occurred_on FROM players p
     JOIN matches m ON m.battle_id = p.battle_id
     WHERE (?1 IS NULL OR m.version >= ?1)
@@ -251,7 +302,7 @@ const SCOPE: &str = "WITH scope AS (
       AND (?8 = 1 OR instr(m.battle_id, '__') = 0))";
 
 impl StatsFilter {
-    fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
+    pub(crate) fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
         [
             &self.min_version,
             &self.max_version,
@@ -588,6 +639,7 @@ impl Store {
         let document = BattleRecord::extract_document(bytes)
             .with_context(|| format!("{}: no battle record found", source.display()))?;
         let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
+        let detail = record.match_detail();
         let battle_id = match record.battle_info.battle_id.trim() {
             "" | "0" => format!("sha256:{:x}", Sha256::digest(document.as_bytes())),
             id => id.to_owned(),
@@ -604,7 +656,7 @@ impl Store {
         if exists {
             return Ok(IngestOutcome::Duplicate { battle_id });
         }
-        insert_record(&tx, &battle_id, &record, uploaded_by)?;
+        insert_record(&tx, &battle_id, &record, &detail, uploaded_by)?;
         tx.execute(
             "INSERT INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
             params![battle_id, xml_gz],
@@ -1385,7 +1437,7 @@ impl Store {
             (uploaders, blobs)
         };
 
-        let records: Vec<(String, BattleRecord)> = blobs
+        let records: Vec<(String, BattleRecord, MatchDetail)> = blobs
             .into_par_iter()
             .filter_map(|(battle_id, gz)| {
                 let parsed = (|| -> Result<BattleRecord> {
@@ -1397,7 +1449,10 @@ impl Store {
                     )?)
                 })();
                 match parsed {
-                    Ok(record) => Some((battle_id, record)),
+                    Ok(record) => {
+                        let detail = record.match_detail();
+                        Some((battle_id, record, detail))
+                    }
                     // Keep the rest of the database usable if one stored replay is unreadable.
                     Err(e) => {
                         log::warn!("reindex {battle_id}: {e:#}");
@@ -1410,9 +1465,9 @@ impl Store {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute("DELETE FROM matches", [])?;
-        for (battle_id, record) in &records {
+        for (battle_id, record, detail) in &records {
             let uploaded_by = uploaders.get(battle_id).cloned().flatten();
-            insert_record(&tx, battle_id, record, uploaded_by.as_deref())?;
+            insert_record(&tx, battle_id, record, detail, uploaded_by.as_deref())?;
         }
         tx.commit()?;
         Ok(records.len())
@@ -1571,6 +1626,7 @@ fn insert_record(
     tx: &rusqlite::Transaction,
     battle_id: &str,
     record: &BattleRecord,
+    detail: &MatchDetail,
     uploaded_by: Option<&str>,
 ) -> Result<()> {
     let overview = record.get_battle_overview()?;
@@ -1596,6 +1652,82 @@ fn insert_record(
         .chain(overview.losers.iter().map(|p| (p, false)));
     for (player, won) in sides {
         insert_player(tx, battle_id, player, won)?;
+    }
+    insert_games(tx, battle_id, detail)
+}
+
+/// The match from each stored player's side (`mechabellum::PlayerGame`). Players the overview
+/// left out (no fight report) have no `players` row, so they're skipped too.
+fn insert_games(tx: &rusqlite::Transaction, battle_id: &str, detail: &MatchDetail) -> Result<()> {
+    let stored: std::collections::BTreeSet<String> = tx
+        .prepare_cached("SELECT player_id FROM players WHERE battle_id = ?1")?
+        .query_map([battle_id], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (player, game) in detail.players.iter().zip(detail.player_games()) {
+        // As in insert_player: no account ID means the name stands in.
+        let player_id = match player.id.trim() {
+            "" | "0" => player.name.as_str(),
+            id => id,
+        };
+        if !stored.contains(player_id) {
+            continue;
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO player_games
+                 (battle_id, player_id, fights_won, final_units, peak_units, mean_level,
+                  max_level, level_ups, units_added, units_sold, techs, cards, opening, style, card)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                battle_id,
+                player_id,
+                game.fights_won,
+                game.final_units,
+                game.peak_units,
+                game.mean_level,
+                game.max_level,
+                game.level_ups,
+                game.units_added,
+                game.units_sold,
+                game.techs,
+                game.cards,
+                game.opening,
+                game.style,
+                serde_json::to_string(&game)?,
+            ],
+        )?;
+        for fight in &game.fights {
+            tx.execute(
+                "INSERT OR IGNORE INTO player_fights
+                     (battle_id, player_id, fight, result, hp, units, deployment)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    battle_id,
+                    player_id,
+                    fight.fight,
+                    fight.result,
+                    fight.hp,
+                    fight.units,
+                    fight.deployment.as_ref().map(|d| &d.label),
+                ],
+            )?;
+        }
+        for unit in &game.units {
+            tx.execute(
+                "INSERT OR IGNORE INTO player_unit_use
+                     (battle_id, player_id, unit, added, sold, peak, last, max_level)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    battle_id,
+                    player_id,
+                    unit.name,
+                    unit.added,
+                    unit.sold,
+                    unit.peak,
+                    unit.last,
+                    unit.max_level,
+                ],
+            )?;
+        }
     }
     Ok(())
 }

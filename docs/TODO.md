@@ -61,6 +61,18 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     icons and counts) beside a Won/Lost tag; the board marks units new this round with a green
     border and the unit with the most XP each fight with a star (per side), with a legend.
     Per-unit damage isn't in replays, so it isn't shown. Stored packs need schema 9 (auto reindex).
+26. ~~Whole-match stats and match cards~~ Done 2026-10-27 (schema 10, auto reindex):
+    `mechabellum::PlayerGame` per player (army size, levels and level-ups, units added and sold,
+    every unit type fielded, every fight's result and HP), a deployment class per player per
+    fight (`classify`; see the README), `/api/cards` and the `/matches` page (both armies on the
+    board per fight, a fight tape, a tale of the tape, units used), and whole-match panels on
+    `/stats` (`/api/stats/games`). The class thresholds (3 squares, 5 in front of the towers,
+    40%, three quarters) are first guesses measured on 13 replays from this Mac; re-check them on
+    the full 2.0 corpus.
+    Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every
+    round, so schema 9 stored both players of a 2340 match as winners. 2340 adds
+    `roundFightResult`, every fight's result with the last fight included, which also settles who
+    won the deciding fight for 2340 on. Fixture: `battle_record_2340.xml` (opponent's name removed).
 
 ## Platform and distribution
 

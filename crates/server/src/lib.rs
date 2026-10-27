@@ -2,8 +2,12 @@
 //! desktop app via [`router`].
 
 pub mod aggregate;
+mod games;
 mod store;
 
+pub use games::{
+    ArmyMeans, CardPage, CardPlayer, DeploymentStat, GameStats, MatchCard, Matchup, UnitUseStat,
+};
 pub use store::{
     Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand, Rejection,
     RobustStats, Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell,
@@ -56,6 +60,7 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
     Router::new()
         .route("/", get(website))
         .route("/stats", get(stats_page))
+        .route("/matches", get(matches_page))
         .route("/health", get(|| async { "ok" }))
         .route("/api/facets", get(facets))
         .route("/api/replays", get(list_replays).post(upload_replay))
@@ -63,6 +68,8 @@ pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
         .route("/api/stats/versions", get(version_trends))
         .route("/api/stats/techs", get(tech_stats))
         .route("/api/stats/robust", get(robust_stats))
+        .route("/api/stats/games", get(game_stats))
+        .route("/api/cards", get(cards))
         .route("/api/replays/{battle_id}", get(match_detail))
         .route("/api/replays/missing", axum::routing::post(missing_replays))
         .route(
@@ -292,6 +299,11 @@ async fn stats_page() -> axum::response::Html<&'static str> {
     axum::response::Html(include_str!("../web/stats.html"))
 }
 
+/// Match cards (crates/server/web/matches.html), unlinked from the landing page like the stats.
+async fn matches_page() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../web/matches.html"))
+}
+
 /// Patches and modes that have matches, for filters. Unlike `Store::facets`, it doesn't name any
 /// player.
 #[derive(serde::Serialize)]
@@ -325,6 +337,34 @@ async fn stats(
 ) -> Result<Json<Stats>, ApiError> {
     let store = state.store.clone();
     Ok(Json(blocking(move || store.stats(&filter)).await?))
+}
+
+#[derive(Deserialize)]
+struct CardQuery {
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+/// Match cards, newest first. Takes the stats filters, plus `limit` and `offset` for paging.
+async fn cards(
+    State(state): State<AppState>,
+    Query(filter): Query<StatsFilter>,
+    Query(page): Query<CardQuery>,
+) -> Result<Json<CardPage>, ApiError> {
+    let limit = page.limit.unwrap_or(24).min(100);
+    let offset = page.offset.unwrap_or(0);
+    let store = state.store.clone();
+    Ok(Json(
+        blocking(move || store.cards(&filter, limit, offset)).await?,
+    ))
+}
+
+async fn game_stats(
+    State(state): State<AppState>,
+    Query(filter): Query<StatsFilter>,
+) -> Result<Json<GameStats>, ApiError> {
+    let store = state.store.clone();
+    Ok(Json(blocking(move || store.game_stats(&filter)).await?))
 }
 
 async fn tech_stats(
@@ -553,6 +593,85 @@ mod tests {
             assert_eq!(m.winner_packs.len(), m.winners.len());
             assert_eq!(m.loser_packs.len(), m.losers.len());
         }
+    }
+
+    #[test]
+    fn test_match_cards_and_game_stats() {
+        let store = Store::open_in_memory().unwrap();
+        for (name, path) in [
+            ("battle_record_2340.xml", "a"),
+            (NEW, "b"),
+            ("battle_record.xml", "c"),
+        ] {
+            store.ingest(&fixture(name), Path::new(path), None).unwrap();
+        }
+        assert_eq!(count(&store, "player_games"), 6);
+
+        let page = store.cards(&StatsFilter::default(), 2, 0).unwrap();
+        assert_eq!(page.total, 3);
+        assert_eq!(page.cards.len(), 2, "limit");
+        let newest = &page.cards[0];
+        assert_eq!(newest.version, 2340, "newest first");
+        // 2340 lists the deciding fight, so one player won and one lost.
+        let won: Vec<bool> = newest.players.iter().map(|p| p.won).collect();
+        assert_eq!(won, [true, false], "winners first");
+        let game = newest.players[0].game.as_ref().unwrap();
+        assert_eq!(game["fights"].as_array().unwrap().len(), 8);
+        assert!(game["style"].is_string());
+        // Cards name players by name only, never by account ID.
+        let json = serde_json::to_string(&page).unwrap();
+        assert!(!json.contains(JTK18), "{json}");
+        let rest = store.cards(&StatsFilter::default(), 2, 2).unwrap();
+        assert_eq!(rest.cards.len(), 1, "offset");
+        let only_2340 = StatsFilter {
+            min_version: Some(2340),
+            ..Default::default()
+        };
+        assert_eq!(store.cards(&only_2340, 10, 0).unwrap().total, 1);
+
+        let stats = store.game_stats(&StatsFilter::default()).unwrap();
+        assert_eq!(stats.matches, 3);
+        assert!(stats.lengths.contains(&(8, 1)), "{:?}", stats.lengths);
+        // The control: in 1v1 every fight has one winner, so fight wins across all deployment
+        // labels are half the fights (no draws in these fixtures).
+        let fights: u64 = stats.deployments.iter().map(|d| d.fights).sum();
+        let wins: u64 = stats.deployments.iter().map(|d| d.fight_wins).sum();
+        assert!(fights > 0);
+        assert_eq!(wins * 2, fights);
+        // Openings: one per player of each classified match (2324 and 2340).
+        assert_eq!(stats.deployments.iter().map(|d| d.openings).sum::<u64>(), 4);
+        // Each fight counts once from each side: A against B mirrors B against A.
+        for m in &stats.matchups {
+            let other = stats
+                .matchups
+                .iter()
+                .find(|o| o.deployment == m.against && o.against == m.deployment)
+                .unwrap();
+            assert_eq!(other.fights, m.fights);
+            assert_eq!(other.wins + m.wins, m.fights);
+        }
+        let (w, l) = (stats.winners.unwrap(), stats.losers.unwrap());
+        assert_eq!((w.results, l.results), (3, 3));
+        assert!(stats.units.iter().all(|u| u.kept <= u.games && u.games > 0));
+    }
+
+    /// A database derived before schema 10 has no match summaries; upgrading rebuilds them.
+    #[test]
+    fn test_upgrade_adds_match_summaries() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
+            .unwrap();
+        store
+            .conn()
+            .execute_batch(
+                "DELETE FROM player_games; DELETE FROM player_fights; PRAGMA user_version = 9;",
+            )
+            .unwrap();
+        assert!(store.needs_upgrade().unwrap());
+        assert!(store.upgrade().unwrap());
+        assert_eq!(count(&store, "player_games"), 2);
+        assert_eq!(count(&store, "player_fights"), 16);
     }
 
     #[test]
@@ -978,6 +1097,14 @@ mod tests {
             stats.contains("/api/stats"),
             "the stats page is the one with data"
         );
+        assert!(stats.contains("/api/stats/games"));
+        let matches = page("/matches").await;
+        assert!(matches.contains("/api/cards"));
+        let cards = page("/api/cards").await;
+        assert!(cards.contains("\"total\":1"), "{cards}");
+        assert!(!cards.contains(JTK18) && !cards.contains(BOLSANO));
+        let games = page("/api/stats/games?match_mode=VS_1_1").await;
+        assert!(games.contains("\"deployments\""), "{games}");
 
         let facets = app
             .oneshot(Request::get("/api/facets").body(Body::empty()).unwrap())

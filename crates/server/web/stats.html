@@ -73,6 +73,38 @@
   .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
   .ramp { width: 160px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #e66767, #3a4046 50%, #3987e5); }
   .note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  nav.pages { display: flex; gap: 16px; }
+  nav.pages a { color: var(--text-2); text-decoration: none; }
+  nav.pages a[aria-current] { color: var(--text); border-bottom: 2px solid var(--accent); }
+  .header-right { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; }
+  h2.part { grid-column: 1 / -1; margin: 18px 0 0; font-size: 20px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h2.part small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+  table.plain { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.plain th { color: var(--muted); font-weight: 400; text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.plain td { text-align: right; padding: 4px 6px; border-bottom: 1px solid rgb(160 190 210 / 0.06); }
+  table.plain th:first-child, table.plain td:first-child { text-align: left; }
+  table.plain td.barcell { width: 32%; min-width: 110px; }
+  table.plain .muted { color: var(--muted); }
+  table.matrix { border-collapse: separate; border-spacing: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  table.matrix th { color: var(--muted); font-weight: 400; padding: 2px 4px; line-height: 1.2; vertical-align: bottom; }
+  table.matrix th.row { text-align: left; color: var(--text-2); white-space: nowrap; }
+  table.matrix td { min-width: 48px; height: 30px; text-align: center; border-radius: 3px; background: #1c2227; color: var(--text); }
+  table.matrix td.thin { background: repeating-linear-gradient(45deg, #1c2227 0 4px, #232a30 4px 8px); color: var(--muted); }
+  .hist { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding-top: 6px; }
+  .hist .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 0; }
+  .hist .col span.b { width: 100%; max-width: 36px; background: var(--pick); border-radius: 4px 4px 0 0; }
+  .hist .col span.n { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .hist .col span.c { font-size: 11px; color: var(--text-2); margin-bottom: 2px; }
+  .vs { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) auto minmax(0, 1fr) 3.4em; gap: 4px 8px; align-items: center; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .vs .h { color: var(--muted); font-size: 12px; }
+  .vs .l { text-align: right; }
+  .vs .label { color: var(--text-2); text-align: center; white-space: nowrap; font-size: 12px; }
+  .vs .t { height: 6px; display: flex; }
+  .vs .t.l { justify-content: flex-end; }
+  .vs .t span { display: block; height: 100%; border-radius: 3px; background: #4a555d; }
+  .vs .t span.hi { background: var(--text-2); }
+  .vs .hi { color: var(--text); font-weight: 700; }
   footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
   [hidden] { display: none !important; }
 </style>
@@ -81,7 +113,10 @@
 <div class="wrap">
   <header class="top">
     <h1>Mechabellum <span>Community Stats</span></h1>
-    <div class="counts" id="counts" aria-live="polite">Loading…</div>
+    <div class="header-right">
+      <div class="counts" id="counts" aria-live="polite">Loading…</div>
+      <nav class="pages" aria-label="Pages"><a href="/stats" aria-current="page">Stats</a><a href="/matches">Matches</a></nav>
+    </div>
   </header>
   <p class="intro">
     Win rates from matches players shared from their own replays. Each player's weight is capped
@@ -108,6 +143,31 @@
       <h2>Unit win rate by month</h2>
       <div class="scroll"><table class="heat" id="heat" aria-label="Unit win rate by month"></table></div>
       <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 games</span></div>
+    </section>
+
+    <h2 class="part">Whole matches <small>every fight and every unit, not only the final army. Plain rates, not capped per player.</small></h2>
+    <section class="panel wide">
+      <h2>Deployments <small>per fight, per player. <a href="/matches" style="color: var(--muted)">How they're classed</a></small></h2>
+      <div class="scroll"><table class="plain" id="deployments" aria-label="Deployment win rates"></table></div>
+      <p class="note">Fights: each fight a player deployed this way, and the share of those fights won. Opening: matches whose first fight was deployed this way. Mostly: matches where it was the player's most used deployment. Both of those count match wins. 1v1 on the 2.0 board only.</p>
+    </section>
+    <section class="panel">
+      <h2>Deployment against deployment <small>fight win rate of the row</small></h2>
+      <div class="scroll"><table class="matrix" id="matchups" aria-label="Deployment matchups"></table></div>
+      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 fights</span></div>
+    </section>
+    <section class="panel">
+      <h2>Match length <small>matches by fights played</small></h2>
+      <div class="hist" id="lengths" role="img" aria-label="Matches by number of fights"></div>
+    </section>
+    <section class="panel">
+      <h2>Winners and losers <small>mean per player</small></h2>
+      <div class="vs" id="army"></div>
+    </section>
+    <section class="panel">
+      <h2>Units used <small>at any point in a match</small></h2>
+      <div class="scroll"><table class="plain" id="used" aria-label="Units used during matches"></table></div>
+      <p class="note">Used: share of player results that fielded it in any fight. Kept: of those, the share still fielding it in the last fight. Sold: copies sold, against copies added.</p>
     </section>
   </div>
 
@@ -227,14 +287,131 @@ function renderHeat(trends) {
   table.replaceChildren(head, ...rows);
 }
 
+const BAND_COLORS = ["#d55181", "#c98500", "#008300", "#3987e5"];
+const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Midboard", "Backboard"];
+function bandOf(label) {
+  if (label.endsWith("ggressive")) return 0;
+  return ["Aggressive", "Standard", "Midboard", "Backboard"].indexOf(label);
+}
+function labelCell(label) {
+  const td = el("td");
+  const sw = el("span", "swatch");
+  sw.style.background = BAND_COLORS[bandOf(label)] || "var(--muted)";
+  td.append(sw, document.createTextNode(label));
+  return td;
+}
+function rate(n, d) { return d ? n / d : null; }
+
+function renderDeployments(g) {
+  const table = $("deployments");
+  const head = el("tr");
+  for (const h of ["Deployment", "Fights", "Fight win rate", "Opening", "Won", "Mostly", "Won"]) head.append(el("th", "", h));
+  const rows = g.deployments.map((d) => {
+    const tr = el("tr");
+    const win = el("td", "barcell");
+    win.append(winBar(rate(d.fight_wins, d.fights)));
+    tr.append(labelCell(d.label), el("td", d.fights < SMALL ? "muted" : "", d.fights.toLocaleString()), win,
+      el("td", "", String(d.openings)), el("td", "", pct(rate(d.opening_wins, d.openings))),
+      el("td", "", String(d.styles)), el("td", "", pct(rate(d.style_wins, d.styles))));
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No classified deployments fit these filters yet."); td.colSpan = 7; tr.append(td); table.append(tr); }
+}
+
+function renderMatchups(g) {
+  const table = $("matchups");
+  const present = DEPLOYMENTS.filter((l) => g.matchups.some((m) => m.deployment === l || m.against === l));
+  const head = el("tr");
+  head.append(el("th", "row", "Row vs column"));
+  for (const l of present) head.append(el("th", "", l));
+  const rows = present.map((row) => {
+    const tr = el("tr");
+    const th = el("th", "row");
+    const sw = el("span", "swatch");
+    sw.style.background = BAND_COLORS[bandOf(row)];
+    th.append(sw, document.createTextNode(row));
+    tr.append(th);
+    for (const col of present) {
+      const m = g.matchups.find((x) => x.deployment === row && x.against === col);
+      const td = el("td");
+      if (m) {
+        const r = m.wins / m.fights;
+        td.textContent = pct(r);
+        if (m.fights < SMALL) td.className = "thin";
+        else td.style.background = heatColor(r);
+        td.title = `${row} against ${col}: won ${m.wins} of ${m.fights} fights (${pct(r)})`;
+      }
+      tr.append(td);
+    }
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+}
+
+function renderLengths(g) {
+  const box = $("lengths");
+  const max = Math.max(1, ...g.lengths.map(([, n]) => n));
+  const cols = g.lengths.map(([fights, n]) => {
+    const col = el("div", "col");
+    col.title = `${n} matches lasted ${fights} fights`;
+    const b = el("span", "b");
+    b.style.height = `${(n / max) * 80}%`;
+    col.append(el("span", "c", String(n)), b, el("span", "n", String(fights)));
+    return col;
+  });
+  box.replaceChildren(...cols);
+  if (!cols.length) box.append(el("div", "note", "No matches fit these filters yet."));
+}
+
+function renderArmy(g) {
+  const box = $("army");
+  const w = g.winners, l = g.losers;
+  if (!w || !l) { box.replaceChildren(el("div", "note", "Needs both winners and losers.")); return; }
+  const parts = [el("div", "h l", "Winners"), el("div"), el("div"), el("div"), el("div", "h", "Losers")];
+  const rows = [["Final army", "final_units"], ["Peak army", "peak_units"], ["Mean level", "mean_level"], ["Top level", "max_level"],
+    ["Level-ups", "level_ups"], ["Units added", "units_added"], ["Units sold", "units_sold"], ["Techs", "techs"], ["Cards picked", "cards"]];
+  for (const [label, key] of rows) {
+    const a = w[key], b = l[key];
+    if (a == null || b == null) continue;
+    const max = Math.max(a, b) || 1;
+    const track = (v, hi, side) => { const t = el("div", "t " + side); const s = el("span", hi ? "hi" : ""); s.style.width = `${(v / max) * 100}%`; t.append(s); return t; };
+    parts.push(el("div", "l" + (a > b ? " hi" : ""), a.toFixed(1)), track(a, a > b, "l"), el("div", "label", label), track(b, b > a, "r"), el("div", b > a ? "hi" : "", b.toFixed(1)));
+  }
+  box.replaceChildren(...parts);
+  box.setAttribute("aria-label", `Means over ${w.results} winning and ${l.results} losing results`);
+}
+
+function renderUsed(g) {
+  const table = $("used");
+  const head = el("tr");
+  for (const h of ["Unit", "Used", "Win rate", "Kept", "Sold", "Top level"]) head.append(el("th", "", h));
+  const rows = g.units.slice(0, 40).map((u) => {
+    const tr = el("tr", u.games < SMALL ? "row-small" : "");
+    const win = el("td", "barcell");
+    win.append(winBar(u.win_rate));
+    tr.title = `${u.name}: fielded in ${u.games} results, won ${u.wins}; up to ${u.mean_peak.toFixed(1)} copies on average`;
+    tr.append(el("td", "", u.name), el("td", "", pct(u.use_rate)), win, el("td", "", pct(rate(u.kept, u.games))),
+      el("td", "", `${u.sold} of ${u.added}`), el("td", "", u.mean_max_level.toFixed(1)));
+    return tr;
+  });
+  table.replaceChildren(head, ...rows);
+}
+
 async function refresh() {
   const f = filter();
   try {
-    const [robust, stats, trends] = await Promise.all([
+    const [robust, stats, trends, games] = await Promise.all([
       get("/api/stats/robust", f),
       get("/api/stats", f),
       get("/api/stats/versions", { ...f, min_version: undefined, max_version: undefined, period: "month" }),
+      get("/api/stats/games", f),
     ]);
+    renderDeployments(games);
+    renderMatchups(games);
+    renderLengths(games);
+    renderArmy(games);
+    renderUsed(games);
     const total = stats.player_results;
     renderRows($("units"), robust.units, total);
     renderRows($("specialists"), robust.specialists, total);

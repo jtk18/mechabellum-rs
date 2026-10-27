@@ -92,8 +92,8 @@ impl Half {
 // flank columns 6 squares wide open along both edges of the opponent's half. Units in a flank
 // column stand on end: there `rotated = false` means turned 90° from the main zone (seen in
 // play, and the only way units at x = ±310 fit inside a 300-360 column).
-const ZONE_HALF_WIDTH: i32 = 300;
-const ZONE_FRONT: i32 = -10;
+pub(crate) const ZONE_HALF_WIDTH: i32 = 300;
+pub(crate) const ZONE_FRONT: i32 = -10;
 const ZONE_BACK: i32 = -310;
 const FLANK_CENTER_X: i32 = 330;
 const FLANK_NEAR: i32 = 10;

@@ -186,8 +186,13 @@ pub struct PlayerData {
     #[serde(rename = "reactorCore")]
     pub reactor_core: String,
     pub supply: String,
+    /// The previous fight's result. Since version 2340 it always reads "Win"; use
+    /// `PlayerRecord::fight_results` there.
     #[serde(rename = "preRoundFightResult")]
     pub pre_round_fight_result: String,
+    /// Every fight's result for this player (version 2340 on), the last fight included.
+    #[serde(rename = "roundFightResult")]
+    pub round_fight_result: RoundFightResult,
     pub units: Units,
     #[serde(rename = "unitIndex")]
     pub unit_index: String,
@@ -609,6 +614,41 @@ pub struct SnapshotReinforceItems {
 #[serde(default)]
 pub struct IntList {
     pub int: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct RoundFightResult {
+    /// "Win", "Lose" or "Deuce", one per fight in order.
+    #[serde(rename = "FightResultType")]
+    pub results: Vec<String>,
+}
+
+impl PlayerRecord {
+    /// Every fight's result ("Win", "Lose" or "Deuce") in order, when the replay lists them
+    /// (version 2340 on). Each round record carries the same full list. In all 9 replays of
+    /// version 2340 checked (2026-10-27), each lost fight matched a drop in reactor HP, and the
+    /// two players' lists were opposite fight for fight.
+    pub fn fight_results(&self) -> Option<&[String]> {
+        self.player_round_records
+            .player_round_record
+            .iter()
+            .map(|r| r.player_data.round_fight_result.results.as_slice())
+            .find(|results| !results.is_empty())
+    }
+
+    /// The match result for this player: the last fight's where the replay lists every fight.
+    /// Older replays only have the result of the fight before the last round (its record's
+    /// `pre_round_fight_result`), which is what they're judged by.
+    pub fn final_result(&self) -> Option<&str> {
+        if let Some(last) = self.fight_results().and_then(<[String]>::last) {
+            return Some(last.trim());
+        }
+        self.player_round_records
+            .player_round_record
+            .last()
+            .map(|r| r.player_data.pre_round_fight_result.trim())
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]

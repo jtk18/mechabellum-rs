@@ -12,6 +12,7 @@ mod parse_error;
 mod player;
 mod skills;
 mod specialist;
+mod summary;
 mod units;
 mod validate;
 
@@ -35,6 +36,9 @@ pub use parse_error::ParseError;
 pub use player::*;
 pub use skills::Skills;
 pub use specialist::{specialist_name, Specialist, LEGACY_NAMES_BEFORE};
+pub use summary::{
+    classify, Deployment, Depth, FightSummary, PlayerGame, UnitUse, DEPLOYMENT_GEOMETRY_FROM,
+};
 pub use units::*;
 pub use validate::Problem;
 

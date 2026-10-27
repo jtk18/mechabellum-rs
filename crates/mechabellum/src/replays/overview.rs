@@ -45,10 +45,7 @@ impl BattleRecord {
             let Some(last_round_snapshot) = self.match_datas.match_snapshot_data.last() else {
                 continue;
             };
-            let last_round_result = rounds[rounds.len() - 1]
-                .player_data
-                .pre_round_fight_result
-                .as_str();
+            let last_round_result = player.final_result().unwrap_or_default();
 
             let unlocked_units: Vec<Unit> = rounds[rounds.len() - 1]
                 .player_data

@@ -447,11 +447,12 @@ impl BattleRecord {
             let Some(&last) = records.keys().next_back() else {
                 continue;
             };
-            let won = player
-                .player_round_records
-                .player_round_record
-                .last()
-                .map(|r| r.player_data.pre_round_fight_result == "Win");
+            let won = player.final_result().map(|r| r == "Win");
+            // Version 2340 on, one result per fight. Trusted only when the count matches the
+            // fights drawn here, so the list and the records can't fall out of step.
+            let listed = player
+                .fight_results()
+                .filter(|results| results.len() == last as usize);
             // The previous fight's units for this player, by index, once one has been drawn.
             let mut previous: Option<(u32, BTreeMap<u32, u32>)> = None;
             for fight in 1..=last {
@@ -479,6 +480,9 @@ impl BattleRecord {
                         true,
                     ),
                 };
+                let result = listed
+                    .and_then(|results| results.get(fight as usize - 1))
+                    .map_or(result, |r| r.trim().to_owned());
                 if units.is_empty() {
                     continue;
                 }
@@ -651,11 +655,7 @@ impl BattleRecord {
                     id: p.id.clone(),
                     name: p.name.clone(),
                     team: p.data.team.clone(),
-                    won: p
-                        .player_round_records
-                        .player_round_record
-                        .last()
-                        .map(|r| r.player_data.pre_round_fight_result == "Win"),
+                    won: p.final_result().map(|r| r == "Win"),
                     loadout: loadout(p),
                     starter_pack: starter_pack(p),
                 })
