@@ -68,9 +68,9 @@ interface MatchRow {
   /** Per player, in the same order as the names. */
   winner_packs: (StarterPack | null)[];
   loser_packs: (StarterPack | null)[];
-  /** Each player's most used deployment, when classified. */
-  winner_styles: (string | null)[];
-  loser_styles: (string | null)[];
+  /** Each player's round 1 deployment, which classes the match for them, when classified. */
+  winner_deployments: (string | null)[];
+  loser_deployments: (string | null)[];
 }
 
 /** Whole-match stats (mechabellum_server::GameStats). */
@@ -78,16 +78,10 @@ interface GameStats {
   matches: number;
   player_results: number;
   lengths: [number, number][];
-  deployments: {
-    label: string;
-    fights: number;
-    fight_wins: number;
-    openings: number;
-    opening_wins: number;
-    styles: number;
-    style_wins: number;
-  }[];
-  matchups: { deployment: string; against: string; fights: number; wins: number }[];
+  /** Per round 1 deployment: matches are classed by round 1's layout. */
+  deployments: { label: string; matches: number; wins: number; round_one_wins: number }[];
+  /** 1v1 matches by both players' round 1 deployments. */
+  matchups: { deployment: string; against: string; matches: number; wins: number }[];
   winners: ArmyMeans | null;
   losers: ArmyMeans | null;
   units: {
@@ -457,8 +451,8 @@ function renderMatchList() {
   const shown = allMatches.filter((m) => {
     if (!query) return true;
     const packUnits = [...m.winner_packs, ...m.loser_packs].flatMap((p) => p?.units.map((u) => u.name) ?? []);
-    const styles = [...(m.winner_styles ?? []), ...(m.loser_styles ?? [])].filter((s): s is string => !!s);
-    const text = [...m.winners, ...m.losers, ...packUnits, ...styles, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
+    const deployments = [...(m.winner_deployments ?? []), ...(m.loser_deployments ?? [])].filter((d): d is string => !!d);
+    const text = [...m.winners, ...m.losers, ...packUnits, ...deployments, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
       .join(" ")
       .toLowerCase();
     return query.split(/\s+/).every((word) => text.includes(word));
@@ -477,7 +471,7 @@ function renderMatchList() {
       const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
       // One line per player, winners first, each with the starter pack they opened with.
       const players = el("span", "players");
-      const line = (name: string, elo: number | null, style: string | null, pack: StarterPack | null, won: boolean) => {
+      const line = (name: string, elo: number | null, deployment: string | null, pack: StarterPack | null, won: boolean) => {
         const row = el("span", `player-line${won ? " winner" : ""}`);
         row.append(el("span", "result-tag", won ? "Won" : "Lost"));
         const who = el("span", "name", name);
@@ -487,13 +481,13 @@ function renderMatchList() {
           who.append(badge);
         }
         row.append(who);
-        // Their most used deployment; an empty cell keeps packs in a column.
-        row.append(style ? deploymentPill(style) : el("span"));
+        // How they deployed for round 1, which classes the match; an empty cell keeps packs in a column.
+        row.append(deployment ? deploymentPill(deployment) : el("span"));
         if (pack) row.append(packChips(pack));
         return row;
       };
-      m.winners.forEach((name, i) => players.append(line(name, m.winner_elos[i], m.winner_styles?.[i] ?? null, m.winner_packs[i], true)));
-      m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_styles?.[i] ?? null, m.loser_packs[i], false)));
+      m.winners.forEach((name, i) => players.append(line(name, m.winner_elos[i], m.winner_deployments?.[i] ?? null, m.winner_packs[i], true)));
+      m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_deployments?.[i] ?? null, m.loser_packs[i], false)));
       if (players.children.length === 0) players.append(el("span", "player-line muted", "No result recorded"));
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
@@ -604,33 +598,25 @@ function renderHeatmap(trends: VersionTrends) {
 
 let lastTrends: VersionTrends | null = null;
 
-/** Deployment classes, their fight win rates, and how matches opened with each or mostly used it went. */
+/** Win rate by how round 1 was deployed: the layout a match is classed by. */
 function renderDeployments(g: GameStats) {
   $("deploy-legend").replaceChildren(bandLegend());
   const container = $("deployments");
-  const heads = ["Deployment", "Fights", "Fight win rate", "Opened", "Won", "Mostly", "Won"].map((h, i) =>
+  const heads = ["Round 1 deployment", "Matches", "Match win rate", "Won round 1"].map((h, i) =>
     el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h),
   );
-  const rate = (n: number, d: number) => (d ? pct(n / d) : "–");
   const rows = g.deployments.flatMap((d) => {
-    const small = d.fights < SMALL_SAMPLE;
+    const small = d.matches < SMALL_SAMPLE;
     const cells = [
       deploymentPill(d.label),
-      el("div", "num", String(d.fights)),
-      winBar(d.fights ? d.fight_wins / d.fights : 0.5),
-      el("div", "num", String(d.openings)),
-      el("div", "num", rate(d.opening_wins, d.openings)),
-      el("div", "num", String(d.styles)),
-      el("div", "num", rate(d.style_wins, d.styles)),
+      el("div", "num", String(d.matches)),
+      winBar(d.matches ? d.wins / d.matches : 0.5),
+      el("div", "num", d.matches ? pct(d.round_one_wins / d.matches) : "–"),
     ];
     const tip: Tip = {
-      title: d.label,
-      lines: [
-        `Won ${d.fight_wins} of ${d.fights} fights deployed this way`,
-        `Opened ${d.openings} matches, won ${d.opening_wins}`,
-        `Most used in ${d.styles} matches, won ${d.style_wins}`,
-      ],
-      note: small ? `Fewer than ${SMALL_SAMPLE} fights: treat the win rate as noise.` : undefined,
+      title: `${d.label} in round 1`,
+      lines: [`Won ${d.wins} of ${d.matches} matches`, `Won round 1 itself in ${d.round_one_wins}`],
+      note: small ? `Fewer than ${SMALL_SAMPLE} matches: treat the win rate as noise.` : undefined,
     };
     for (const c of cells) {
       if (small) c.classList.add("muted");
@@ -639,7 +625,7 @@ function renderDeployments(g: GameStats) {
     return cells;
   });
   container.replaceChildren(...heads, ...rows);
-  if (rows.length === 0) container.append(el("div", "empty", "No classified deployments fit these filters. Classes cover 1v1 on the 2.0 board."));
+  if (rows.length === 0) container.append(el("div", "empty", "No classified round 1 deployments fit these filters. Classes cover 1v1 on the 2.0 board."));
 }
 
 const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Midboard", "Backboard"];
@@ -658,11 +644,11 @@ function renderMatchups(g: GameStats) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const cell = el("div", "cell");
       if (m) {
-        const r = m.wins / m.fights;
+        const r = m.wins / m.matches;
         cell.textContent = pct(r);
-        if (m.fights < SMALL_SAMPLE) cell.classList.add("thin");
+        if (m.matches < SMALL_SAMPLE) cell.classList.add("thin");
         else cell.style.background = trendColor(r);
-        const tip: Tip = { title: `${row} against ${col}`, lines: [`Won ${m.wins} of ${m.fights} fights (${pct(r)})`] };
+        const tip: Tip = { title: `Round 1: ${row} against ${col}`, lines: [`Won ${m.wins} of ${m.matches} matches (${pct(r)})`] };
         cell.dataset.tip = JSON.stringify(tip);
       }
       cells.push(cell);
@@ -670,8 +656,8 @@ function renderMatchups(g: GameStats) {
   }
   container.replaceChildren(...cells);
   $("matchups-note").textContent = rowsPresent.length
-    ? `1v1 fights where both armies were classed. Striped: fewer than ${SMALL_SAMPLE} fights.`
-    : "No 1v1 fights with both armies classed fit these filters.";
+    ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE} matches.`
+    : "No 1v1 matches with both round 1 layouts classed fit these filters.";
 }
 
 /** Two columns compared row by row, the larger value bright: the tale of the tape. */

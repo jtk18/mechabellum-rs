@@ -165,7 +165,8 @@
       <li><strong>Backboard</strong>: units behind the towers' centers.</li>
       <li>Each unit counts by the ground it covers. An army takes the class of the band holding most of it, when that's
         aggressive, midboard or backboard with at least 40% of it. Otherwise it's <strong>standard</strong>.</li>
-      <li>Classed per player and per fight, for 1v1 games on the 2.0 board (build 2259 on).</li>
+      <li>A match is classed by how each player deployed for <strong>round 1</strong>. Later fights are classed the same
+        way on the fight tape, to show how the board grew. 1v1 games on the 2.0 board (build 2259 on).</li>
     </ul>
   </details>
 
@@ -371,10 +372,9 @@ function playerHead(p, side) {
   if (p.elo != null) sub.push(`${p.elo} MMR`);
   if (p.game) sub.push(`${p.game.fights_won} of ${p.game.fights.length} fights won`);
   box.append(el("div", "sub", sub.join(" · ")));
-  if (p.game?.style) {
+  if (p.game?.opening) {
     const style = el("div", "style");
-    style.append(document.createTextNode("Mostly "), pill(p.game.style));
-    if (p.game.opening && p.game.opening !== p.game.style) style.append(document.createTextNode(` · opened ${p.game.opening}`));
+    style.append(document.createTextNode("Round 1: "), pill(p.game.opening));
     box.append(style);
   }
   return box;
@@ -403,7 +403,8 @@ function twoPlayerCard(card, players) {
   const [a, b] = players;
   const body = el("div", "body");
   const fights = fightNumbers(players);
-  let selected = fights[fights.length - 1];
+  // Open on round 1: the layout the match is classed by.
+  let selected = fights[0];
 
   const boardCol = el("div", "board-col");
   const capTop = el("div"), capBottom = el("div");

@@ -45,8 +45,8 @@ export interface PlayerGame {
   units_sold: number | null;
   techs: number;
   cards: number;
+  /** Round 1's deployment label, which classes the match; null when round 1 isn't recorded. */
   opening: string | null;
-  style: string | null;
   units: UnitUse[];
   fights: FightSummary[];
 }
@@ -62,7 +62,7 @@ export const RULES: Tip = {
     "Backboard: behind the towers' centers.",
     "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of it and at least 40%; otherwise standard.",
   ],
-  note: "Per player, per fight. 1v1 on the 2.0 board, build 2259 on.",
+  note: "A match is classed by round 1's layout; later fights are classed the same way to show how the board grew. 1v1 on the 2.0 board, build 2259 on.",
 };
 
 /** The band of a deployment label: both aggressive labels are the front band. -1 when unknown. */

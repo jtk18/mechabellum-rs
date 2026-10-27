@@ -73,6 +73,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     Me / My opponents / Everyone view), each player's most used deployment in the match list, and
     in the match view each side's class per round, band lines on the board, and a whole-match
     strip under it (a fight tape that picks the round, the tale of the tape, units used).
+    A match is classed by round 1's layout (J, 2026-10-27: "use the positioning on round 1 not the
+    last round"; schema 11). The headline everywhere, the stats, and the match-against-match grid
+    use round 1; cards open on round 1. The per-fight classes stay on the fight tape and the round
+    bar. The desktop match view still opens on the last round, as before.
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every

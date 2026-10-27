@@ -640,8 +640,8 @@ function renderSummary() {
     const col = el("div", `used-side ${cls}`);
     const g = games[side];
     const title = el("div", `used-name ${sideClass(side)}`);
-    title.append(el("span", "swatch"), document.createTextNode(`${m.players[side].name}${g.style ? " · mostly " : ""}`));
-    if (g.style) title.append(deploymentPill(g.style));
+    title.append(el("span", "swatch"), document.createTextNode(`${m.players[side].name}${g.opening ? " · round 1 " : ""}`));
+    if (g.opening) title.append(deploymentPill(g.opening));
     col.append(title);
     const list = el("div", "used-chips");
     for (const u of g.units) {

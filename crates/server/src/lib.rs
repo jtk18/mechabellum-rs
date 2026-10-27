@@ -617,7 +617,7 @@ mod tests {
         assert_eq!(won, [true, false], "winners first");
         let game = newest.players[0].game.as_ref().unwrap();
         assert_eq!(game["fights"].as_array().unwrap().len(), 8);
-        assert!(game["style"].is_string());
+        assert!(game["opening"].is_string(), "classed by round 1");
         // Cards name players by name only, never by account ID.
         let json = serde_json::to_string(&page).unwrap();
         assert!(!json.contains(JTK18), "{json}");
@@ -632,39 +632,41 @@ mod tests {
         let stats = store.game_stats(&StatsFilter::default()).unwrap();
         assert_eq!(stats.matches, 3);
         assert!(stats.lengths.contains(&(8, 1)), "{:?}", stats.lengths);
-        // The control: in 1v1 every fight has one winner, so fight wins across all deployment
-        // labels are half the fights (no draws in these fixtures).
-        let fights: u64 = stats.deployments.iter().map(|d| d.fights).sum();
-        let wins: u64 = stats.deployments.iter().map(|d| d.fight_wins).sum();
-        assert!(fights > 0);
-        assert_eq!(wins * 2, fights);
-        // Openings: one per player of each classified match (2324 and 2340).
-        assert_eq!(stats.deployments.iter().map(|d| d.openings).sum::<u64>(), 4);
-        // Each fight counts once from each side: A against B mirrors B against A.
+        // Matches are classed by round 1: only 2340's, since the 2324 fixture has no record of
+        // round 1 and a later round doesn't stand in. The control: one winner per 1v1 match and
+        // per fight, so wins across labels are half the results.
+        let matches: u64 = stats.deployments.iter().map(|d| d.matches).sum();
+        let wins: u64 = stats.deployments.iter().map(|d| d.wins).sum();
+        let round_one: u64 = stats.deployments.iter().map(|d| d.round_one_wins).sum();
+        assert_eq!((matches, wins, round_one), (2, 1, 1));
+        // Each match counts once from each side: A against B mirrors B against A.
+        assert!(!stats.matchups.is_empty());
         for m in &stats.matchups {
             let other = stats
                 .matchups
                 .iter()
                 .find(|o| o.deployment == m.against && o.against == m.deployment)
                 .unwrap();
-            assert_eq!(other.fights, m.fights);
-            assert_eq!(other.wins + m.wins, m.fights);
+            assert_eq!(other.matches, m.matches);
+            assert_eq!(other.wins + m.wins, m.matches);
         }
         let (w, l) = (stats.winners.unwrap(), stats.losers.unwrap());
         assert_eq!((w.results, l.results), (3, 3));
-        // The match list carries each player's most used deployment where it's classed.
+        // The match list carries each player's round 1 deployment where it's classed.
         let rows = store.recent_matches(10).unwrap();
         let newest = rows.iter().find(|m| m.version == 2340).unwrap();
         assert!(newest
-            .winner_styles
+            .winner_deployments
             .iter()
-            .chain(&newest.loser_styles)
+            .chain(&newest.loser_deployments)
             .all(Option::is_some));
-        let old = rows.iter().find(|m| m.version == 1503).unwrap();
-        assert!(
-            old.winner_styles.iter().all(Option::is_none),
-            "1.x isn't classed"
-        );
+        for version in [2324, 1503] {
+            let row = rows.iter().find(|m| m.version == version).unwrap();
+            assert!(
+                row.winner_deployments.iter().all(Option::is_none),
+                "{version}: no round 1 record, or not the 2.0 board"
+            );
+        }
         assert!(stats.units.iter().all(|u| u.kept <= u.games && u.games > 0));
     }
 

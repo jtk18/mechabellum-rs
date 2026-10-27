@@ -1924,7 +1924,7 @@ h1 {
 }
 
 .deploy-table {
-  grid-template-columns: minmax(130px, 1fr) 54px minmax(140px, 2fr) 54px 48px 54px 48px;
+  grid-template-columns: minmax(150px, 1fr) 64px minmax(160px, 2fr) 96px;
 }
 
 .used-table {

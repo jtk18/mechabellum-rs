@@ -39,7 +39,7 @@ cargo run --release -p mechabellum-server -- --db mechabellum.db serve --bind 12
 | `POST /api/replays` | Body is a raw `.grbr` or `.xml`. Returns 201 when added, 200 when already present, 400 when the body isn't a replay, and 422 when it's a replay that can't be parsed. With `--require-auth`, it requires `Authorization: Bearer <key>`. |
 | `GET /api/replays?limit=50` | Most recent matches. |
 | `GET /api/stats` | Unit and specialist pick and win rates, taken from each player's final-round army. Filters: `min_version`, `max_version`, `match_mode` (`VS_1_1`, ...), `game_mode` (`Normal`, `AsyncBattle`, ...), `player_id`. |
-| `GET /api/stats/games` | Whole matches rather than final armies: deployment classes per fight (with fight win rates, openings, and class-against-class 1v1 fights), match lengths, winners' and losers' mean army size, levels and units sold, and every unit fielded at any point. Same filters. Plain rates, not capped per uploader. |
+| `GET /api/stats/games` | Whole matches rather than final armies: win rates by round 1 deployment (and round 1 deployment against the opponent's, in 1v1), match lengths, winners' and losers' mean army size, levels and units sold, and every unit fielded at any point. Same filters. Plain rates, not capped per uploader. |
 | `GET /api/cards?limit=24&offset=0` | Match cards, newest first: each player's whole game (`mechabellum::PlayerGame`: army size and levels, units used and sold, every fight's result, HP, deployment and board). Same filters. Names as stored, never account IDs. |
 | `GET /health` | |
 
@@ -52,7 +52,10 @@ squares of the line, or in a flank column. **Midboard**: from 5 squares in front
 faces back to their centers. **Backboard**: behind the towers' centers. Everything else is the standard
 band. Units weigh by footprint area; the army takes the class of the band holding the most of it when that's
 aggressive, midboard or backboard with at least 40%, and is **standard** otherwise. An aggressive army is
-**asym** when three quarters or more of its forward group stands on one side, **sym** otherwise.
+**asym** when three quarters or more of its forward group stands on one side, **sym** otherwise. A match is
+classed by each player's **round 1** layout (J: judge the layout by round 1's positioning, not the last
+round's); a replay with no round 1 record isn't classed. Later fights are classed the same way, which the
+match cards' fight tape shows.
 
 The database stores each original replay (gzipped). After upgrading the parser, run
 `mechabellum-server reindex` to rebuild every stat from those stored replays.

@@ -149,10 +149,10 @@ pub struct PlayerGame {
     pub techs: u32,
     /// Cards picked between rounds.
     pub cards: u32,
-    /// The first fight's deployment label.
+    /// Round 1's deployment label: how the match is classed for this player (J, 2026-10-27:
+    /// judge the layout by round 1's positioning, not the last round's). `None` when round 1
+    /// isn't recorded or isn't classified; a later round never stands in for it.
     pub opening: Option<String>,
-    /// The deployment label used in the most fights (ties go to the later fight).
-    pub style: Option<String>,
     /// Most fielded first.
     pub units: Vec<UnitUse>,
     pub fights: Vec<FightSummary>,
@@ -274,20 +274,6 @@ pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     })
 }
 
-/// The deployment label used in the most fights, ties going to the later fight.
-fn most_used(labels: &[&str]) -> Option<String> {
-    let mut counts: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
-    for (at, label) in labels.iter().enumerate() {
-        let entry = counts.entry(label).or_default();
-        entry.0 += 1;
-        entry.1 = at;
-    }
-    counts
-        .into_iter()
-        .max_by_key(|(_, (count, last))| (*count, *last))
-        .map(|(label, _)| label.to_owned())
-}
-
 impl MatchDetail {
     /// Whether deployments in this match can be classified: a 1v1 on the 2.0 board. Other modes'
     /// zones haven't been measured.
@@ -404,10 +390,6 @@ impl MatchDetail {
                         }
                     })
                     .collect();
-                let labels: Vec<&str> = fights
-                    .iter()
-                    .filter_map(|f| Some(f.deployment.as_ref()?.label.as_str()))
-                    .collect();
                 let final_units = last.map_or(0, |side| side.units.len() as u32);
 
                 if !comparable {
@@ -441,8 +423,10 @@ impl MatchDetail {
                         .iter()
                         .map(|(_, side)| side.cards_chosen.len() as u32)
                         .sum(),
-                    opening: labels.first().map(|l| (*l).to_owned()),
-                    style: most_used(&labels),
+                    opening: fights
+                        .iter()
+                        .find(|f| f.fight == 1)
+                        .and_then(|f| Some(f.deployment.as_ref()?.label.clone())),
                     units,
                     fights,
                 }
@@ -537,15 +521,6 @@ mod tests {
         assert_eq!(classify(&[], Half::South), None);
     }
 
-    #[test]
-    fn test_most_used_breaks_ties_late() {
-        assert_eq!(
-            most_used(&["Standard", "Midboard", "Standard", "Midboard"]).as_deref(),
-            Some("Midboard")
-        );
-        assert_eq!(most_used(&[]), None);
-    }
-
     /// The 2340 fixture (opponent's name removed): every fight's result is listed, the last one
     /// included, and the summaries follow from them.
     #[test]
@@ -583,7 +558,11 @@ mod tests {
             assert_eq!(game.fights.len(), 8);
             assert!(game.half.is_some());
             assert!(game.fights.iter().all(|f| f.deployment.is_some()));
-            assert!(game.opening.is_some() && game.style.is_some());
+            assert_eq!(
+                game.opening.as_ref(),
+                game.fights[0].deployment.as_ref().map(|d| &d.label),
+                "the match is classed by round 1"
+            );
             assert_eq!(
                 game.final_units as usize,
                 game.fights.last().unwrap().board.len()
@@ -619,6 +598,10 @@ mod tests {
             let last = game.fights.last().unwrap();
             assert_eq!(last.result == "Win", player.won == Some(true));
             assert!(game.fights.iter().all(|f| f.deployment.is_some()));
+            // This fixture has no record of round 1, so the match isn't classed, though later
+            // rounds are.
+            assert_eq!(game.fights[0].fight, 2);
+            assert_eq!(game.opening, None);
         }
     }
 
@@ -635,7 +618,9 @@ mod tests {
             .iter()
             .flat_map(|g| &g.fights)
             .all(|f| f.deployment.is_none()));
-        assert!(games.iter().all(|g| g.final_units > 0 && g.style.is_none()));
+        assert!(games
+            .iter()
+            .all(|g| g.final_units > 0 && g.opening.is_none()));
     }
 
     /// Deployment labels and fight results over a folder of extracted replays:

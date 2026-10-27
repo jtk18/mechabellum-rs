@@ -47,9 +47,9 @@ pub struct GameStats {
     pub player_results: u64,
     /// (fights, matches): how long matches ran.
     pub lengths: Vec<(u32, u64)>,
-    /// Per deployment label, most used first.
+    /// Per round 1 deployment, most used first. Matches are classed by round 1's layout.
     pub deployments: Vec<DeploymentStat>,
-    /// 1v1 fights between two classified deployments, from the first one's side.
+    /// 1v1 matches by both players' round 1 deployments, from the first one's side.
     pub matchups: Vec<Matchup>,
     /// Means over match winners and over losers.
     pub winners: Option<ArmyMeans>,
@@ -61,23 +61,20 @@ pub struct GameStats {
 #[derive(Debug, Serialize)]
 pub struct DeploymentStat {
     pub label: String,
-    /// Fights deployed this way, and how many of them were won.
-    pub fights: u64,
-    pub fight_wins: u64,
-    /// Matches whose first fight was deployed this way, and how many were won.
-    pub openings: u64,
-    pub opening_wins: u64,
-    /// Matches where this was the deployment used most, and how many were won.
-    pub styles: u64,
-    pub style_wins: u64,
+    /// Player results whose round 1 was deployed this way, and how many won the match.
+    pub matches: u64,
+    pub wins: u64,
+    /// Of those, how many won round 1's fight.
+    pub round_one_wins: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Matchup {
+    /// Round 1 deployments: this player's and the opponent's.
     pub deployment: String,
     pub against: String,
-    pub fights: u64,
-    /// Fights `deployment` won.
+    pub matches: u64,
+    /// Matches `deployment` won.
     pub wins: u64,
 }
 
@@ -211,69 +208,42 @@ impl Store {
             .query_map(args, |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<Vec<(u32, u64)>>>()?;
 
-        // Fights per label, then openings and styles per label, merged by label.
-        let mut deployments: Vec<DeploymentStat> = conn
+        // Each match is classed by round 1's deployment (`opening`).
+        let deployments = conn
             .prepare(&format!(
-                "{scope} SELECT f.deployment, COUNT(*), SUM(f.result = 'Win') FROM player_fights f
-                 JOIN scope s ON s.battle_id = f.battle_id AND s.player_id = f.player_id
-                 WHERE f.deployment IS NOT NULL GROUP BY 1"
+                "{scope} SELECT g.opening, COUNT(*), SUM(s.won), SUM(COALESCE(f.result = 'Win', 0))
+                 FROM player_games g
+                 JOIN scope s ON s.battle_id = g.battle_id AND s.player_id = g.player_id
+                 LEFT JOIN player_fights f ON f.battle_id = g.battle_id
+                                          AND f.player_id = g.player_id AND f.fight = 1
+                 WHERE g.opening IS NOT NULL
+                 GROUP BY 1 ORDER BY COUNT(*) DESC, 1"
             ))?
             .query_map(args, |r| {
                 Ok(DeploymentStat {
                     label: r.get(0)?,
-                    fights: r.get(1)?,
-                    fight_wins: r.get(2)?,
-                    openings: 0,
-                    opening_wins: 0,
-                    styles: 0,
-                    style_wins: 0,
+                    matches: r.get(1)?,
+                    wins: r.get(2)?,
+                    round_one_wins: r.get(3)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
-        for column in ["opening", "style"] {
-            let sql = format!(
-                "{scope} SELECT g.{column}, COUNT(*), SUM(s.won) FROM player_games g
-                 JOIN scope s ON s.battle_id = g.battle_id AND s.player_id = g.player_id
-                 WHERE g.{column} IS NOT NULL GROUP BY 1"
-            );
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(args, |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, u64>(1)?,
-                    r.get::<_, u64>(2)?,
-                ))
-            })?;
-            for row in rows {
-                let (label, count, wins) = row?;
-                let Some(stat) = deployments.iter_mut().find(|d| d.label == label) else {
-                    continue;
-                };
-                if column == "opening" {
-                    (stat.openings, stat.opening_wins) = (count, wins);
-                } else {
-                    (stat.styles, stat.style_wins) = (count, wins);
-                }
-            }
-        }
-        deployments.sort_by(|a, b| b.fights.cmp(&a.fights).then_with(|| a.label.cmp(&b.label)));
 
         let matchups = conn
             .prepare(&format!(
-                "{scope} SELECT a.deployment, b.deployment, COUNT(*), SUM(a.result = 'Win')
+                "{scope} SELECT a.opening, b.opening, COUNT(*), SUM(s.won)
                  FROM scope s
                  JOIN matches m ON m.battle_id = s.battle_id AND m.match_mode = 'VS_1_1'
-                 JOIN player_fights a ON a.battle_id = s.battle_id AND a.player_id = s.player_id
-                 JOIN player_fights b ON b.battle_id = a.battle_id AND b.fight = a.fight
-                                     AND b.player_id != a.player_id
-                 WHERE a.deployment IS NOT NULL AND b.deployment IS NOT NULL
+                 JOIN player_games a ON a.battle_id = s.battle_id AND a.player_id = s.player_id
+                 JOIN player_games b ON b.battle_id = a.battle_id AND b.player_id != a.player_id
+                 WHERE a.opening IS NOT NULL AND b.opening IS NOT NULL
                  GROUP BY 1, 2"
             ))?
             .query_map(args, |r| {
                 Ok(Matchup {
                     deployment: r.get(0)?,
                     against: r.get(1)?,
-                    fights: r.get(2)?,
+                    matches: r.get(2)?,
                     wins: r.get(3)?,
                 })
             })?

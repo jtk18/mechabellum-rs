@@ -97,9 +97,8 @@ CREATE TABLE IF NOT EXISTS player_games (
     units_sold  INTEGER,
     techs       INTEGER NOT NULL,
     cards       INTEGER NOT NULL,
-    -- Deployment labels: the first fight's, and the one used in the most fights.
+    -- Round 1's deployment label, which classes the match for this player.
     opening     TEXT,
-    style       TEXT,
     -- JSON mechabellum::PlayerGame, which a match card draws.
     card        TEXT NOT NULL,
     PRIMARY KEY (battle_id, player_id),
@@ -183,8 +182,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// 8: the last round's army is rebuilt from its actions, not its starting snapshot.
 /// 9: starter packs. 10: whole-match summaries and deployments per fight (`player_games`,
 /// `player_fights`, `player_unit_use`); version 2340's fight results, which 9 misread as wins
-/// for both players.
-const SCHEMA_VERSION: i64 = 10;
+/// for both players. 11: a match is classed by round 1's deployment (`opening`), not the one used
+/// in the most fights.
+const SCHEMA_VERSION: i64 = 11;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -538,9 +538,10 @@ pub struct MatchRow {
     /// Each winner's starter pack, in the same order, when the replay records one.
     pub winner_packs: Vec<Option<mechabellum::StarterPack>>,
     pub loser_packs: Vec<Option<mechabellum::StarterPack>>,
-    /// Each winner's most used deployment (see `mechabellum::classify`), when classified.
-    pub winner_styles: Vec<Option<String>>,
-    pub loser_styles: Vec<Option<String>>,
+    /// Each winner's round 1 deployment (see `mechabellum::classify`), which classes the match
+    /// for them, when classified.
+    pub winner_deployments: Vec<Option<String>>,
+    pub loser_deployments: Vec<Option<String>>,
 }
 
 impl Store {
@@ -1481,7 +1482,7 @@ impl Store {
         let mut stmt = conn.prepare(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
                     COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
-                                                  || char(30) || COALESCE(g.style, '')
+                                                  || char(30) || COALESCE(g.opening, '')
                                                   || char(30) || COALESCE(p.starter_pack, ''), char(31))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
@@ -1489,7 +1490,7 @@ impl Store {
                                 ON g.battle_id = p.battle_id AND g.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
                     COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
-                                                  || char(30) || COALESCE(g.style, '')
+                                                  || char(30) || COALESCE(g.opening, '')
                                                   || char(30) || COALESCE(p.starter_pack, ''), char(31))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
@@ -1498,8 +1499,8 @@ impl Store {
                               WHERE p.battle_id = m.battle_id AND p.won = 0), '')
              FROM matches m ORDER BY m.occurred_on DESC LIMIT ?1",
         )?;
-        // "name\x1eelo\x1estyle\x1epack" entries joined by \x1f; the elo, style and pack parts are
-        // empty when unknown. The pack is JSON, which never holds either separator unescaped.
+        // "name\x1eelo\x1edeployment\x1epack" entries joined by \x1f; the elo, deployment and pack
+        // parts are empty when unknown. The pack is JSON, which never holds either separator unescaped.
         type Side = (
             Vec<String>,
             Vec<Option<i64>>,
@@ -1515,7 +1516,7 @@ impl Store {
                 side.2.push(
                     parts
                         .next()
-                        .filter(|style| !style.is_empty())
+                        .filter(|deployment| !deployment.is_empty())
                         .map(str::to_owned),
                 );
                 side.3.push(
@@ -1528,8 +1529,8 @@ impl Store {
         };
         let rows = stmt
             .query_map([limit], |r| {
-                let (winners, winner_elos, winner_styles, winner_packs) = split(r.get(7)?);
-                let (losers, loser_elos, loser_styles, loser_packs) = split(r.get(8)?);
+                let (winners, winner_elos, winner_deployments, winner_packs) = split(r.get(7)?);
+                let (losers, loser_elos, loser_deployments, loser_packs) = split(r.get(8)?);
                 Ok(MatchRow {
                     battle_id: r.get(0)?,
                     version: r.get(1)?,
@@ -1548,8 +1549,8 @@ impl Store {
                     loser_elos,
                     winner_packs,
                     loser_packs,
-                    winner_styles,
-                    loser_styles,
+                    winner_deployments,
+                    loser_deployments,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -1693,8 +1694,8 @@ fn insert_games(tx: &rusqlite::Transaction, battle_id: &str, detail: &MatchDetai
         tx.execute(
             "INSERT OR IGNORE INTO player_games
                  (battle_id, player_id, fights_won, final_units, peak_units, mean_level,
-                  max_level, level_ups, units_added, units_sold, techs, cards, opening, style, card)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                  max_level, level_ups, units_added, units_sold, techs, cards, opening, card)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 battle_id,
                 player_id,
@@ -1709,7 +1710,6 @@ fn insert_games(tx: &rusqlite::Transaction, battle_id: &str, detail: &MatchDetai
                 game.techs,
                 game.cards,
                 game.opening,
-                game.style,
                 serde_json::to_string(&game)?,
             ],
         )?;

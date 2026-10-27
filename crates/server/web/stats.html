@@ -147,14 +147,14 @@
 
     <h2 class="part">Whole matches <small>every fight and every unit, not only the final army. Plain rates, not capped per player.</small></h2>
     <section class="panel wide">
-      <h2>Deployments <small>per fight, per player. <a href="/matches" style="color: var(--muted)">How they're classed</a></small></h2>
-      <div class="scroll"><table class="plain" id="deployments" aria-label="Deployment win rates"></table></div>
-      <p class="note">Fights: each fight a player deployed this way, and the share of those fights won. Opening: matches whose first fight was deployed this way. Mostly: matches where it was the player's most used deployment. Both of those count match wins. 1v1 on the 2.0 board only.</p>
+      <h2>Deployments <small>each player's round 1 layout. <a href="/matches" style="color: var(--muted)">How they're classed</a></small></h2>
+      <div class="scroll"><table class="plain" id="deployments" aria-label="Win rate by round 1 deployment"></table></div>
+      <p class="note">A match is classed by how each player deployed for round 1. Matches: player results that deployed round 1 this way, and the share that won the match. Round 1: the share that won round 1's fight. 1v1 on the 2.0 board only; replays without a round 1 record aren't classed.</p>
     </section>
     <section class="panel">
-      <h2>Deployment against deployment <small>fight win rate of the row</small></h2>
+      <h2>Deployment against deployment <small>round 1 layouts; match win rate of the row</small></h2>
       <div class="scroll"><table class="matrix" id="matchups" aria-label="Deployment matchups"></table></div>
-      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 fights</span></div>
+      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 matches</span></div>
     </section>
     <section class="panel">
       <h2>Match length <small>matches by fights played</small></h2>
@@ -305,18 +305,17 @@ function rate(n, d) { return d ? n / d : null; }
 function renderDeployments(g) {
   const table = $("deployments");
   const head = el("tr");
-  for (const h of ["Deployment", "Fights", "Fight win rate", "Opening", "Won", "Mostly", "Won"]) head.append(el("th", "", h));
+  for (const h of ["Round 1 deployment", "Matches", "Match win rate", "Won round 1"]) head.append(el("th", "", h));
   const rows = g.deployments.map((d) => {
-    const tr = el("tr");
+    const tr = el("tr", d.matches < SMALL ? "row-small" : "");
     const win = el("td", "barcell");
-    win.append(winBar(rate(d.fight_wins, d.fights)));
-    tr.append(labelCell(d.label), el("td", d.fights < SMALL ? "muted" : "", d.fights.toLocaleString()), win,
-      el("td", "", String(d.openings)), el("td", "", pct(rate(d.opening_wins, d.openings))),
-      el("td", "", String(d.styles)), el("td", "", pct(rate(d.style_wins, d.styles))));
+    win.append(winBar(rate(d.wins, d.matches)));
+    tr.title = `${d.label} in round 1: won ${d.wins} of ${d.matches} matches, and round 1 itself in ${d.round_one_wins}`;
+    tr.append(labelCell(d.label), el("td", "", d.matches.toLocaleString()), win, el("td", "", pct(rate(d.round_one_wins, d.matches))));
     return tr;
   });
   table.replaceChildren(head, ...rows);
-  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No classified deployments fit these filters yet."); td.colSpan = 7; tr.append(td); table.append(tr); }
+  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No classified round 1 deployments fit these filters yet."); td.colSpan = 4; tr.append(td); table.append(tr); }
 }
 
 function renderMatchups(g) {
@@ -336,11 +335,11 @@ function renderMatchups(g) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const td = el("td");
       if (m) {
-        const r = m.wins / m.fights;
+        const r = m.wins / m.matches;
         td.textContent = pct(r);
-        if (m.fights < SMALL) td.className = "thin";
+        if (m.matches < SMALL) td.className = "thin";
         else td.style.background = heatColor(r);
-        td.title = `${row} against ${col}: won ${m.wins} of ${m.fights} fights (${pct(r)})`;
+        td.title = `Round 1 ${row} against ${col}: won ${m.wins} of ${m.matches} matches (${pct(r)})`;
       }
       tr.append(td);
     }
