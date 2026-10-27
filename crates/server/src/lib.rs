@@ -652,6 +652,19 @@ mod tests {
         }
         let (w, l) = (stats.winners.unwrap(), stats.losers.unwrap());
         assert_eq!((w.results, l.results), (3, 3));
+        // The match list carries each player's most used deployment where it's classed.
+        let rows = store.recent_matches(10).unwrap();
+        let newest = rows.iter().find(|m| m.version == 2340).unwrap();
+        assert!(newest
+            .winner_styles
+            .iter()
+            .chain(&newest.loser_styles)
+            .all(Option::is_some));
+        let old = rows.iter().find(|m| m.version == 1503).unwrap();
+        assert!(
+            old.winner_styles.iter().all(Option::is_none),
+            "1.x isn't classed"
+        );
         assert!(stats.units.iter().all(|u| u.kept <= u.games && u.games > 0));
     }
 

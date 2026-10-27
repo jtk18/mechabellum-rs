@@ -123,6 +123,11 @@ fn ratio(n: u64, d: u64) -> f64 {
 }
 
 impl Store {
+    /// One stored match from each player's side, in `MatchDetail::players` order.
+    pub fn player_games(&self, battle_id: &str) -> Result<Option<Vec<mechabellum::PlayerGame>>> {
+        Ok(self.match_detail(battle_id)?.map(|d| d.player_games()))
+    }
+
     /// Match cards for the matches `filter` allows, newest first. A player filter picks the
     /// matches; the cards still show every player in them.
     pub fn cards(&self, filter: &StatsFilter, limit: u32, offset: u32) -> Result<CardPage> {

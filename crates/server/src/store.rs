@@ -538,6 +538,9 @@ pub struct MatchRow {
     /// Each winner's starter pack, in the same order, when the replay records one.
     pub winner_packs: Vec<Option<mechabellum::StarterPack>>,
     pub loser_packs: Vec<Option<mechabellum::StarterPack>>,
+    /// Each winner's most used deployment (see `mechabellum::classify`), when classified.
+    pub winner_styles: Vec<Option<String>>,
+    pub loser_styles: Vec<Option<String>>,
 }
 
 impl Store {
@@ -1478,31 +1481,44 @@ impl Store {
         let mut stmt = conn.prepare(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
                     COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
+                                                  || char(30) || COALESCE(g.style, '')
                                                   || char(30) || COALESCE(p.starter_pack, ''), char(31))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
+                              LEFT JOIN player_games g
+                                ON g.battle_id = p.battle_id AND g.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 1), ''),
                     COALESCE((SELECT group_concat(p.name || char(30) || COALESCE(r.elo, '')
+                                                  || char(30) || COALESCE(g.style, '')
                                                   || char(30) || COALESCE(p.starter_pack, ''), char(31))
                               FROM players p LEFT JOIN player_ratings r
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
+                              LEFT JOIN player_games g
+                                ON g.battle_id = p.battle_id AND g.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 0), '')
              FROM matches m ORDER BY m.occurred_on DESC LIMIT ?1",
         )?;
-        // "name\x1eelo\x1epack" entries joined by \x1f; the elo and pack parts are empty when
-        // unknown. The pack is JSON, which never holds either separator unescaped.
+        // "name\x1eelo\x1estyle\x1epack" entries joined by \x1f; the elo, style and pack parts are
+        // empty when unknown. The pack is JSON, which never holds either separator unescaped.
         type Side = (
             Vec<String>,
             Vec<Option<i64>>,
+            Vec<Option<String>>,
             Vec<Option<mechabellum::StarterPack>>,
         );
         let split = |s: String| -> Side {
             let mut side: Side = Default::default();
             for entry in s.split('\u{1f}').filter(|entry| !entry.is_empty()) {
-                let mut parts = entry.splitn(3, '\u{1e}');
+                let mut parts = entry.splitn(4, '\u{1e}');
                 side.0.push(parts.next().unwrap_or_default().to_owned());
                 side.1.push(parts.next().and_then(|elo| elo.parse().ok()));
                 side.2.push(
+                    parts
+                        .next()
+                        .filter(|style| !style.is_empty())
+                        .map(str::to_owned),
+                );
+                side.3.push(
                     parts
                         .next()
                         .and_then(|pack| serde_json::from_str(pack).ok()),
@@ -1512,8 +1528,8 @@ impl Store {
         };
         let rows = stmt
             .query_map([limit], |r| {
-                let (winners, winner_elos, winner_packs) = split(r.get(7)?);
-                let (losers, loser_elos, loser_packs) = split(r.get(8)?);
+                let (winners, winner_elos, winner_styles, winner_packs) = split(r.get(7)?);
+                let (losers, loser_elos, loser_styles, loser_packs) = split(r.get(8)?);
                 Ok(MatchRow {
                     battle_id: r.get(0)?,
                     version: r.get(1)?,
@@ -1532,6 +1548,8 @@ impl Store {
                     loser_elos,
                     winner_packs,
                     loser_packs,
+                    winner_styles,
+                    loser_styles,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

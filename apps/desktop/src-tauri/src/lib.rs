@@ -8,7 +8,8 @@ mod sync;
 mod watcher;
 
 use mechabellum_server::{
-    Facets, MatchRow, Stats, StatsFilter, Store, UnitTechStats, UploadAuth, VersionTrends,
+    Facets, GameStats, MatchRow, Stats, StatsFilter, Store, UnitTechStats, UploadAuth,
+    VersionTrends,
 };
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
@@ -527,6 +528,30 @@ async fn match_detail(
         .ok_or_else(|| "That match is no longer stored.".to_owned())
 }
 
+/// Whole-match stats: deployments, match lengths, winners and losers, every unit used.
+#[tauri::command]
+async fn game_stats(state: State<'_, AppState>, filter: StatsFilter) -> Result<GameStats, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.game_stats(&filter))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// One match from each player's side, in `match_detail`'s player order.
+#[tauri::command]
+async fn player_games(
+    state: State<'_, AppState>,
+    battle_id: String,
+) -> Result<Vec<mechabellum::PlayerGame>, String> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || store.player_games(&battle_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?
+        .ok_or_else(|| "That match is no longer stored.".to_owned())
+}
+
 #[tauri::command]
 async fn facets(state: State<'_, AppState>) -> Result<Facets, String> {
     let store = state.store.clone();
@@ -735,6 +760,8 @@ pub fn run() {
             version_trends,
             tech_stats,
             match_detail,
+            game_stats,
+            player_games,
             art_info,
             extract_art,
             sync_settings,

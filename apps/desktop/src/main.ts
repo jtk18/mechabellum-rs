@@ -5,6 +5,7 @@ import { art, artImage, loadArt, type ArtProgress } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
 import { renderLoadout } from "./loadout";
+import { bandLegend, deploymentPill } from "./deploy";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -67,6 +68,53 @@ interface MatchRow {
   /** Per player, in the same order as the names. */
   winner_packs: (StarterPack | null)[];
   loser_packs: (StarterPack | null)[];
+  /** Each player's most used deployment, when classified. */
+  winner_styles: (string | null)[];
+  loser_styles: (string | null)[];
+}
+
+/** Whole-match stats (mechabellum_server::GameStats). */
+interface GameStats {
+  matches: number;
+  player_results: number;
+  lengths: [number, number][];
+  deployments: {
+    label: string;
+    fights: number;
+    fight_wins: number;
+    openings: number;
+    opening_wins: number;
+    styles: number;
+    style_wins: number;
+  }[];
+  matchups: { deployment: string; against: string; fights: number; wins: number }[];
+  winners: ArmyMeans | null;
+  losers: ArmyMeans | null;
+  units: {
+    name: string;
+    games: number;
+    wins: number;
+    use_rate: number;
+    win_rate: number;
+    kept: number;
+    added: number;
+    sold: number;
+    mean_peak: number;
+    mean_max_level: number;
+  }[];
+}
+
+interface ArmyMeans {
+  results: number;
+  final_units: number;
+  peak_units: number;
+  mean_level: number;
+  max_level: number;
+  level_ups: number;
+  units_added: number | null;
+  units_sold: number | null;
+  techs: number;
+  cards: number;
 }
 
 /** Units a player's starter pack put on the board for round 1. */
@@ -125,6 +173,7 @@ const SMALL_SAMPLE = 10;
 const expandedUnits = new Set<string>();
 let lastTechs = new Map<string, UnitTechStats>();
 let lastStats: Stats | null = null;
+let lastGames: GameStats | null = null;
 
 let facets: Facets | null = null;
 /** Stored match count the panels were last drawn from. */
@@ -408,7 +457,8 @@ function renderMatchList() {
   const shown = allMatches.filter((m) => {
     if (!query) return true;
     const packUnits = [...m.winner_packs, ...m.loser_packs].flatMap((p) => p?.units.map((u) => u.name) ?? []);
-    const text = [...m.winners, ...m.losers, ...packUnits, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
+    const styles = [...(m.winner_styles ?? []), ...(m.loser_styles ?? [])].filter((s): s is string => !!s);
+    const text = [...m.winners, ...m.losers, ...packUnits, ...styles, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
       .join(" ")
       .toLowerCase();
     return query.split(/\s+/).every((word) => text.includes(word));
@@ -427,7 +477,7 @@ function renderMatchList() {
       const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
       // One line per player, winners first, each with the starter pack they opened with.
       const players = el("span", "players");
-      const line = (name: string, elo: number | null, pack: StarterPack | null, won: boolean) => {
+      const line = (name: string, elo: number | null, style: string | null, pack: StarterPack | null, won: boolean) => {
         const row = el("span", `player-line${won ? " winner" : ""}`);
         row.append(el("span", "result-tag", won ? "Won" : "Lost"));
         const who = el("span", "name", name);
@@ -437,11 +487,13 @@ function renderMatchList() {
           who.append(badge);
         }
         row.append(who);
+        // Their most used deployment; an empty cell keeps packs in a column.
+        row.append(style ? deploymentPill(style) : el("span"));
         if (pack) row.append(packChips(pack));
         return row;
       };
-      m.winners.forEach((name, i) => players.append(line(name, m.winner_elos[i], m.winner_packs[i], true)));
-      m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_packs[i], false)));
+      m.winners.forEach((name, i) => players.append(line(name, m.winner_elos[i], m.winner_styles?.[i] ?? null, m.winner_packs[i], true)));
+      m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_styles?.[i] ?? null, m.loser_packs[i], false)));
       if (players.children.length === 0) players.append(el("span", "player-line muted", "No result recorded"));
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
@@ -552,6 +604,184 @@ function renderHeatmap(trends: VersionTrends) {
 
 let lastTrends: VersionTrends | null = null;
 
+/** Deployment classes, their fight win rates, and how matches opened with each or mostly used it went. */
+function renderDeployments(g: GameStats) {
+  $("deploy-legend").replaceChildren(bandLegend());
+  const container = $("deployments");
+  const heads = ["Deployment", "Fights", "Fight win rate", "Opened", "Won", "Mostly", "Won"].map((h, i) =>
+    el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h),
+  );
+  const rate = (n: number, d: number) => (d ? pct(n / d) : "–");
+  const rows = g.deployments.flatMap((d) => {
+    const small = d.fights < SMALL_SAMPLE;
+    const cells = [
+      deploymentPill(d.label),
+      el("div", "num", String(d.fights)),
+      winBar(d.fights ? d.fight_wins / d.fights : 0.5),
+      el("div", "num", String(d.openings)),
+      el("div", "num", rate(d.opening_wins, d.openings)),
+      el("div", "num", String(d.styles)),
+      el("div", "num", rate(d.style_wins, d.styles)),
+    ];
+    const tip: Tip = {
+      title: d.label,
+      lines: [
+        `Won ${d.fight_wins} of ${d.fights} fights deployed this way`,
+        `Opened ${d.openings} matches, won ${d.opening_wins}`,
+        `Most used in ${d.styles} matches, won ${d.style_wins}`,
+      ],
+      note: small ? `Fewer than ${SMALL_SAMPLE} fights: treat the win rate as noise.` : undefined,
+    };
+    for (const c of cells) {
+      if (small) c.classList.add("muted");
+      c.dataset.tip = JSON.stringify(tip);
+    }
+    return cells;
+  });
+  container.replaceChildren(...heads, ...rows);
+  if (rows.length === 0) container.append(el("div", "empty", "No classified deployments fit these filters. Classes cover 1v1 on the 2.0 board."));
+}
+
+const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Midboard", "Backboard"];
+
+function renderMatchups(g: GameStats) {
+  const container = $("matchups");
+  // Rows and columns differ in the Me and My opponents views: your deployments against theirs.
+  const rowsPresent = DEPLOYMENT_ORDER.filter((l) => g.matchups.some((m) => m.deployment === l));
+  const colsPresent = DEPLOYMENT_ORDER.filter((l) => g.matchups.some((m) => m.against === l));
+  container.style.gridTemplateColumns = `minmax(120px, auto) repeat(${colsPresent.length}, minmax(52px, 1fr))`;
+  const cells: HTMLElement[] = [el("div", "corner", "Row vs column")];
+  for (const l of colsPresent) cells.push(el("div", "col-head", l));
+  for (const row of rowsPresent) {
+    cells.push(deploymentPill(row));
+    for (const col of colsPresent) {
+      const m = g.matchups.find((x) => x.deployment === row && x.against === col);
+      const cell = el("div", "cell");
+      if (m) {
+        const r = m.wins / m.fights;
+        cell.textContent = pct(r);
+        if (m.fights < SMALL_SAMPLE) cell.classList.add("thin");
+        else cell.style.background = trendColor(r);
+        const tip: Tip = { title: `${row} against ${col}`, lines: [`Won ${m.wins} of ${m.fights} fights (${pct(r)})`] };
+        cell.dataset.tip = JSON.stringify(tip);
+      }
+      cells.push(cell);
+    }
+  }
+  container.replaceChildren(...cells);
+  $("matchups-note").textContent = rowsPresent.length
+    ? `1v1 fights where both armies were classed. Striped: fewer than ${SMALL_SAMPLE} fights.`
+    : "No 1v1 fights with both armies classed fit these filters.";
+}
+
+/** Two columns compared row by row, the larger value bright: the tale of the tape. */
+function taleRows(
+  container: HTMLElement,
+  heads: [string, string],
+  rows: [string, number | null | undefined, number | null | undefined, number][],
+) {
+  const cells: HTMLElement[] = [el("div", "tale-head left", heads[0]), el("div"), el("div", "tale-head right", heads[1])];
+  for (const [label, a, b, digits] of rows) {
+    if (a == null || b == null) continue;
+    const max = Math.max(a, b) || 1;
+    const track = (v: number, hi: boolean, side: string) => {
+      const t = el("div", `tale-track ${side}`);
+      const fill = el("span", hi ? "hi" : "");
+      fill.style.width = `${(v / max) * 100}%`;
+      t.append(fill);
+      return t;
+    };
+    cells.push(
+      el("div", `tale-value left${a > b ? " hi" : ""}`, a.toFixed(digits)),
+      track(a, a > b, "left"),
+      el("div", "tale-label", label),
+      track(b, b > a, "right"),
+      el("div", `tale-value${b > a ? " hi" : ""}`, b.toFixed(digits)),
+    );
+  }
+  container.replaceChildren(...cells);
+}
+
+function renderArmy(g: GameStats) {
+  const w = g.winners;
+  const l = g.losers;
+  if (!w || !l) {
+    $("army").replaceChildren(el("div", "empty", "Needs matches with both a winner and a loser."));
+    return;
+  }
+  taleRows($("army"), [`Winners (${w.results})`, `Losers (${l.results})`], [
+    ["Final army", w.final_units, l.final_units, 1],
+    ["Peak army", w.peak_units, l.peak_units, 1],
+    ["Mean level", w.mean_level, l.mean_level, 1],
+    ["Top level", w.max_level, l.max_level, 1],
+    ["Level-ups", w.level_ups, l.level_ups, 1],
+    ["Units added", w.units_added, l.units_added, 1],
+    ["Units sold", w.units_sold, l.units_sold, 1],
+    ["Techs", w.techs, l.techs, 1],
+    ["Cards picked", w.cards, l.cards, 1],
+  ]);
+}
+
+function renderLengths(g: GameStats) {
+  const container = $("lengths");
+  const max = Math.max(1, ...g.lengths.map(([, n]) => n));
+  const total = g.lengths.reduce((sum, [, n]) => sum + n, 0);
+  container.replaceChildren(
+    ...g.lengths.map(([fights, n]) => {
+      const col = el("div", "length-col");
+      const bar = el("span", "length-bar");
+      bar.style.height = `${(n / max) * 100}%`;
+      col.append(el("span", "length-count", String(n)), el("span", "length-plot"), el("span", "length-fights", String(fights)));
+      col.children[1].append(bar);
+      const tip: Tip = { title: `${fights} fights`, lines: [`${n} of ${total} matches (${pct(n / total)})`] };
+      col.dataset.tip = JSON.stringify(tip);
+      return col;
+    }),
+  );
+  if (g.lengths.length === 0) container.append(el("div", "empty", "No matches fit these filters yet."));
+}
+
+function renderUsed(g: GameStats) {
+  const container = $("used");
+  const heads = ["Unit", "Used", "Win rate", "Kept", "Sold", "Top level"].map((h, i) => el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h));
+  const rows = g.units.slice(0, 40).flatMap((u) => {
+    const name = el("div", "name");
+    name.append(nameIcon(art.unitIconByName(u.name)), el("span", "", u.name));
+    const cells = [
+      name,
+      el("div", "num", pct(u.use_rate)),
+      winBar(u.win_rate),
+      el("div", "num", pct(u.games ? u.kept / u.games : 0)),
+      el("div", "num", `${u.sold} of ${u.added}`),
+      el("div", "num", u.mean_max_level.toFixed(1)),
+    ];
+    const tip: Tip = {
+      title: u.name,
+      lines: [
+        `Fielded at some point in ${u.games} of ${g.player_results} results; won ${u.wins}`,
+        `Still fielded in the last fight in ${u.kept} of them`,
+        `Up to ${u.mean_peak.toFixed(1)} copies at once on average; ${u.sold} of ${u.added} added copies sold`,
+      ],
+      note: u.games < SMALL_SAMPLE ? `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.` : undefined,
+    };
+    for (const c of cells) {
+      if (u.games < SMALL_SAMPLE) c.classList.add("muted");
+      c.dataset.tip = JSON.stringify(tip);
+    }
+    return cells;
+  });
+  container.replaceChildren(...heads, ...rows);
+  if (rows.length === 0) container.append(el("div", "empty", "No games match these filters yet."));
+}
+
+function renderGameStats(g: GameStats) {
+  renderDeployments(g);
+  renderMatchups(g);
+  renderArmy(g);
+  renderLengths(g);
+  renderUsed(g);
+}
+
 async function refreshTrends() {
   // Every patch is shown, so the patch filter doesn't apply here.
   const { min_version: _min, max_version: _max, ...filter } = currentFilter();
@@ -577,8 +807,12 @@ async function refreshStats() {
     if (lastStats) renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
   });
   const trends = refreshTrends();
+  const games = invoke<GameStats>("game_stats", { filter }).then((g) => {
+    lastGames = g;
+    renderGameStats(g);
+  });
   const matches = matchListLoaded ? refreshMatchList() : Promise.resolve();
-  await Promise.all([stats, techs, trends, matches]);
+  await Promise.all([stats, techs, trends, games, matches]);
 
 }
 
@@ -682,6 +916,7 @@ function applyArt() {
     renderUsage($("units"), lastStats.units, lastStats.player_results, "unit", lastTechs);
     renderSpecialists();
   }
+  if (lastGames) renderUsed(lastGames);
   if (matchListLoaded) renderMatchList();
   redrawMatch();
 }

@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { art, artImage } from "./art";
 import { $, el, modeLabel, type Tip } from "./util";
+import { BANDS, bandColor, deploymentPill, labelBand, shareBar, type FightSummary, type PlayerGame } from "./deploy";
 
 interface TechRef {
   id: string;
@@ -92,10 +93,17 @@ const FLANK_OPENS_ROUND = 3;
 /** Why the board ranks units by XP and not damage. */
 const NO_DAMAGE_NOTE = "Replays record each unit's XP but not its damage: fight reports only total each side.";
 
+/** Band edges in a side's own frame, as distance back from the middle (replay units): where
+ * aggressive, standard, midboard and backboard meet. The towers' centers are 17 squares back.
+ * Aggressive is judged by a unit's front edge and the rest by its center, so these are guides. */
+const BAND_EDGES = [40, 110, 170];
+
 /** Footprint used when a unit's size is unknown. */
 const FALLBACK: [number, number] = [2, 2];
 
 let detail: MatchDetail | null = null;
+/** The match from each player's side, in `detail.players` order; empty until loaded. */
+let games: PlayerGame[] = [];
 /** Player index drawn at the bottom of the board. */
 let bottom = 0;
 let roundIndex = 0;
@@ -239,8 +247,33 @@ function drawZones(board: SVGSVGElement, sides: (SideLayout | null)[], fight: nu
     grid.append(svg("line", { x1: minX, y1: y, x2: maxX, y2: y, class: y % 50 === 0 ? "major" : "" }));
   }
   layers.push(grid, svg("line", { class: "midline", x1: minX, y1: 0, x2: maxX, y2: 0 }));
+  if (classified()) layers.push(bandGuides());
   layers.push(drawUnits(sides));
   board.replaceChildren(...layers);
+}
+
+/** Whether this match's deployments are classed (1v1 on the 2.0 board). */
+function classified() {
+  return games.some((g) => g.fights.some((f) => f.deployment));
+}
+
+/** Dashed lines where the deployment bands meet on both halves, each band named at the edge. */
+function bandGuides() {
+  const g = svg("g", { class: "band-guides" });
+  const bands: [number, number][] = [[ZONE_FRONT, BAND_EDGES[0]], [BAND_EDGES[0], BAND_EDGES[1]], [BAND_EDGES[1], BAND_EDGES[2]], [BAND_EDGES[2], ZONE_BACK]];
+  for (const sign of [1, -1]) {
+    for (const edge of BAND_EDGES) {
+      g.append(svg("line", { class: "band-edge", x1: -ZONE_HALF_WIDTH, y1: sign * edge, x2: ZONE_HALF_WIDTH, y2: sign * edge }));
+    }
+    bands.forEach(([from, to], i) => {
+      const y = sign * (from + to) / 2;
+      g.append(svg("rect", { x: -ZONE_HALF_WIDTH + 3, y: y - 3, width: 6, height: 6, rx: 1.2, fill: bandColor(i) }));
+      const label = svg("text", { class: "band-label", x: -ZONE_HALF_WIDTH + 12, y: y + 2.5 });
+      label.textContent = BANDS[i];
+      g.append(label);
+    });
+  }
+  return g;
 }
 
 function drawUnits(sides: (SideLayout | null)[]) {
@@ -495,16 +528,157 @@ function renderRoundBar() {
       const chip = el("span", `result-chip ${sideClass(s)}`);
       const result = side?.result === "Win" ? "won" : side?.result === "Deuce" ? "drew" : "lost";
       chip.append(el("span", "swatch"), document.createTextNode(`${m.players[s].name}: ${side ? `${result}, ${side.hp.toLocaleString()} HP going in` : "no record"}`));
+      const deployment = fightOf(s, round.round + 1)?.deployment;
+      if (deployment) chip.append(deploymentPill(deployment.label), shareBar(deployment.bands));
       return chip;
     }),
   );
   $("board-note-rebuilt").hidden = !round.sides.some((side) => side?.rebuilt);
 }
 
+/** Player `side`'s summary of fight `fight` (1-based), when loaded. */
+function fightOf(side: number, fight: number): FightSummary | undefined {
+  return games[side]?.fights.find((f) => f.fight === fight);
+}
+
+/** The players top to bottom as the board draws them: the far side first, you last. */
+function boardOrder() {
+  const m = detail!;
+  return [...m.players.keys()].filter((i) => i !== bottom).concat(bottom);
+}
+
+/** The whole match below the board: a fight tape that picks the round, the tale of the tape,
+ * and the units each side used. 1v1 only; drawn once per match. */
+function renderSummary() {
+  const m = detail!;
+  const section = $("match-summary");
+  section.hidden = m.players.length !== 2 || games.length !== 2;
+  if (section.hidden) return;
+  const [far, near] = boardOrder();
+  const fights = [...new Set(games.flatMap((g) => g.fights.map((f) => f.fight)))].sort((a, b) => a - b);
+  const maxHp = Math.max(1, ...games.flatMap((g) => g.fights.map((f) => f.hp)));
+
+  const tape = $("fight-tape");
+  tape.replaceChildren(
+    ...fights.map((n) => {
+      const index = m.rounds.findIndex((r) => r.round + 1 === n);
+      const button = el("button", "fight") as HTMLButtonElement;
+      button.type = "button";
+      button.dataset.round = String(index);
+      button.disabled = index < 0;
+      const half = (side: number, pos: string) => {
+        const box = el("span", `fight-half ${pos}`);
+        const f = fightOf(side, n);
+        if (f) {
+          const bar = el("span", "fight-bar");
+          bar.style.height = `${Math.max(3, (f.hp / maxHp) * 34)}px`;
+          bar.style.background = bandColor(labelBand(f.deployment?.label));
+          box.append(bar);
+          if (f.result === "Win") box.append(el("span", "fight-win", "W"));
+        }
+        return box;
+      };
+      button.append(half(far, "top"), el("span", "fight-number", String(n)), half(near, "bottom"));
+      const describe = (side: number) => {
+        const f = fightOf(side, n);
+        if (!f) return `${m.players[side].name}: no record`;
+        const result = f.result === "Win" ? "won" : f.result === "Deuce" ? "drew" : "lost";
+        return `${m.players[side].name} ${result}, ${f.hp.toLocaleString()} HP going in, ${f.deployment?.label.toLowerCase() ?? "not classed"}`;
+      };
+      const tip: Tip = { title: `Fight ${n}`, lines: [describe(far), describe(near)] };
+      button.dataset.tip = JSON.stringify(tip);
+      button.setAttribute("aria-label", `Fight ${n}: ${tip.lines.join("; ")}`);
+      button.addEventListener("click", () => {
+        roundIndex = index;
+        render();
+      });
+      return button;
+    }),
+  );
+  $("fight-tape-note").textContent = `Top: ${m.players[far].name}. Bottom: ${m.players[near].name}. W marks the fight's winner.`;
+
+  const [a, b] = [games[near], games[far]];
+  const rows: [string, number | null, number | null, number][] = [
+    ["Fights won", a.fights_won, b.fights_won, 0],
+    ["Final army", a.final_units, b.final_units, 0],
+    ["Peak army", a.peak_units, b.peak_units, 0],
+    ["Mean level", a.mean_level, b.mean_level, 1],
+    ["Top level", a.max_level, b.max_level, 0],
+    ["Level-ups", a.level_ups, b.level_ups, 0],
+    ["Units added", a.units_added, b.units_added, 0],
+    ["Units sold", a.units_sold, b.units_sold, 0],
+    ["Techs", a.techs, b.techs, 0],
+    ["Cards picked", a.cards, b.cards, 0],
+  ];
+  const head = (side: number, cls: string) => {
+    const h = el("div", `tale-head ${cls} ${sideClass(side)}`);
+    h.append(el("span", "swatch"), document.createTextNode(m.players[side].name));
+    return h;
+  };
+  const cells: HTMLElement[] = [head(near, "left"), el("div"), head(far, "right")];
+  for (const [label, va, vb, digits] of rows) {
+    if (va == null || vb == null) continue;
+    const max = Math.max(va, vb) || 1;
+    const track = (v: number, hi: boolean, side: string) => {
+      const t = el("div", `tale-track ${side}`);
+      const fill = el("span", hi ? "hi" : "");
+      fill.style.width = `${(v / max) * 100}%`;
+      t.append(fill);
+      return t;
+    };
+    cells.push(
+      el("div", `tale-value left${va > vb ? " hi" : ""}`, va.toFixed(digits)),
+      track(va, va > vb, "left"),
+      el("div", "tale-label", label),
+      track(vb, vb > va, "right"),
+      el("div", `tale-value${vb > va ? " hi" : ""}`, vb.toFixed(digits)),
+    );
+  }
+  $("match-tale").replaceChildren(...cells);
+
+  const used = (side: number, cls: string) => {
+    const col = el("div", `used-side ${cls}`);
+    const g = games[side];
+    const title = el("div", `used-name ${sideClass(side)}`);
+    title.append(el("span", "swatch"), document.createTextNode(`${m.players[side].name}${g.style ? " · mostly " : ""}`));
+    if (g.style) title.append(deploymentPill(g.style));
+    col.append(title);
+    const list = el("div", "used-chips");
+    for (const u of g.units) {
+      const chip = el("span", `used-chip${u.last === 0 ? " gone" : ""}`);
+      chip.append(artImage(art.unitIcon(u.unit_id), "used-icon", u.name) ?? el("span", "used-icon placeholder", u.name.slice(0, 3)));
+      chip.append(el("span", "used-count", `${u.name} ×${u.peak}`));
+      if (u.max_level > 1) chip.append(el("span", "used-level", `L${u.max_level}`));
+      if (u.sold) chip.append(el("span", "used-sold", `−${u.sold} sold`));
+      const tip: Tip = {
+        title: u.name,
+        lines: [
+          `Up to ${u.peak} in one fight, ${u.last} in the last`,
+          `Top level ${u.max_level}; first fielded in fight ${u.first_fight}`,
+          ...(u.added ? [`${u.added} added, ${u.sold} sold`] : []),
+        ],
+      };
+      chip.dataset.tip = JSON.stringify(tip);
+      list.append(chip);
+    }
+    col.append(list);
+    return col;
+  };
+  $("units-used").replaceChildren(used(near, "left"), used(far, "right"));
+}
+
+/** Mark the open round on the fight tape. */
+function markFight() {
+  for (const button of $("fight-tape").querySelectorAll<HTMLButtonElement>(".fight")) {
+    button.setAttribute("aria-pressed", String(Number(button.dataset.round) === roundIndex));
+  }
+}
+
 function render() {
   renderRoundBar();
   drawBoard();
   renderUnitPanel();
+  markFight();
 }
 
 function step(delta: number) {
@@ -554,6 +728,7 @@ export function redrawMatch() {
 /** Show one match. `mainPlayerId` picks whose side is drawn at the bottom. */
 export async function openMatch(battleId: string, mainPlayerId: string | null, onBack: () => void) {
   wire(onBack);
+  games = [];
   detail = await invoke<MatchDetail>("match_detail", { battleId });
   const m = detail;
   bottom = Math.max(0, m.players.findIndex((p) => p.id === mainPlayerId));
@@ -562,7 +737,11 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   setupFrame(m);
 
   const [near, ...others] = [m.players[bottom], ...m.players.filter((_, i) => i !== bottom)];
-  const ratings = await invoke<{ player_id: string; elo: number | null }[]>("match_ratings", { battleId }).catch(() => []);
+  const [ratings, loaded] = await Promise.all([
+    invoke<{ player_id: string; elo: number | null }[]>("match_ratings", { battleId }).catch(() => []),
+    invoke<PlayerGame[]>("player_games", { battleId }).catch(() => [] as PlayerGame[]),
+  ]);
+  games = loaded;
   const titled = (p: { id: string; name: string }) => {
     const elo = ratings.find((r) => r.player_id === p.id)?.elo;
     return elo == null ? p.name : `${p.name} (${elo} MMR)`;
@@ -573,10 +752,12 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
 
 
   if (m.rounds.length === 0) {
+    $("match-summary").hidden = true;
     $("round-results").replaceChildren();
     ($("board") as unknown as SVGSVGElement).replaceChildren();
     $("unit-panel").replaceChildren(el("p", "hint", "This replay has no recorded fights. The match ended before round 1 finished."));
     return;
   }
+  renderSummary();
   render();
 }

@@ -69,6 +69,12 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     `/stats` (`/api/stats/games`). The class thresholds (3 squares, 5 in front of the towers,
     40%, three quarters) are first guesses measured on 13 replays from this Mac; re-check them on
     the full 2.0 corpus.
+    The desktop app shows the same (2026-10-27): the Stats view's whole-match panels (with its
+    Me / My opponents / Everyone view), each player's most used deployment in the match list, and
+    in the match view each side's class per round, band lines on the board, and a whole-match
+    strip under it (a fight tape that picks the round, the tale of the tape, units used).
+    Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
+    which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every
     round, so schema 9 stored both players of a 2340 match as winners. 2340 adds
     `roundFightResult`, every fight's result with the last fight included, which also settles who

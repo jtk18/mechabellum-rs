@@ -118,6 +118,36 @@
             <span class="legend-swatch thin"></span><span>fewer than min games</span>
           </div>
         </section>
+
+        <h2 class="panels-part">Whole matches <small>every fight and every unit, not only the final army</small></h2>
+        <section class="panel wide">
+          <div class="panel-head">
+            <h2>Deployments <small>per player, per fight; hover a color for how they're classed</small></h2>
+            <span id="deploy-legend"></span>
+          </div>
+          <div class="deploy-table" id="deployments" role="table" aria-label="Deployment win rates"></div>
+          <p class="panel-note">Fights: fights deployed this way, and the share won. Opened: matches whose first fight was
+            deployed this way. Mostly: matches where it was the most used deployment. Those two count match wins. 1v1 on the
+            2.0 board (build 2259 on).</p>
+        </section>
+        <section class="panel">
+          <h2>Deployment against deployment <small>fight win rate of the row</small></h2>
+          <div class="heatmap-scroll"><div class="deploy-matrix" id="matchups" role="table" aria-label="Deployment against deployment"></div></div>
+          <p class="panel-note" id="matchups-note"></p>
+        </section>
+        <section class="panel">
+          <h2>Winners and losers <small>mean per player</small></h2>
+          <div class="tale" id="army" role="table" aria-label="Winners and losers"></div>
+        </section>
+        <section class="panel">
+          <h2>Match length <small>matches by fights played</small></h2>
+          <div class="length-chart" id="lengths" role="img" aria-label="Matches by fights played"></div>
+        </section>
+        <section class="panel">
+          <h2>Units used <small>at any point in a match</small></h2>
+          <div class="used-table" id="used" role="table" aria-label="Units used during matches"></div>
+          <p class="panel-note">Used: share of results that fielded it in any fight. Kept: of those, the share still fielding it in the last fight. Sold: copies sold of copies added.</p>
+        </section>
       </main>
     </div>
 
@@ -153,21 +183,38 @@
       </div>
 
       <div class="match-body">
-        <div class="board-wrap">
-          <svg id="board" class="board" role="img" aria-labelledby="match-title"></svg>
-          <div class="legend board-legend" aria-label="Board legend">
-            <span class="legend-unit side-near"></span><span class="legend-unit side-far"></span>
-            <span>Fought last round too</span>
-            <span class="legend-unit side-near new"></span><span class="legend-unit side-far new"></span>
-            <span>New this round</span>
-            <span class="xp-star-inline legend-gap">★</span>
-            <span data-tip='{"title":"Most XP","lines":["The unit on each side that earned the most XP in this round&#39;s fight, counting level-ups."],"note":"Replays record each unit&#39;s XP but not its damage: fight reports only total each side."}'>Most XP this fight, per side</span>
+        <div class="match-main">
+          <div class="board-wrap">
+            <svg id="board" class="board" role="img" aria-labelledby="match-title"></svg>
+            <div class="legend board-legend" aria-label="Board legend">
+              <span class="legend-unit side-near"></span><span class="legend-unit side-far"></span>
+              <span>Fought last round too</span>
+              <span class="legend-unit side-near new"></span><span class="legend-unit side-far new"></span>
+              <span>New this round</span>
+              <span class="xp-star-inline legend-gap">★</span>
+              <span data-tip='{"title":"Most XP","lines":["The unit on each side that earned the most XP in this round&#39;s fight, counting level-ups."],"note":"Replays record each unit&#39;s XP but not its damage: fight reports only total each side."}'>Most XP this fight, per side</span>
+            </div>
+            <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
+            <p class="board-note" id="board-note-rebuilt" hidden>
+              The replay saves no snapshot after the last round, so this board is rebuilt by
+              replaying that round's buys, moves, upgrades and sells. It can be off by a unit.
+            </p>
           </div>
-          <p class="board-note">Footprints are approximate. Click a unit for its details.</p>
-          <p class="board-note" id="board-note-rebuilt" hidden>
-            The replay saves no snapshot after the last round, so this board is rebuilt by
-            replaying that round's buys, moves, upgrades and sells. It can be off by a unit.
-          </p>
+          <section class="match-summary" id="match-summary" aria-label="The whole match" hidden>
+            <div class="summary-col">
+              <h3>Fights <small>reactor HP going in, colored by deployment; click one to see it</small></h3>
+              <div class="fight-tape" id="fight-tape" role="group" aria-label="Fights"></div>
+              <div class="fight-tape-note" id="fight-tape-note"></div>
+            </div>
+            <div class="summary-col">
+              <h3>Tale of the tape</h3>
+              <div class="tale" id="match-tale" role="table" aria-label="Both players over the match"></div>
+            </div>
+            <div class="summary-col wide">
+              <h3>Units used <small>dashed: gone before the last fight</small></h3>
+              <div class="units-used" id="units-used"></div>
+            </div>
+          </section>
         </div>
         <aside class="unit-panel" id="unit-panel" aria-live="polite"></aside>
       </div>
