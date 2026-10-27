@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { art, artImage } from "./art";
 import { $, el, modeLabel, type Tip } from "./util";
-import { BANDS, bandColor, deploymentPill, labelBand, shareBar, type FightSummary, type PlayerGame } from "./deploy";
+import { BANDS, bandColor, deploymentPill, labelBand, renderTale, shareBar, type FightSummary, type PlayerGame } from "./deploy";
 
 interface TechRef {
   id: string;
@@ -610,31 +610,12 @@ function renderSummary() {
     ["Techs", a.techs, b.techs, 0],
     ["Cards picked", a.cards, b.cards, 0],
   ];
-  const head = (side: number, cls: string) => {
-    const h = el("div", `tale-head ${cls} ${sideClass(side)}`);
+  const head = (side: number) => {
+    const h = el("div", sideClass(side));
     h.append(el("span", "swatch"), document.createTextNode(m.players[side].name));
     return h;
   };
-  const cells: HTMLElement[] = [head(near, "left"), el("div"), head(far, "right")];
-  for (const [label, va, vb, digits] of rows) {
-    if (va == null || vb == null) continue;
-    const max = Math.max(va, vb) || 1;
-    const track = (v: number, hi: boolean, side: string) => {
-      const t = el("div", `tale-track ${side}`);
-      const fill = el("span", hi ? "hi" : "");
-      fill.style.width = `${(v / max) * 100}%`;
-      t.append(fill);
-      return t;
-    };
-    cells.push(
-      el("div", `tale-value left${va > vb ? " hi" : ""}`, va.toFixed(digits)),
-      track(va, va > vb, "left"),
-      el("div", "tale-label", label),
-      track(vb, vb > va, "right"),
-      el("div", `tale-value${vb > va ? " hi" : ""}`, vb.toFixed(digits)),
-    );
-  }
-  $("match-tale").replaceChildren(...cells);
+  renderTale($("match-tale"), [head(near), head(far)], [m.players[near].name, m.players[far].name], rows);
 
   const used = (side: number, cls: string) => {
     const col = el("div", `used-side ${cls}`);

@@ -1968,8 +1968,7 @@ h1 {
   display: grid;
   gap: 2px;
   font-variant-numeric: tabular-nums;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   align-items: center;
 }
 

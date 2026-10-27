@@ -116,3 +116,57 @@ export function bandLegend() {
   });
   return legend;
 }
+
+/** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
+export const MEASURES: Record<string, string> = {
+  "Fights won": "Fights won over the match, the last one included.",
+  "Final army": "Units fielded in the last fight.",
+  "Peak army": "Most units fielded in any one fight.",
+  "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
+  "Top level": "Highest level of any unit in the last fight.",
+  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
+  "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
+  Techs: "Techs researched by the last fight, across all unit types.",
+  "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
+};
+
+/** Two columns compared row by row, the larger value bright, each row explained on hover. */
+export function renderTale(
+  container: HTMLElement,
+  heads: [HTMLElement, HTMLElement],
+  names: [string, string],
+  rows: [string, number | null | undefined, number | null | undefined, number][],
+  note?: string,
+) {
+  heads[0].classList.add("tale-head", "left");
+  heads[1].classList.add("tale-head", "right");
+  const cells: HTMLElement[] = [heads[0], el("div"), heads[1]];
+  for (const [label, a, b, digits] of rows) {
+    if (a == null || b == null) continue;
+    const max = Math.max(a, b) || 1;
+    const track = (v: number, hi: boolean, side: string) => {
+      const t = el("div", `tale-track ${side}`);
+      const fill = el("span", hi ? "hi" : "");
+      fill.style.width = `${(v / max) * 100}%`;
+      t.append(fill);
+      return t;
+    };
+    const row = [
+      el("div", `tale-value left${a > b ? " hi" : ""}`, a.toFixed(digits)),
+      track(a, a > b, "left"),
+      el("div", "tale-label", label),
+      track(b, b > a, "right"),
+      el("div", `tale-value${b > a ? " hi" : ""}`, b.toFixed(digits)),
+    ];
+    const tip: Tip = {
+      title: label,
+      lines: [MEASURES[label] ?? "", `${names[0]}: ${a.toFixed(digits)}`, `${names[1]}: ${b.toFixed(digits)}`],
+      note,
+    };
+    // The whole row answers the hover, not just the label.
+    for (const cell of row) cell.dataset.tip = JSON.stringify(tip);
+    cells.push(...row);
+  }
+  container.replaceChildren(...cells);
+}

@@ -154,7 +154,7 @@
     <section class="panel">
       <h2>Deployment against deployment <small>round 1 layouts; match win rate of the row</small></h2>
       <div class="scroll"><table class="matrix" id="matchups" aria-label="Deployment matchups"></table></div>
-      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 matches</span></div>
+      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 matches, shown as wins–losses</span></div>
     </section>
     <section class="panel">
       <h2>Match length <small>matches by fights played</small></h2>
@@ -321,7 +321,8 @@ function renderDeployments(g) {
 
 function renderMatchups(g) {
   const table = $("matchups");
-  const present = DEPLOYMENTS.filter((l) => g.matchups.some((m) => m.deployment === l || m.against === l));
+  // Every class on both axes, in the same order, so the grid reads the same both ways.
+  const present = DEPLOYMENTS;
   const head = el("tr");
   head.append(el("th", "row", "Row vs column"));
   for (const l of present) head.append(el("th", "", l));
@@ -337,9 +338,14 @@ function renderMatchups(g) {
       const td = el("td");
       if (m) {
         const r = m.wins / m.matches;
-        td.textContent = pct(r);
-        if (m.matches < SMALL) td.className = "thin";
-        else td.style.background = heatColor(r);
+        // A few matches only allow a few percentages (1-0 reads 100%), so show the record.
+        if (m.matches < SMALL) {
+          td.textContent = `${m.wins}–${m.matches - m.wins}`;
+          td.className = "thin";
+        } else {
+          td.textContent = pct(r);
+          td.style.background = heatColor(r);
+        }
         td.title = `Round 1 ${row} against ${col}: won ${m.wins} of ${m.matches} matches (${pct(r)})`;
       }
       tr.append(td);
@@ -364,11 +370,27 @@ function renderLengths(g) {
   if (!cols.length) box.append(el("div", "note", "No matches fit these filters yet."));
 }
 
+/** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
+const MEASURES = {
+  "Fights won": "Fights won over the match, the last one included.",
+  "Final army": "Units fielded in the last fight.",
+  "Peak army": "Most units fielded in any one fight.",
+  "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
+  "Top level": "Highest level of any unit in the last fight.",
+  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
+  "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
+  Techs: "Techs researched by the last fight, across all unit types.",
+  "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
+};
+
 function renderArmy(g) {
   const box = $("army");
   const w = g.winners, l = g.losers;
   if (!w || !l) { box.replaceChildren(el("div", "note", "Needs both winners and losers.")); return; }
-  const parts = [el("div", "h l", "Winners"), el("div"), el("div"), el("div"), el("div", "h", "Losers")];
+  const parts = [el("div", "h l", `Winners (${w.results})`), el("div"), el("div"), el("div"), el("div", "h", `Losers (${l.results})`)];
+  parts[0].title = `Means over the ${w.results} player results that won their match, in these filters`;
+  parts[4].title = `Means over the ${l.results} player results that lost their match, in these filters`;
   const rows = [["Final army", "final_units"], ["Peak army", "peak_units"], ["Mean level", "mean_level"], ["Top level", "max_level"],
     ["Level-ups", "level_ups"], ["Units added", "units_added"], ["Units sold", "units_sold"], ["Techs", "techs"], ["Cards picked", "cards"]];
   for (const [label, key] of rows) {
@@ -376,7 +398,9 @@ function renderArmy(g) {
     if (a == null || b == null) continue;
     const max = Math.max(a, b) || 1;
     const track = (v, hi, side) => { const t = el("div", "t " + side); const s = el("span", hi ? "hi" : ""); s.style.width = `${(v / max) * 100}%`; t.append(s); return t; };
-    parts.push(el("div", "l" + (a > b ? " hi" : ""), a.toFixed(1)), track(a, a > b, "l"), el("div", "label", label), track(b, b > a, "r"), el("div", b > a ? "hi" : "", b.toFixed(1)));
+    const row = [el("div", "l" + (a > b ? " hi" : ""), a.toFixed(1)), track(a, a > b, "l"), el("div", "label", label), track(b, b > a, "r"), el("div", b > a ? "hi" : "", b.toFixed(1))];
+    for (const cell of row) cell.title = `${label}: ${MEASURES[label]}\nWinners' mean ${a.toFixed(1)}, losers' mean ${b.toFixed(1)}`;
+    parts.push(...row);
   }
   box.replaceChildren(...parts);
   box.setAttribute("aria-label", `Means over ${w.results} winning and ${l.results} losing results`);

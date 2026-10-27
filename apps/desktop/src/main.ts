@@ -5,7 +5,7 @@ import { art, artImage, loadArt, type ArtProgress } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
 import { renderLoadout } from "./loadout";
-import { bandLegend, deploymentPill } from "./deploy";
+import { bandLegend, deploymentPill, renderTale } from "./deploy";
 import { $, el, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -632,22 +632,28 @@ const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Sym 
 
 function renderMatchups(g: GameStats) {
   const container = $("matchups");
-  // Rows and columns differ in the Me and My opponents views: your deployments against theirs.
-  const rowsPresent = DEPLOYMENT_ORDER.filter((l) => g.matchups.some((m) => m.deployment === l));
-  const colsPresent = DEPLOYMENT_ORDER.filter((l) => g.matchups.some((m) => m.against === l));
-  container.style.gridTemplateColumns = `minmax(120px, auto) repeat(${colsPresent.length}, minmax(52px, 1fr))`;
-  const cells: HTMLElement[] = [el("div", "corner", "Row vs column")];
-  for (const l of colsPresent) cells.push(el("div", "col-head", l));
-  for (const row of rowsPresent) {
+  // Every class on both axes, in the same order, so the grid reads the same both ways.
+  container.style.gridTemplateColumns = `minmax(120px, auto) repeat(${DEPLOYMENT_ORDER.length}, minmax(52px, 1fr))`;
+  // In the Me and My opponents views the rows are one side's round 1 and the columns the other's.
+  const view = $<HTMLSelectElement>("filter-view").value;
+  const corner = view === "me" ? "You ↓ vs them →" : view === "opponents" ? "Them ↓ vs you →" : "Row vs column";
+  const cells: HTMLElement[] = [el("div", "corner", corner)];
+  for (const l of DEPLOYMENT_ORDER) cells.push(el("div", "col-head", l));
+  for (const row of DEPLOYMENT_ORDER) {
     cells.push(deploymentPill(row));
-    for (const col of colsPresent) {
+    for (const col of DEPLOYMENT_ORDER) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const cell = el("div", "cell");
       if (m) {
         const r = m.wins / m.matches;
-        cell.textContent = pct(r);
-        if (m.matches < SMALL_SAMPLE) cell.classList.add("thin");
-        else cell.style.background = trendColor(r);
+        // A few matches only allow a few percentages (1-0 reads 100%), so show the record.
+        if (m.matches < SMALL_SAMPLE) {
+          cell.textContent = `${m.wins}–${m.matches - m.wins}`;
+          cell.classList.add("thin");
+        } else {
+          cell.textContent = pct(r);
+          cell.style.background = trendColor(r);
+        }
         const tip: Tip = { title: `Round 1: ${row} against ${col}`, lines: [`Won ${m.wins} of ${m.matches} matches (${pct(r)})`] };
         cell.dataset.tip = JSON.stringify(tip);
       }
@@ -655,37 +661,9 @@ function renderMatchups(g: GameStats) {
     }
   }
   container.replaceChildren(...cells);
-  $("matchups-note").textContent = rowsPresent.length
-    ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE} matches.`
+  $("matchups-note").textContent = g.matchups.length
+    ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE} matches, shown as wins–losses.`
     : "No 1v1 matches with both round 1 layouts classed fit these filters.";
-}
-
-/** Two columns compared row by row, the larger value bright: the tale of the tape. */
-function taleRows(
-  container: HTMLElement,
-  heads: [string, string],
-  rows: [string, number | null | undefined, number | null | undefined, number][],
-) {
-  const cells: HTMLElement[] = [el("div", "tale-head left", heads[0]), el("div"), el("div", "tale-head right", heads[1])];
-  for (const [label, a, b, digits] of rows) {
-    if (a == null || b == null) continue;
-    const max = Math.max(a, b) || 1;
-    const track = (v: number, hi: boolean, side: string) => {
-      const t = el("div", `tale-track ${side}`);
-      const fill = el("span", hi ? "hi" : "");
-      fill.style.width = `${(v / max) * 100}%`;
-      t.append(fill);
-      return t;
-    };
-    cells.push(
-      el("div", `tale-value left${a > b ? " hi" : ""}`, a.toFixed(digits)),
-      track(a, a > b, "left"),
-      el("div", "tale-label", label),
-      track(b, b > a, "right"),
-      el("div", `tale-value${b > a ? " hi" : ""}`, b.toFixed(digits)),
-    );
-  }
-  container.replaceChildren(...cells);
 }
 
 function renderArmy(g: GameStats) {
@@ -695,7 +673,13 @@ function renderArmy(g: GameStats) {
     $("army").replaceChildren(el("div", "empty", "Needs matches with both a winner and a loser."));
     return;
   }
-  taleRows($("army"), [`Winners (${w.results})`, `Losers (${l.results})`], [
+  const head = (text: string, n: number, who: string) => {
+    const h = el("div", "", `${text} (${n})`);
+    const tip: Tip = { title: `${text} (${n})`, lines: [`Means over the ${n} player results that ${who} their match, in these filters.`] };
+    h.dataset.tip = JSON.stringify(tip);
+    return h;
+  };
+  renderTale($("army"), [head("Winners", w.results, "won"), head("Losers", l.results, "lost")], ["Winners' mean", "Losers' mean"], [
     ["Final army", w.final_units, l.final_units, 1],
     ["Peak army", w.peak_units, l.peak_units, 1],
     ["Mean level", w.mean_level, l.mean_level, 1],
@@ -705,7 +689,7 @@ function renderArmy(g: GameStats) {
     ["Units sold", w.units_sold, l.units_sold, 1],
     ["Techs", w.techs, l.techs, 1],
     ["Cards picked", w.cards, l.cards, 1],
-  ]);
+  ], "Means per player result, not capped per uploader. Units added and sold leave out AsyncBattle, whose opponents' rounds come from other games.");
 }
 
 function renderLengths(g: GameStats) {

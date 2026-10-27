@@ -315,6 +315,20 @@ function fightNumbers(players) {
   return [...set].sort((a, b) => a - b);
 }
 
+/** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
+const MEASURES = {
+  "Fights won": "Fights won over the match, the last one included.",
+  "Final army": "Units fielded in the last fight.",
+  "Peak army": "Most units fielded in any one fight.",
+  "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
+  "Top level": "Highest level of any unit in the last fight.",
+  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
+  "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
+  Techs: "Techs researched by the last fight, across all unit types.",
+  "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
+};
+
 function taleRows(a, b) {
   const rows = [
     ["Fights won", "fights_won"], ["Final army", "final_units"], ["Peak army", "peak_units"],
@@ -335,7 +349,9 @@ function taleRows(a, b) {
       t.append(s);
       return t;
     };
-    out.push(el("div", "v l" + (hiA ? " hi" : ""), fmt(va)), track(va, hiA, "l"), el("div", "label", label), track(vb, hiB, "r"), el("div", "v" + (hiB ? " hi" : ""), fmt(vb)));
+    const row = [el("div", "v l" + (hiA ? " hi" : ""), fmt(va)), track(va, hiA, "l"), el("div", "label", label), track(vb, hiB, "r"), el("div", "v" + (hiB ? " hi" : ""), fmt(vb))];
+    for (const cell of row) cell.title = `${label}: ${MEASURES[label]}\n${a.name}: ${fmt(va)}, ${b.name}: ${fmt(vb)}`;
+    out.push(...row);
   }
   const tale = el("div", "tale");
   tale.setAttribute("role", "table");
