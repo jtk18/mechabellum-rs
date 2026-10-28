@@ -706,7 +706,7 @@ function renderMeetings(g: GameStats) {
   const count = (label: string | null) => g.meetings.find((m) => m.meeting === label)?.matches ?? 0;
   const parts = [
     `${count("Asym headbutt")} asym headbutt${count("Asym headbutt") === 1 ? "" : "s"}`,
-    `${count("Asym, opposite lanes")} asym on opposite lanes`,
+    `${count("Asym crossfire")} asym crossfire${count("Asym crossfire") === 1 ? "" : "s"}`,
     `${count(null)} with one side or neither asym`,
   ];
   container.textContent = `Round 1, of ${total} 1v1 match${total === 1 ? "" : "es"} classed: ${parts.join(", ")}.`;

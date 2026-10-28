@@ -195,8 +195,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// reaches 5 squares, a one-sided standard-depth army is "Asym mid aggro", round 1's meeting
 /// (asym headbutt), and army values in supply. 15: base prices for the big units (Mountain, War
 /// Factory and Abyss 800, Overlord 500, giants 400). 16: three bands; standard is a symmetric
-/// midboard army, Asym mid aggro a one-sided one.
-const SCHEMA_VERSION: i64 = 16;
+/// midboard army, Asym mid aggro a one-sided one. 17: asym armies on opposite lanes are an asym
+/// crossfire.
+const SCHEMA_VERSION: i64 = 17;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");

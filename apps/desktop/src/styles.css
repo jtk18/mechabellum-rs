@@ -1909,7 +1909,7 @@ h1 {
   margin-left: 4px;
 }
 
-/* Both players one-sided: a headbutt (same lane) or opposite lanes. */
+/* Both players one-sided: a headbutt (same lane) or a crossfire (opposite lanes). */
 .meeting-tag {
   display: inline-block;
   padding: 1px 7px;

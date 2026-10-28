@@ -82,7 +82,7 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     Standard and a one-sided one Asym mid aggro; aggressive splits into sym and asym. J's
     example, the opponent's round 1 on Forest Eye (`20261027--67342143`), is Asym mid aggro.
     Backboard isn't split until J rules on it. Two one-sided 1v1 armies meet in an asym headbutt
-    or on opposite lanes.
+    or an asym crossfire (opposite lanes).
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every

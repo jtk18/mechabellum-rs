@@ -71,8 +71,8 @@ pub enum Meeting {
     #[serde(rename = "Asym headbutt")]
     Headbutt,
     /// On opposite lanes, so each army faces the other's empty side.
-    #[serde(rename = "Asym, opposite lanes")]
-    OppositeLanes,
+    #[serde(rename = "Asym crossfire")]
+    Crossfire,
 }
 
 impl Meeting {
@@ -80,7 +80,7 @@ impl Meeting {
     pub fn label(self) -> &'static str {
         match self {
             Meeting::Headbutt => "Asym headbutt",
-            Meeting::OppositeLanes => "Asym, opposite lanes",
+            Meeting::Crossfire => "Asym crossfire",
         }
     }
 }
@@ -126,7 +126,7 @@ pub fn meeting(a: (&Deployment, Half), b: (&Deployment, Half)) -> Option<Meeting
     Some(if a == b {
         Meeting::Headbutt
     } else {
-        Meeting::OppositeLanes
+        Meeting::Crossfire
     })
 }
 
@@ -737,7 +737,7 @@ mod tests {
         let w = classify(&west, Half::North).unwrap();
         assert_eq!(
             meeting((&s, Half::South), (&w, Half::North)),
-            Some(Meeting::OppositeLanes)
+            Some(Meeting::Crossfire)
         );
         // A symmetric army meets nobody head on.
         let spread = classify(&[unit(2, -100, -80), unit(2, 100, -80)], Half::South).unwrap();

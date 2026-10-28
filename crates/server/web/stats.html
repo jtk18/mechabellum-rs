@@ -156,7 +156,7 @@
       <h2>Deployment against deployment <small>round 1 layouts; match win rate of the row</small></h2>
       <div class="scroll"><table class="matrix" id="matchups" aria-label="Deployment matchups"></table></div>
       <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 matches, shown as wins–losses</span></div>
-      <p class="note" id="meetings" title="Asym headbutt: both armies grouped on the same lane of the board, so they meet head on. Asym, opposite lanes: each faces the other's empty side."></p>
+      <p class="note" id="meetings" title="Asym headbutt: both armies grouped on the same lane of the board, so they meet head on. Asym crossfire: on opposite lanes, so each faces the other's empty side."></p>
     </section>
     <section class="panel">
       <h2>Match length <small>matches by fights played</small></h2>
@@ -385,7 +385,7 @@ function renderMatchups(g) {
   const total = g.meetings.reduce((sum, m) => sum + m.matches, 0);
   const count = (label) => (g.meetings.find((m) => m.meeting === label) || { matches: 0 }).matches;
   $("meetings").textContent = total
-    ? `Round 1, of ${total} 1v1 match${total === 1 ? "" : "es"} classed: ${count("Asym headbutt")} asym headbutt${count("Asym headbutt") === 1 ? "" : "s"}, ${count("Asym, opposite lanes")} asym on opposite lanes, ${count(null)} with one side or neither asym.`
+    ? `Round 1, of ${total} 1v1 match${total === 1 ? "" : "es"} classed: ${count("Asym headbutt")} asym headbutt${count("Asym headbutt") === 1 ? "" : "s"}, ${count("Asym crossfire")} asym crossfire${count("Asym crossfire") === 1 ? "" : "s"}, ${count(null)} with one side or neither asym.`
     : "";
 }
 

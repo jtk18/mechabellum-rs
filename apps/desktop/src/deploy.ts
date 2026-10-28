@@ -65,13 +65,13 @@ export const BANDS = ["Aggressive", "Midboard", "Backboard"];
 export const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Backboard"];
 
 /** How two one-sided 1v1 deployments meet (mechabellum::Meeting). */
-export type Meeting = "Asym headbutt" | "Asym, opposite lanes";
+export type Meeting = "Asym headbutt" | "Asym crossfire";
 
 export const MEETING_TIP: Tip = {
   title: "When both go asym",
   lines: [
     "Asym headbutt: both armies grouped on the same lane of the board, so they meet head on.",
-    "Asym, opposite lanes: grouped on opposite lanes, so each faces the other's empty side.",
+    "Asym crossfire: grouped on opposite lanes, so each faces the other's empty side.",
   ],
   note: "A lane is the board's east or west half; one player's left is the other's right.",
 };
@@ -99,7 +99,7 @@ export function labelBand(label: string | null | undefined) {
   return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
 
-/** A small tag for a headbutt or opposite lanes, with the explanation on hover. */
+/** A small tag for a headbutt or crossfire, with the explanation on hover. */
 export function meetingTag(meeting: Meeting | null | undefined) {
   if (!meeting) return null;
   const tag = el("span", `meeting-tag${meeting === "Asym headbutt" ? " headbutt" : ""}`, meeting);

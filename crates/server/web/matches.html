@@ -174,8 +174,8 @@
       <li>A midboard army is <strong>standard</strong> when its ground is spread across both sides, and <strong>asym mid
         aggro</strong> when three quarters or more of it stands on one side. An aggressive army is <strong>sym</strong> or
         <strong>asym</strong> by its aggressive ground the same way. Backboard isn't split.</li>
-      <li>Two asym armies on the same lane are an <strong>asym headbutt</strong>: they meet head on. On opposite lanes,
-        each faces the other's empty side.</li>
+      <li>Two asym armies on the same lane are an <strong>asym headbutt</strong>: they meet head on. On opposite lanes
+        they're an <strong>asym crossfire</strong>: each faces the other's empty side.</li>
       <li>A match is classed by how each player deployed for <strong>round 1</strong>. Later fights are classed the same
         way on the fight tape, to show how the board grew. 1v1 games on the 2.0 board (build 2259 on).</li>
     </ul>
@@ -521,7 +521,7 @@ function twoPlayerCard(card, players) {
     const met = a.game?.fights.find((f) => f.fight === n)?.meeting;
     if (met) {
       const tag = el("span", "meeting" + (met === "Asym headbutt" ? " headbutt" : ""), met);
-      tag.title = met === "Asym headbutt" ? "Both armies grouped on the same lane of the board: they meet head on." : "Both armies grouped on one side, on opposite lanes: each faces the other's empty side.";
+      tag.title = met === "Asym headbutt" ? "Both armies grouped on the same lane of the board: they meet head on." : "Both armies grouped on one side, on opposite lanes (a crossfire): each faces the other's empty side.";
       fightLabel.append(" ", tag);
     }
     capTop.replaceChildren(sideCaption(a, n));

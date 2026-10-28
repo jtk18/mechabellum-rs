@@ -55,7 +55,8 @@ midboard army is **standard** when its ground is spread across both sides and **
 quarters or more of it stands on one side (judged on the whole army, since midboard is also the class of an army
 no band leads). An aggressive army is **sym** or **asym** by its aggressive ground the same way; backboard isn't
 split yet. When both players in a 1v1 are
-asym, they meet in an **asym headbutt** on the same lane, or on opposite lanes (`mechabellum::meeting`). A match is
+asym, they meet in an **asym headbutt** on the same lane, or an **asym crossfire** on opposite lanes
+(`mechabellum::meeting`). A match is
 classed by each player's **round 1** layout, not the last round's; a replay with no round 1 record isn't
 classed. Later fights are classed the same way, which the
 match cards' fight tape shows.

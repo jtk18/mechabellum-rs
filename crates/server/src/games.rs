@@ -52,7 +52,7 @@ pub struct GameStats {
     /// 1v1 matches by both players' round 1 deployments, from the first one's side.
     pub matchups: Vec<Matchup>,
     /// 1v1 matches with both round 1 deployments classed, by how they met: "Asym headbutt",
-    /// "Asym, opposite lanes", or `None` when one or neither was one-sided.
+    /// "Asym crossfire", or `None` when one or neither was one-sided.
     pub meetings: Vec<MeetingStat>,
     /// Means over match winners and over losers.
     pub winners: Option<ArmyMeans>,
