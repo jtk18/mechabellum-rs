@@ -297,11 +297,15 @@ impl BattleRecord {
             lists.push(results);
         }
         if let [a, b] = lists.as_slice() {
+            // A fight where every unit dies is a draw that both players win (a tournament bye
+            // reads the same way). A forged "Win" still shows: the HP check above wants no
+            // reactor HP lost by a winner.
             let opposite = |x: &str, y: &str| {
                 matches!(
                     (known_result(x), known_result(y)),
                     (Some("Win"), Some("Lose"))
                         | (Some("Lose"), Some("Win"))
+                        | (Some("Win"), Some("Win"))
                         | (Some("Deuce"), Some("Deuce"))
                 )
             };
@@ -374,6 +378,40 @@ mod tests {
         let mut bad_id = fixture("battle_record_2324.xml");
         bad_id.battle_info.battle_id = "not-a-battle".into();
         assert!(bad_id.validate().iter().any(|p| p.code == "battle-id"));
+    }
+
+    /// A draw, where every unit dies, is a fight both players win: listed "Win" for both, with
+    /// no reactor HP lost by either. That's a real replay, not a forgery.
+    #[test]
+    fn test_a_draw_both_players_win_is_accepted() {
+        let mut drawn = fixture("battle_record_2340.xml");
+        assert!(drawn.validate().is_empty(), "{:?}", drawn.validate());
+        // Player 1's first lost fight becomes a draw: listed as a win, and no HP lost in it. The
+        // HP of every later record moves up by what that fight cost.
+        let player = &mut drawn.player_records.player_record[1];
+        let results = player.fight_results().unwrap();
+        let fight = results.iter().position(|r| r.trim() == "Lose").unwrap() as u32 + 1;
+        let hp = |records: &[super::super::battle_record::PlayerRoundRecord], round: u32| {
+            records
+                .iter()
+                .find(|r| r.round.trim() == round.to_string())
+                .map(|r| r.player_data.reactor_core.trim().parse::<i64>().unwrap())
+                .unwrap()
+        };
+        let records = &mut player.player_round_records.player_round_record;
+        let cost = hp(records, fight) - hp(records, fight + 1);
+        assert!(cost > 0);
+        for record in records.iter_mut() {
+            let list = &mut record.player_data.round_fight_result.results;
+            if let Some(result) = list.get_mut(fight as usize - 1) {
+                *result = "Win".into();
+            }
+            if record.round.trim().parse::<u32>().unwrap() > fight {
+                let now: i64 = record.player_data.reactor_core.trim().parse().unwrap();
+                record.player_data.reactor_core = (now + cost).to_string();
+            }
+        }
+        assert!(drawn.validate().is_empty(), "{:?}", drawn.validate());
     }
 
     /// The red team's forgery (2026-10-27): the loser of a 2340 match flips every listed result

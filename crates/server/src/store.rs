@@ -323,6 +323,17 @@ impl Period {
     }
 }
 
+/// SQL true for a match `m` the account logged in here played. A replay of a match only watched
+/// is saved too; those are left out. With no logged-in account, or one with no stored match yet
+/// (a fresh account), every match counts. Account IDs survive a renamed Steam account.
+macro_rules! played_here {
+    () => {
+        "(NOT EXISTS (SELECT 1 FROM local_player l JOIN players q ON q.player_id = l.player_id)
+          OR EXISTS (SELECT 1 FROM players own JOIN local_player l ON own.player_id = l.player_id
+                     WHERE own.battle_id = m.battle_id))"
+    };
+}
+
 /// `scope(battle_id, player_id, won, version, occurred_on)` over the player results `StatsFilter`
 /// allows, with `$settled` added to the conditions.
 macro_rules! scope {
@@ -343,7 +354,9 @@ macro_rules! scope {
       AND (?7 = 0 OR m.battle_id IN (
           SELECT battle_id FROM match_copies GROUP BY battle_id
           HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2))
-      AND (?8 = 1 OR instr(m.battle_id, '__') = 0)",
+      AND (?8 = 1 OR instr(m.battle_id, '__') = 0)
+      AND ",
+            played_here!(),
             $settled,
             ")"
         )
@@ -1454,18 +1467,22 @@ impl Store {
         let conn = self.conn();
         // Counts are of the matches the stats count by default (SCOPE): with players, settled,
         // not offline. Every version and mode is still listed, so offline-only ones can be picked.
-        const COUNTED: &str = "settled = 1 AND instr(battle_id, '__') = 0
-            AND EXISTS (SELECT 1 FROM players p WHERE p.battle_id = matches.battle_id)";
+        const COUNTED: &str = concat!(
+            "m.settled = 1 AND instr(m.battle_id, '__') = 0
+             AND EXISTS (SELECT 1 FROM players p WHERE p.battle_id = m.battle_id) AND ",
+            played_here!()
+        );
         let versions = conn
             .prepare(&format!(
-                "SELECT version, SUM({COUNTED}) FROM matches GROUP BY version ORDER BY version DESC"
+                "SELECT m.version, SUM({COUNTED}) FROM matches m GROUP BY m.version
+                 ORDER BY m.version DESC"
             ))?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         let modes = conn
             .prepare(&format!(
-                "SELECT match_mode, game_mode, SUM({COUNTED}) FROM matches
-                 GROUP BY match_mode, game_mode ORDER BY SUM({COUNTED}) DESC, COUNT(*) DESC"
+                "SELECT m.match_mode, m.game_mode, SUM({COUNTED}) FROM matches m
+                 GROUP BY m.match_mode, m.game_mode ORDER BY SUM({COUNTED}) DESC, COUNT(*) DESC"
             ))?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<_>>()?;
@@ -1624,7 +1641,7 @@ impl Store {
 
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(concat!(
             "SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.rounds, m.occurred_on, m.map_id,
                     COALESCE((SELECT json_group_array(json_object(
                                   'name', p.name, 'elo', r.elo, 'deployment', g.opening,
@@ -1645,8 +1662,11 @@ impl Store {
                     (SELECT g.meeting FROM player_games g
                      WHERE g.battle_id = m.battle_id AND g.meeting IS NOT NULL LIMIT 1),
                     m.settled
-             FROM matches m ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?1",
-        )?;
+             FROM matches m WHERE ",
+            // Matches only watched here are left out, as from the stats.
+            played_here!(),
+            " ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?1"
+        ))?;
         // Each side as a JSON array of players. JSON, not separator characters: names come
         // from uploaded replays, and a name holding a separator once forged a second player
         // with any MMR it liked (review, 2026-10-27).

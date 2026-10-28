@@ -972,6 +972,42 @@ mod tests {
         assert_eq!((page.total, page.cards[0].settled), (1, false));
     }
 
+    /// A match the logged-in account only watched (the game saves those too) leaves the stats,
+    /// the cards and the match list; with no logged-in account, or one with no stored match yet,
+    /// everything counts.
+    #[test]
+    fn test_watched_matches_are_left_out() {
+        let store = Store::open_in_memory().unwrap();
+        for name in ["battle_record_2340.xml", "battle_record_2324.xml"] {
+            store.ingest(&fixture(name), Path::new(name), None).unwrap();
+        }
+        let counts = |store: &Store| {
+            let f = StatsFilter::default();
+            (
+                store.game_stats(&f).unwrap().matches,
+                store.cards(&f, 10, 0).unwrap().total,
+                store.recent_matches(10).unwrap().len(),
+            )
+        };
+        assert_eq!(counts(&store), (2, 2, 2));
+        // An account in one match and not the other: the other was only watched.
+        let only_in_one: String = store
+            .conn()
+            .query_row(
+                "SELECT player_id FROM players GROUP BY player_id HAVING COUNT(*) = 1 LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        store.set_local_player(&only_in_one).unwrap();
+        assert_eq!(counts(&store), (1, 1, 1));
+        let facets = store.facets().unwrap();
+        assert_eq!(facets.versions.iter().map(|(_, n)| n).sum::<u64>(), 1);
+        // A fresh account with nothing stored doesn't hide everything.
+        store.set_local_player("999").unwrap();
+        assert_eq!(counts(&store), (2, 2, 2));
+    }
+
     /// In 2v2 the "my opponents" view takes the other team only: a teammate shares the result,
     /// so it's left out. (Teams aren't stored; the brawl fixture stands in, relabeled 2v2.)
     #[test]

@@ -342,7 +342,7 @@ function fightNumbers(players) {
 
 /** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
 const MEASURES = {
-  "Fights won": "Fights won over the match, the last one included.",
+  "Fights won": "Fights won over the match, the last one included. A draw, where every unit dies, counts as a win for both players.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
   "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show, else the unit's list price; an army with a unit no price is known for is left out.",
@@ -492,7 +492,8 @@ function twoPlayerCard(card, players) {
     btn.append(half(fa, "top"), el("div", "n", String(n)), half(fb, "bottom"));
     const outcome = (r) => (r === "Win" ? "won" : r === "Lose" ? "lost" : r === "Deuce" ? "drew" : "no result");
     const describe = (p, f) => (f ? `${iso(p.name)} ${outcome(f.result)}, ${f.hp.toLocaleString()} HP going in, ${f.deployment ? f.deployment.label.toLowerCase() : "not classed"}` : `${iso(p.name)}: no record`);
-    btn.setAttribute("aria-label", `Fight ${n}: ${describe(a, fa)}; ${describe(b, fb)}${fa?.meeting ? `; ${fa.meeting}` : ""}`);
+    const draw = fa?.result === "Win" && fb?.result === "Win";
+    btn.setAttribute("aria-label", `Fight ${n}: ${describe(a, fa)}; ${describe(b, fb)}${draw ? "; a draw: every unit died, so both players win it" : ""}${fa?.meeting ? `; ${fa.meeting}` : ""}`);
     btn.title = btn.getAttribute("aria-label");
     btn.addEventListener("click", () => select(n));
     btn.addEventListener("keydown", (e) => {

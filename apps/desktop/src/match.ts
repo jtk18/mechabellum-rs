@@ -609,7 +609,11 @@ function renderSummary() {
         return `${iso(m.players[side].name)} ${result}, ${f.hp.toLocaleString()} HP going in, ${f.deployment?.label.toLowerCase() ?? "not classed"}`;
       };
       const met = fightOf(far, n)?.meeting;
-      const tip: Tip = { title: `Fight ${n}`, lines: [describe(far), describe(near), ...(met ? [met] : [])] };
+      const draw = fightOf(far, n)?.result === "Win" && fightOf(near, n)?.result === "Win";
+      const tip: Tip = {
+        title: `Fight ${n}`,
+        lines: [describe(far), describe(near), ...(draw ? ["A draw: every unit died, so both players win it."] : []), ...(met ? [met] : [])],
+      };
       button.dataset.tip = JSON.stringify(tip);
       button.setAttribute("aria-label", `Fight ${n}: ${tip.lines.join("; ")}`);
       button.addEventListener("click", () => {

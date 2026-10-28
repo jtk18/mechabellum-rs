@@ -155,7 +155,7 @@ export function bandLegend() {
 
 /** What each tale-of-the-tape row measures (mechabellum::PlayerGame), for its tooltip. */
 export const MEASURES: Record<string, string> = {
-  "Fights won": "Fights won over the match, the last one included.",
+  "Fights won": "Fights won over the match, the last one included. A draw, where every unit dies, counts as a win for both players.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
   "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show, else the unit's list price; an army with a unit no price is known for is left out.",
