@@ -673,6 +673,18 @@ mod tests {
         }
         let (w, l) = (stats.winners.unwrap(), stats.losers.unwrap());
         assert_eq!((w.results, l.results), (3, 3));
+        // The 2.0 fixtures price every army.
+        assert!(w.final_value.unwrap() > 0.0 && w.peak_value >= w.final_value);
+        // Meetings count 1v1 matches with both round 1s classed, once each: the one 2340
+        // match, whose round 1s weren't both one-sided.
+        assert_eq!(stats.meetings.len(), 1);
+        assert_eq!(
+            (
+                stats.meetings[0].meeting.as_deref(),
+                stats.meetings[0].matches
+            ),
+            (None, 1)
+        );
         // The match list carries each player's round 1 deployment where it's classed.
         let rows = store.recent_matches(10).unwrap();
         let newest = rows.iter().find(|m| m.version == 2340).unwrap();

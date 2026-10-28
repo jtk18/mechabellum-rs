@@ -39,7 +39,7 @@ cargo run --release -p mechabellum-server -- --db mechabellum.db serve --bind 12
 | `POST /api/replays` | Body is a raw `.grbr` or `.xml`. Returns 201 when added, 200 when already present, 400 when the body isn't a replay, and 422 when it's a replay that can't be parsed. With `--require-auth`, it requires `Authorization: Bearer <key>`. |
 | `GET /api/replays?limit=50` | Most recent matches. |
 | `GET /api/stats` | Unit and specialist pick and win rates, taken from each player's final-round army. Filters: `min_version`, `max_version`, `match_mode` (`VS_1_1`, ...), `game_mode` (`Normal`, `AsyncBattle`, ...), `player_id`. |
-| `GET /api/stats/games` | Whole matches rather than final armies: win rates by round 1 deployment (and round 1 deployment against the opponent's, in 1v1), match lengths, winners' and losers' mean army size, levels and units sold, and every unit fielded at any point. Same filters. Plain rates, not capped per uploader. |
+| `GET /api/stats/games` | Whole matches rather than final armies: win rates by round 1 deployment (and round 1 deployment against the opponent's, in 1v1), how often both players went asym and on which lanes, match lengths, winners' and losers' mean army size and value, levels and units sold, and every unit fielded at any point. Same filters. Plain rates, not capped per uploader. |
 | `GET /api/cards?limit=24&offset=0` | Match cards, newest first: each player's whole game (`mechabellum::PlayerGame`: army size and levels, units used and sold, every fight's result, HP, deployment and board). Same filters. Names as stored, never account IDs. |
 | `GET /health` | |
 
@@ -47,13 +47,16 @@ Pages: `/` (landing), `/stats`, and `/matches` (one card per match). The last tw
 landing page yet.
 
 **Deployment classes** (`mechabellum::classify`, per player per fight, 1v1 on the 2.0 board from build
-2259): each unit falls in a band by where it stands in its own half. **Aggressive**: front edge within 3
-squares of the line, or in a flank column. **Midboard**: from 5 squares in front of the towers' front
+2259): each unit falls in a band by where it stands in its own half. **Aggressive**: front edge within 5
+squares of the zone's front edge (J: "make aggressive within 5 squares from front"), or in a flank column. **Midboard**: from 5 squares in front of the towers' front
 faces back to their centers. **Backboard**: behind the towers' centers. Everything else is the standard
 band. Units weigh by footprint area; the army takes the class of the band holding the most of it when that's
-aggressive, midboard or backboard with at least 40%, and is **standard** otherwise. An aggressive or midboard
-army is **asym** when three quarters or more of that band's ground stands on one side, **sym** otherwise (J: an
-asym midboard is a thing, an "asym standard" isn't; backboard isn't split yet). A match is
+aggressive, midboard or backboard with at least 40%, and takes standard depth otherwise. An army is **asym** when
+three quarters or more of its ground stands on one side, **sym** otherwise: an aggressive or midboard army by that
+band's ground, a standard-depth one by the whole army's, since no band may lead it. A symmetric standard-depth
+army is **standard** and a one-sided one **asym mid aggro** (J: "standard is when the units are symmetrically
+distributed [...], otherwise it's asym mid aggro"); backboard isn't split yet. When both players in a 1v1 are
+asym, they meet in an **asym headbutt** on the same lane, or on opposite lanes (`mechabellum::meeting`). A match is
 classed by each player's **round 1** layout (J: judge the layout by round 1's positioning, not the last
 round's); a replay with no round 1 record isn't classed. Later fights are classed the same way, which the
 match cards' fight tape shows.

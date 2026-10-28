@@ -51,6 +51,9 @@ pub struct GameStats {
     pub deployments: Vec<DeploymentStat>,
     /// 1v1 matches by both players' round 1 deployments, from the first one's side.
     pub matchups: Vec<Matchup>,
+    /// 1v1 matches with both round 1 deployments classed, by how they met: "Asym headbutt",
+    /// "Asym, opposite lanes", or `None` when one or neither was one-sided.
+    pub meetings: Vec<MeetingStat>,
     /// Means over match winners and over losers.
     pub winners: Option<ArmyMeans>,
     pub losers: Option<ArmyMeans>,
@@ -85,10 +88,19 @@ pub struct Matchup {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MeetingStat {
+    pub meeting: Option<String>,
+    pub matches: u64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ArmyMeans {
     pub results: u64,
     pub final_units: f64,
     pub peak_units: f64,
+    /// Supply the armies were worth (`PlayerGame::final_value`), over the results priced.
+    pub final_value: Option<f64>,
+    pub peak_value: Option<f64>,
     pub mean_level: f64,
     pub max_level: f64,
     pub level_ups: f64,
@@ -256,11 +268,31 @@ impl Store {
             })?
             .collect::<rusqlite::Result<_>>()?;
 
+        // A 1v1's two rows carry the same meeting, so each match counts once.
+        let meetings = conn
+            .prepare(&format!(
+                "{scope} SELECT a.meeting, COUNT(DISTINCT s.battle_id)
+                 FROM scope s
+                 JOIN matches m ON m.battle_id = s.battle_id AND m.match_mode = 'VS_1_1'
+                 JOIN player_games a ON a.battle_id = s.battle_id AND a.player_id = s.player_id
+                 JOIN player_games b ON b.battle_id = a.battle_id AND b.player_id != a.player_id
+                 WHERE a.opening IS NOT NULL AND b.opening IS NOT NULL
+                 GROUP BY 1 ORDER BY 1"
+            ))?
+            .query_map(args, |r| {
+                Ok(MeetingStat {
+                    meeting: r.get(0)?,
+                    matches: r.get(1)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+
         let (mut winners, mut losers) = (None, None);
         let mut stmt = conn.prepare(&format!(
             "{scope} SELECT s.won, COUNT(*), AVG(g.final_units), AVG(g.peak_units),
                     AVG(g.mean_level), AVG(g.max_level), AVG(g.level_ups), AVG(g.units_added),
-                    AVG(g.units_sold), AVG(g.techs), AVG(g.cards)
+                    AVG(g.units_sold), AVG(g.techs), AVG(g.cards), AVG(g.final_value),
+                    AVG(g.peak_value)
              FROM scope s
              JOIN player_games g ON g.battle_id = s.battle_id AND g.player_id = s.player_id
              GROUP BY s.won"
@@ -279,6 +311,8 @@ impl Store {
                     units_sold: r.get(8)?,
                     techs: r.get(9)?,
                     cards: r.get(10)?,
+                    final_value: r.get(11)?,
+                    peak_value: r.get(12)?,
                 },
             ))
         })?;
@@ -323,6 +357,7 @@ impl Store {
             lengths,
             deployments,
             matchups,
+            meetings,
             winners,
             losers,
             units,

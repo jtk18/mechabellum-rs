@@ -75,6 +75,8 @@
   @media (max-width: 820px) { .body { grid-template-columns: minmax(0, 1fr); } }
   .board-col { display: flex; flex-direction: column; gap: 6px; }
   .fight-label { font-size: 13px; color: var(--text-2); font-weight: 700; }
+  .meeting { display: inline-block; padding: 0 7px; border: 1px solid var(--border); border-radius: 999px; font-weight: 400; color: var(--text-2); white-space: nowrap; }
+  .meeting.headbutt { color: var(--text); border-color: var(--text-2); }
   .side-cap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: 13px; min-height: 22px; }
   .side-cap .who { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 4em; max-width: 100%; }
   .side-cap .pill { flex-wrap: wrap; }
@@ -164,7 +166,7 @@
   <details class="rules">
     <summary>How deployments are classed</summary>
     <ul>
-      <li><strong>Aggressive</strong>: units whose front edge is within 3 squares of the line, or in a flank column.</li>
+      <li><strong>Aggressive</strong>: units whose front edge is within 5 squares of the line, or in a flank column.</li>
       <li><strong>Midboard</strong>: units right in front of the towers, from 5 squares ahead of their front faces back to level with their centers.</li>
       <li><strong>Backboard</strong>: units behind the towers' centers.</li>
       <li><strong>Standard</strong> ground is the rest of the zone, between aggressive and midboard.</li>
@@ -172,8 +174,12 @@
       <li>Each unit counts by the ground it covers. An army takes the class of the band holding most of its ground, when
         that's aggressive, midboard or backboard with at least 40%. Otherwise it's <strong>standard</strong>, even if little
         of it stands on standard ground.</li>
-      <li>An aggressive or midboard army is <strong>asym</strong> when three quarters or more of that band's ground stands on
-        one side of the board, and <strong>sym</strong> otherwise. Standard and backboard aren't split.</li>
+      <li>An army is <strong>asym</strong> when three quarters or more of its ground stands on one side of the board, and
+        <strong>sym</strong> otherwise: for aggressive and midboard, that band's ground; at standard depth, the whole army's.
+        A symmetric standard army is <strong>standard</strong>; a one-sided one is <strong>asym mid aggro</strong>.
+        Backboard isn't split.</li>
+      <li>Two asym armies on the same lane are an <strong>asym headbutt</strong>: they meet head on. On opposite lanes,
+        each faces the other's empty side.</li>
       <li>A match is classed by how each player deployed for <strong>round 1</strong>. Later fights are classed the same
         way on the fight tape, to show how the board grew. 1v1 games on the 2.0 board (build 2259 on).</li>
     </ul>
@@ -215,9 +221,11 @@ const MODES = { VS_1_1: "1v1", VS_2_2: "2v2", VS_4_Scuffle: "4-player Brawl" };
 const modeLabel = (m, g) => `${MODES[m] || m} ${g.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
 const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
 const bandColor = (i) => (i >= 0 && i < 4 ? `var(--band-${i})` : "var(--band-none)");
-/** A deployment label's band: "Sym midboard" and "Asym midboard" are both midboard, and so on. */
+/** A deployment label's band: "Sym midboard" and "Asym midboard" are both midboard, "Asym mid
+ * aggro" is standard depth, and so on. */
 function labelBand(label) {
   if (!label) return -1;
+  if (label === "Asym mid aggro") return 1;
   const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
   return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
@@ -230,7 +238,7 @@ const TOWER_X = 140, TOWER_Y = 170, TOWER_SIZE = 20;
 const FLANK_OPENS = 2;
 // Band edges in a side's own frame (distance back from the middle), for the board's stripes.
 // Aggressive is judged by a unit's front edge, the rest by its center, so these are guides.
-const STRIPES = [[ZONE_FRONT, 40], [40, 110], [110, TOWER_Y], [TOWER_Y, ZONE_BACK]];
+const STRIPES = [[ZONE_FRONT, 60], [60, 110], [110, TOWER_Y], [TOWER_Y, ZONE_BACK]];
 
 async function get(path, params) {
   const q = new URLSearchParams();
@@ -341,26 +349,28 @@ const MEASURES = {
   "Fights won": "Fights won over the match, the last one included.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
+  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show.",
+  "Peak army value": "The most supply any one fight's army was worth, by the same measure.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
-  "Level-ups": "Levels gained over the match by every unit, counting units later sold.",
+  "Level-ups": "Unit upgrades bought over the match, units later sold included. Levels units arrive with, from cards or techs, don't count.",
   "Units added": "Units that joined the army over the match: the starter pack, purchases, and units from cards.",
   "Units sold": "Units in one fight's army and gone from the next: sold, or recycled by a skill.",
-  Techs: "Techs researched by the last fight, across all unit types.",
+  Techs: "Techs researched by the last fight, its own round's research included, across all unit types.",
   "Cards picked": "Cards picked from the offers between rounds: specialists, unit reinforcements, skills and items.",
 };
 
 function taleRows(a, b) {
   const rows = [
     ["Fights won", "fights_won"], ["Final army", "final_units"], ["Peak army", "peak_units"],
-    ["Mean level", "mean_level", 1], ["Top level", "max_level"], ["Level-ups", "level_ups"],
+    ["Army value", "final_value"], ["Peak army value", "peak_value"], ["Mean level", "mean_level", 1], ["Top level", "max_level"], ["Level-ups", "level_ups"],
     ["Units added", "units_added"], ["Units sold", "units_sold"], ["Techs", "techs"], ["Cards picked", "cards"],
   ];
   const out = [];
   for (const [label, key, digits] of rows) {
     const va = a.game?.[key], vb = b.game?.[key];
     if (va == null || vb == null) continue;
-    const fmt = (v) => (digits ? v.toFixed(digits) : String(v));
+    const fmt = (v) => v.toLocaleString("en-US", { minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0 });
     const max = Math.max(va, vb) || 1;
     const hiA = va > vb, hiB = vb > va;
     const track = (v, hi, side) => {
@@ -485,7 +495,7 @@ function twoPlayerCard(card, players) {
     btn.append(half(fa, "top"), el("div", "n", String(n)), half(fb, "bottom"));
     const outcome = (r) => (r === "Win" ? "won" : r === "Lose" ? "lost" : r === "Deuce" ? "drew" : "no result");
     const describe = (p, f) => (f ? `${iso(p.name)} ${outcome(f.result)}, ${f.hp.toLocaleString()} HP going in, ${f.deployment ? f.deployment.label.toLowerCase() : "not classed"}` : `${iso(p.name)}: no record`);
-    btn.setAttribute("aria-label", `Fight ${n}: ${describe(a, fa)}; ${describe(b, fb)}`);
+    btn.setAttribute("aria-label", `Fight ${n}: ${describe(a, fa)}; ${describe(b, fb)}${fa?.meeting ? `; ${fa.meeting}` : ""}`);
     btn.title = btn.getAttribute("aria-label");
     btn.addEventListener("click", () => select(n));
     btn.addEventListener("keydown", (e) => {
@@ -511,6 +521,13 @@ function twoPlayerCard(card, players) {
     });
     if (!drawn) return;
     fightLabel.textContent = `Fight ${n} of ${fights[fights.length - 1]}`;
+    // Both players' summaries carry the same meeting.
+    const met = a.game?.fights.find((f) => f.fight === n)?.meeting;
+    if (met) {
+      const tag = el("span", "meeting" + (met === "Asym headbutt" ? " headbutt" : ""), met);
+      tag.title = met === "Asym headbutt" ? "Both armies grouped on the same lane of the board: they meet head on." : "Both armies grouped on one side, on opposite lanes: each faces the other's empty side.";
+      fightLabel.append(" ", tag);
+    }
     capTop.replaceChildren(sideCaption(a, n));
     capBottom.replaceChildren(sideCaption(b, n));
     drawBoard(board, players, n);

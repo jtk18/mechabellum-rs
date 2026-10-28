@@ -10,7 +10,7 @@ use super::battle_record::{
     UnitsNewUnitData, FIGHT_RESULTS_LISTED_FROM,
 };
 use super::final_round::{replay_deployment, techs_bought, upgrades_bought};
-use super::game_data::{footprint, xp_to_next_level};
+use super::game_data::{footprint, list_price, xp_to_next_level, LIST_PRICES_FROM};
 use super::names::{resolve, GameNames, NameKind};
 use super::{BattleRecord, Item, Unit};
 
@@ -178,6 +178,14 @@ pub struct PlacedUnit {
     /// XP earned in this fight, counting level-ups. `None` for the last fight (no record after
     /// it) and when a level's requirement isn't known.
     pub xp_gained: Option<u32>,
+    /// What the unit is worth in supply: its `SellSupply`, which follows discounts and free units
+    /// (a Fortress reads 350 to 500, a Marksman 50 or 100 across 408 1.x replays). A unit bought
+    /// in the rebuilt last round has none recorded; it takes the price that player's other copies
+    /// of it show, else any player's most common one, else its usual 2.0 price (`list_price`).
+    /// `None` when none of those is known. Control: pricing each purchase this way from the
+    /// records before it gives the next record's value for 557 of 580 purchases in the 13 2.0
+    /// matches on hand (1.3% of their supply off; the list prices come from the same matches).
+    pub value: Option<u32>,
 }
 
 fn base_unit_id(raw: &str) -> Option<u32> {
@@ -295,6 +303,7 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
         footprint: footprint(unit_id),
         is_new: false,
         xp_gained: None,
+        value: data.sell_supply.trim().parse().ok(),
         equipment: data
             .equipments
             .ids(&data.equipment_id)
@@ -426,12 +435,46 @@ fn xp_between(before: &UnitsNewUnitData, after: &UnitsNewUnitData) -> Option<i64
     Some(gained)
 }
 
+/// What each unit type sells for in this match, by base unit ID: per player, the value their
+/// latest copy shows, and over all players, the most common value.
+fn unit_prices(players: &[&PlayerRecord]) -> (Vec<BTreeMap<u32, u32>>, BTreeMap<u32, u32>) {
+    let mut seen: BTreeMap<u32, BTreeMap<u32, u32>> = BTreeMap::new();
+    let own = players
+        .iter()
+        .map(|player| {
+            let mut prices = BTreeMap::new();
+            for record in &player.player_round_records.player_round_record {
+                for unit in &record.player_data.units.new_unit_data {
+                    let (Some(unit_id), Ok(value)) = (
+                        base_unit_id(&unit.id),
+                        unit.sell_supply.trim().parse::<u32>(),
+                    ) else {
+                        continue;
+                    };
+                    prices.insert(unit_id, value);
+                    *seen.entry(unit_id).or_default().entry(value).or_default() += 1;
+                }
+            }
+            prices
+        })
+        .collect();
+    let common = seen
+        .into_iter()
+        .filter_map(|(unit_id, counts)| {
+            let (value, _) = counts.into_iter().max_by_key(|&(value, n)| (n, value))?;
+            Some((unit_id, value))
+        })
+        .collect();
+    (own, common)
+}
+
 impl BattleRecord {
     pub fn match_detail(&self) -> MatchDetail {
         let players: Vec<&PlayerRecord> = self.player_records.player_record.iter().collect();
         let mut rounds: BTreeMap<u32, Vec<Option<SideLayout>>> = BTreeMap::new();
         let version: u32 = self.version.trim().parse().unwrap_or(0);
         let results = self.match_results();
+        let (own_prices, common_prices) = unit_prices(&players);
         // A concession during the last round's deployment means that round was never fought.
         let fought_last = self.last_round_fought();
 
@@ -545,6 +588,17 @@ impl BattleRecord {
                     .iter()
                     .filter_map(|data| {
                         let mut unit = placed_unit(data)?;
+                        if unit.value.is_none() {
+                            unit.value = own_prices[i]
+                                .get(&unit.unit_id)
+                                .or_else(|| common_prices.get(&unit.unit_id))
+                                .copied()
+                                .or_else(|| {
+                                    (version >= LIST_PRICES_FROM)
+                                        .then(|| list_price(unit.unit_id))
+                                        .flatten()
+                                });
+                        }
                         unit.is_new = match &previous {
                             Some((f, prev)) if f + 1 == fight => {
                                 prev.get(&unit.index) != Some(&unit.unit_id)

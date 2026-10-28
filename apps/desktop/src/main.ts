@@ -5,7 +5,7 @@ import { art, artImage, loadArt, type ArtProgress } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
 import { renderLoadout } from "./loadout";
-import { bandLegend, deploymentPill, renderTale } from "./deploy";
+import { bandLegend, DEPLOYMENTS, deploymentPill, MEETING_TIP, renderTale } from "./deploy";
 import { $, el, iso, modeLabel, pct, type Tip } from "./util";
 
 interface Status {
@@ -71,6 +71,8 @@ interface MatchRow {
   /** Each player's round 1 deployment, which classes the match for them, when classified. */
   winner_deployments: (string | null)[];
   loser_deployments: (string | null)[];
+  /** How round 1's deployments met in a 1v1 when both were one-sided ("Asym headbutt"). */
+  meeting: string | null;
 }
 
 /** Whole-match stats (mechabellum_server::GameStats). */
@@ -84,6 +86,8 @@ interface GameStats {
   /** 1v1 matches by both players' round 1 deployments: results, the matches they come from, and
    * the row's wins. */
   matchups: { deployment: string; against: string; results: number; matches: number; wins: number }[];
+  /** 1v1 matches with both round 1s classed, by how they met; null when they weren't both one-sided. */
+  meetings: { meeting: string | null; matches: number }[];
   winners: ArmyMeans | null;
   losers: ArmyMeans | null;
   units: {
@@ -104,6 +108,8 @@ interface ArmyMeans {
   results: number;
   final_units: number;
   peak_units: number;
+  final_value: number | null;
+  peak_value: number | null;
   mean_level: number;
   max_level: number;
   level_ups: number;
@@ -455,7 +461,7 @@ function renderMatchList() {
     if (!query) return true;
     const packUnits = [...m.winner_packs, ...m.loser_packs].flatMap((p) => p?.units.map((u) => u.name) ?? []);
     const deployments = [...(m.winner_deployments ?? []), ...(m.loser_deployments ?? [])].filter((d): d is string => !!d);
-    const text = [...m.winners, ...m.losers, ...packUnits, ...deployments, m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
+    const text = [...m.winners, ...m.losers, ...packUnits, ...deployments, m.meeting ?? "", m.map, modeLabel(m.match_mode, m.game_mode), String(m.version)]
       .join(" ")
       .toLowerCase();
     return query.split(/\s+/).every((word) => text.includes(word));
@@ -494,6 +500,12 @@ function renderMatchList() {
       m.losers.forEach((name, i) => players.append(line(name, m.loser_elos[i], m.loser_deployments?.[i] ?? null, m.loser_packs[i], false)));
       if (players.children.length === 0) players.append(el("span", "player-line muted", "No result recorded"));
       const details = el("span", "details", `${m.map}, ${modeLabel(m.match_mode, m.game_mode)}, ${m.rounds} rounds, version ${m.version}`);
+      if (m.meeting) {
+        const met = el("span", `meeting-tag${m.meeting === "Asym headbutt" ? " headbutt" : ""}`, m.meeting);
+        met.dataset.tip = JSON.stringify(MEETING_TIP);
+        // First, so the line's ellipsis can't cut it off.
+        details.prepend(met, " ");
+      }
       const open = el("button", "open-board", "Open board") as HTMLButtonElement;
       open.type = "button";
       open.setAttribute("aria-label", `Open the board for ${m.winners.map(iso).join(", ")} vs ${m.losers.map(iso).join(", ")} on ${when.toLocaleDateString(undefined, { timeZone: "UTC" })}`);
@@ -614,7 +626,7 @@ function renderDeployments(g: GameStats) {
     lines: ["Player results: a match counts once for each player in the view, so in Everyone a match where both players deployed the same way counts twice, one win and one loss."],
   } satisfies Tip);
   // Front to back, as the legend and the grid run, whatever the counts.
-  const ordered = DEPLOYMENT_ORDER.flatMap((label) => g.deployments.filter((d) => d.label === label));
+  const ordered = DEPLOYMENTS.flatMap((label) => g.deployments.filter((d) => d.label === label));
   const rows = ordered.flatMap((d) => {
     const small = d.results < SMALL_SAMPLE;
     const losses = d.results - d.wins;
@@ -638,20 +650,18 @@ function renderDeployments(g: GameStats) {
   if (rows.length === 0) container.append(el("div", "empty", "No classified round 1 deployments fit these filters. Classes cover 1v1 on the 2.0 board."));
 }
 
-const DEPLOYMENT_ORDER = ["Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard", "Backboard"];
-
 function renderMatchups(g: GameStats) {
   const container = $("matchups");
   // Every class on both axes, in the same order, so the grid reads the same both ways.
-  container.style.gridTemplateColumns = `minmax(120px, auto) repeat(${DEPLOYMENT_ORDER.length}, minmax(52px, 1fr))`;
+  container.style.gridTemplateColumns = `minmax(120px, auto) repeat(${DEPLOYMENTS.length}, minmax(52px, 1fr))`;
   // In the Me and My opponents views the rows are one side's round 1 and the columns the other's.
   const view = $<HTMLSelectElement>("filter-view").value;
   const corner = view === "me" ? "You ↓ vs them →" : view === "opponents" ? "Them ↓ vs you →" : "Row vs column";
   const cells: HTMLElement[] = [el("div", "corner", corner)];
-  for (const l of DEPLOYMENT_ORDER) cells.push(el("div", "col-head", l));
-  for (const row of DEPLOYMENT_ORDER) {
+  for (const l of DEPLOYMENTS) cells.push(el("div", "col-head", l));
+  for (const row of DEPLOYMENTS) {
     cells.push(deploymentPill(row));
-    for (const col of DEPLOYMENT_ORDER) {
+    for (const col of DEPLOYMENTS) {
       const m = g.matchups.find((x) => x.deployment === row && x.against === col);
       const cell = el("div", "cell");
       if (m) {
@@ -682,6 +692,25 @@ function renderMatchups(g: GameStats) {
   $("matchups-note").textContent = g.matchups.length
     ? `1v1 matches by both players' round 1 layouts. Striped: fewer than ${SMALL_SAMPLE}, shown as wins–losses.`
     : "No 1v1 matches with both round 1 layouts classed fit these filters.";
+  renderMeetings(g);
+}
+
+/** How often both players went asym in round 1, and on which lanes. */
+function renderMeetings(g: GameStats) {
+  const container = $("meetings");
+  const total = g.meetings.reduce((sum, m) => sum + m.matches, 0);
+  if (!total) {
+    container.replaceChildren();
+    return;
+  }
+  const count = (label: string | null) => g.meetings.find((m) => m.meeting === label)?.matches ?? 0;
+  const parts = [
+    `${count("Asym headbutt")} asym headbutt${count("Asym headbutt") === 1 ? "" : "s"}`,
+    `${count("Asym, opposite lanes")} asym on opposite lanes`,
+    `${count(null)} with one side or neither asym`,
+  ];
+  container.textContent = `Round 1, of ${total} 1v1 match${total === 1 ? "" : "es"} classed: ${parts.join(", ")}.`;
+  container.dataset.tip = JSON.stringify(MEETING_TIP);
 }
 
 function renderArmy(g: GameStats) {
@@ -700,6 +729,8 @@ function renderArmy(g: GameStats) {
   renderTale($("army"), [head("Winners", w.results, "won"), head("Losers", l.results, "lost")], ["Winners' mean", "Losers' mean"], [
     ["Final army", w.final_units, l.final_units, 1],
     ["Peak army", w.peak_units, l.peak_units, 1],
+    ["Army value", w.final_value, l.final_value, 0],
+    ["Peak army value", w.peak_value, l.peak_value, 0],
     ["Mean level", w.mean_level, l.mean_level, 1],
     ["Top level", w.max_level, l.max_level, 1],
     ["Level-ups", w.level_ups, l.level_ups, 1],

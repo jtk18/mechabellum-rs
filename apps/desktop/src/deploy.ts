@@ -2,10 +2,10 @@
 import { el, pct, type Tip } from "./util";
 
 export interface Deployment {
-  /** "Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard" or "Backboard". */
+  /** One of DEPLOYMENTS. */
   label: string;
   depth: "aggressive" | "standard" | "midboard" | "backboard";
-  /** Aggressive and midboard only: how that band's units lean, -1 all on the player's own left, 1 all on their right. */
+  /** How the army leans, -1 all on the player's own left, 1 all on their right: an aggressive or midboard army's units in that band, a standard one's whole army. Null for backboard. */
   lean: number | null;
   /** Share of the army in each band, front to back, by footprint area. */
   bands: [number, number, number, number];
@@ -17,7 +17,11 @@ export interface FightSummary {
   result: string;
   hp: number;
   units: number;
+  /** Supply the army was worth: each unit's sell value as the game records it. Null if a unit's isn't known. */
+  value: number | null;
   deployment: Deployment | null;
+  /** In a 1v1, how both players' deployments met when both were one-sided. */
+  meeting: Meeting | null;
   /** [unit_id, x, y, width, depth, level, band] */
   board: number[][];
 }
@@ -38,6 +42,8 @@ export interface PlayerGame {
   fights_won: number;
   final_units: number;
   peak_units: number;
+  final_value: number | null;
+  peak_value: number | null;
   mean_level: number;
   max_level: number;
   level_ups: number;
@@ -47,32 +53,59 @@ export interface PlayerGame {
   cards: number;
   /** Round 1's deployment label, which classes the match; null when round 1 isn't recorded. */
   opening: string | null;
+  /** How round 1's deployments met. */
+  opening_meeting: Meeting | null;
   units: UnitUse[];
   fights: FightSummary[];
 }
 
 export const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
 
+/** Every deployment class, front to back (mechabellum::Deployment::label). */
+export const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Sym midboard", "Asym midboard", "Backboard"];
+
+/** How two one-sided 1v1 deployments meet (mechabellum::Meeting). */
+export type Meeting = "Asym headbutt" | "Asym, opposite lanes";
+
+export const MEETING_TIP: Tip = {
+  title: "When both go asym",
+  lines: [
+    "Asym headbutt: both armies grouped on the same lane of the board, so they meet head on.",
+    "Asym, opposite lanes: grouped on opposite lanes, so each faces the other's empty side.",
+  ],
+  note: "A lane is the board's east or west half; one player's left is the other's right.",
+};
+
 /** How classes are decided, for tooltips. Mirrors the constants in crates/mechabellum/src/replays/summary.rs. */
 export const RULES: Tip = {
   title: "Deployment classes",
   lines: [
-    "Aggressive: front edge within 3 squares of the line, or in a flank column.",
+    "Aggressive: front edge within 5 squares of the zone's front edge, or in a flank column.",
     "Midboard: from 5 squares in front of the towers back to their centers.",
     "Backboard: behind the towers' centers.",
     "Standard ground is the rest of the zone, between aggressive and midboard.",
     "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of its ground and at least 40%; otherwise it's standard, even if little of it stands on standard ground.",
-    "Aggressive and midboard armies are asym when three quarters or more of that band's ground stands on one side of the board, and sym otherwise. Standard and backboard aren't split.",
+    "An army is asym when three quarters or more of its ground stands on one side of the board: for aggressive and midboard, that band's ground; at standard depth, the whole army's. A symmetric standard army is Standard; a one-sided one is Asym mid aggro. Backboard isn't split.",
+    "Two asym armies on the same lane are an asym headbutt.",
   ],
   note: "A match is classed by round 1's layout; later fights are classed the same way to show how the board grew. 1v1 on the 2.0 board, build 2259 on.",
 };
 
-/** The band of a deployment label: "Sym midboard" and "Asym midboard" are both midboard, and so
- * on. -1 when unknown. */
+/** The band of a deployment label: "Sym midboard" and "Asym midboard" are both midboard, "Asym
+ * mid aggro" is standard depth, and so on. -1 when unknown. */
 export function labelBand(label: string | null | undefined) {
   if (!label) return -1;
+  if (label === "Asym mid aggro") return 1;
   const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
   return BANDS.findIndex((b) => b.toLowerCase() === band);
+}
+
+/** A small tag for a headbutt or opposite lanes, with the explanation on hover. */
+export function meetingTag(meeting: Meeting | null | undefined) {
+  if (!meeting) return null;
+  const tag = el("span", `meeting-tag${meeting === "Asym headbutt" ? " headbutt" : ""}`, meeting);
+  tag.dataset.tip = JSON.stringify(MEETING_TIP);
+  return tag;
 }
 
 /** A band's color; unclassified marks get the muted ink (3:1 on the panel), not the near-invisible track. */
@@ -124,6 +157,8 @@ export const MEASURES: Record<string, string> = {
   "Fights won": "Fights won over the match, the last one included.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
+  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show.",
+  "Peak army value": "The most supply any one fight's army was worth, by the same measure.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
   "Level-ups": "Unit upgrades bought over the match, units later sold included. Levels units arrive with, from cards or techs, don't count.",
@@ -157,16 +192,17 @@ export function renderTale(
     const name = el("div", "tale-label", label);
     // One keyboard stop per row, so the explanation is reachable without a mouse.
     name.tabIndex = 0;
+    const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
     const row = [
-      el("div", `tale-value left${a > b ? " hi" : ""}`, a.toFixed(digits)),
+      el("div", `tale-value left${a > b ? " hi" : ""}`, fmt(a)),
       track(a, a > b, "left"),
       name,
       track(b, b > a, "right"),
-      el("div", `tale-value${b > a ? " hi" : ""}`, b.toFixed(digits)),
+      el("div", `tale-value${b > a ? " hi" : ""}`, fmt(b)),
     ];
     const tip: Tip = {
       title: label,
-      lines: [MEASURES[label] ?? "", `${names[0]}: ${a.toFixed(digits)}`, `${names[1]}: ${b.toFixed(digits)}`],
+      lines: [MEASURES[label] ?? "", `${names[0]}: ${fmt(a)}`, `${names[1]}: ${fmt(b)}`],
       note,
     };
     // The whole row answers the hover, not just the label.

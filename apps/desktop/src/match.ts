@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { art, artImage } from "./art";
 import { $, el, iso, modeLabel, type Tip } from "./util";
-import { BANDS, bandColor, deploymentPill, labelBand, renderTale, shareBar, type FightSummary, type PlayerGame } from "./deploy";
+import { BANDS, bandColor, deploymentPill, labelBand, meetingTag, renderTale, shareBar, type FightSummary, type PlayerGame } from "./deploy";
 
 interface TechRef {
   id: string;
@@ -103,7 +103,7 @@ const NO_DAMAGE_NOTE = "Replays record each unit's XP but not its damage: fight 
 /** Band edges in a side's own frame, as distance back from the middle (replay units): where
  * aggressive, standard, midboard and backboard meet. The towers' centers are 17 squares back.
  * Aggressive is judged by a unit's front edge and the rest by its center, so these are guides. */
-const BAND_EDGES = [40, 110, 170];
+const BAND_EDGES = [60, 110, 170];
 
 /** Footprint used when a unit's size is unknown. */
 const FALLBACK: [number, number] = [2, 2];
@@ -548,6 +548,9 @@ function renderRoundBar() {
       return chip;
     }),
   );
+  // Both players' summaries carry the same meeting.
+  const met = meetingTag(fightOf(0, round.round + 1)?.meeting);
+  if (met) $("round-results").append(met);
   $("board-note-rebuilt").hidden = !round.sides.some((side) => side?.rebuilt);
 }
 
@@ -602,7 +605,8 @@ function renderSummary() {
         const result = f.result === "Win" ? "won" : f.result === "Deuce" ? "drew" : "lost";
         return `${iso(m.players[side].name)} ${result}, ${f.hp.toLocaleString()} HP going in, ${f.deployment?.label.toLowerCase() ?? "not classed"}`;
       };
-      const tip: Tip = { title: `Fight ${n}`, lines: [describe(far), describe(near)] };
+      const met = fightOf(far, n)?.meeting;
+      const tip: Tip = { title: `Fight ${n}`, lines: [describe(far), describe(near), ...(met ? [met] : [])] };
       button.dataset.tip = JSON.stringify(tip);
       button.setAttribute("aria-label", `Fight ${n}: ${tip.lines.join("; ")}`);
       button.addEventListener("click", () => {
@@ -620,6 +624,8 @@ function renderSummary() {
     ["Fights won", a.fights_won, b.fights_won, 0],
     ["Final army", a.final_units, b.final_units, 0],
     ["Peak army", a.peak_units, b.peak_units, 0],
+    ["Army value", a.final_value, b.final_value, 0],
+    ["Peak army value", a.peak_value, b.peak_value, 0],
     ["Mean level", a.mean_level, b.mean_level, 1],
     ["Top level", a.max_level, b.max_level, 0],
     ["Level-ups", a.level_ups, b.level_ups, 0],

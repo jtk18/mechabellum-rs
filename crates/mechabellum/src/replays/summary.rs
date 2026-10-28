@@ -18,9 +18,10 @@ use std::collections::BTreeMap;
 /// coordinates; only 2v2 and brawls reach past ±1,000.)
 pub const DEPLOYMENT_GEOMETRY_FROM: u32 = 2259;
 
-/// A unit is aggressive when its front edge is within this of the zone's front edge (J: "within
-/// 2-3 squares from the line").
-const AGGRESSIVE_REACH: i32 = 3 * GRID_SQUARE;
+/// A unit is aggressive when its front edge is within this of the zone's front edge (J,
+/// 2026-10-27: "make aggressive within 5 squares from front"; it was 3, from "within 2-3 squares
+/// from the line").
+const AGGRESSIVE_REACH: i32 = 5 * GRID_SQUARE;
 /// Midboard is the ground right in front of the towers (J): from the towers' centers forward to
 /// this far in front of their front faces. Behind the towers' centers is backboard.
 const MIDBOARD_REACH: i32 = 5 * GRID_SQUARE;
@@ -28,16 +29,15 @@ const MIDBOARD_REACH: i32 = 5 * GRID_SQUARE;
 /// and at least this much; otherwise it's standard. Without a floor, an army spread evenly
 /// (25/27/24/24) changed class from fight to fight on a percentage point.
 const DISTINCT_SHARE: f32 = 0.4;
-/// An aggressive or midboard deployment is asymmetric when the units in that band lean at least
-/// this far to one side: (right - left) / total, by footprint area. 0.5 is three quarters on one
-/// side.
+/// A deployment is asymmetric when its units lean at least this far to one side: (right - left)
+/// / total, by footprint area. 0.5 is three quarters on one side.
 const ASYM_LEAN: f32 = 0.5;
 
 /// How far forward a unit, or most of an army, stands. Front to back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Depth {
-    /// At the line: front edge within 3 squares of it, or in a flank column.
+    /// At the line: front edge within 5 squares of the zone's front edge, or in a flank column.
     Aggressive,
     /// Between the aggressive band and midboard. Also the class of an army that no other band
     /// leads with `DISTINCT_SHARE` of it.
@@ -49,11 +49,11 @@ pub enum Depth {
 }
 
 impl Depth {
-    /// Whether an army of this class is called sym or asym (J, 2026-10-27): an aggressive or a
-    /// midboard army grouped on one side is a different deployment from one spread across both,
-    /// but nothing is "asym standard". Backboard hasn't been ruled on and stays plain.
+    /// Whether an army of this class is called sym or asym (J, 2026-10-27): one grouped on one
+    /// side is a different deployment from one spread across both. Backboard hasn't been ruled on
+    /// and stays plain.
     fn has_sides(self) -> bool {
-        matches!(self, Depth::Aggressive | Depth::Midboard)
+        matches!(self, Depth::Aggressive | Depth::Standard | Depth::Midboard)
     }
 
     const ALL: [Depth; 4] = [
@@ -63,12 +63,39 @@ impl Depth {
         Depth::Backboard,
     ];
 
-    fn name(self) -> &'static str {
+    /// The class's name, by whether the army is grouped on one side. Standard depth has its own
+    /// pair (J, 2026-10-27): "standard is when the units are symmetrically distributed [...],
+    /// otherwise it's asym mid aggro". Nothing is "asym standard".
+    fn label(self, asym: Option<bool>) -> &'static str {
+        match (self, asym) {
+            (Depth::Aggressive, Some(true)) => "Asym aggressive",
+            (Depth::Aggressive, _) => "Sym aggressive",
+            (Depth::Standard, Some(true)) => "Asym mid aggro",
+            (Depth::Standard, _) => "Standard",
+            (Depth::Midboard, Some(true)) => "Asym midboard",
+            (Depth::Midboard, _) => "Sym midboard",
+            (Depth::Backboard, _) => "Backboard",
+        }
+    }
+}
+
+/// How two 1v1 deployments meet when both are grouped on one side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum Meeting {
+    /// On the same lane, so the two armies meet head on (J: "we're in an asym headbutt").
+    #[serde(rename = "Asym headbutt")]
+    Headbutt,
+    /// On opposite lanes, so each army faces the other's empty side.
+    #[serde(rename = "Asym, opposite lanes")]
+    OppositeLanes,
+}
+
+impl Meeting {
+    /// As serialized.
+    pub fn label(self) -> &'static str {
         match self {
-            Depth::Aggressive => "Aggressive",
-            Depth::Standard => "Standard",
-            Depth::Midboard => "Midboard",
-            Depth::Backboard => "Backboard",
+            Meeting::Headbutt => "Asym headbutt",
+            Meeting::OppositeLanes => "Asym, opposite lanes",
         }
     }
 }
@@ -76,19 +103,47 @@ impl Depth {
 /// How one player's army was deployed for one fight.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Deployment {
-    /// "Sym aggressive", "Asym aggressive", "Standard", "Sym midboard", "Asym midboard" or
-    /// "Backboard".
+    /// "Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Sym midboard",
+    /// "Asym midboard" or "Backboard".
     pub label: String,
     /// The band holding the largest share of the army (ties go to the one further forward), when
     /// that's aggressive, midboard or backboard with at least 40% of it; otherwise standard.
     pub depth: Depth,
-    /// For an aggressive or midboard deployment, how the units in that band lean: -1 all on the
-    /// player's own left, 1 all on their right, by footprint area.
+    /// How the army leans, -1 all on the player's own left, 1 all on their right, by footprint
+    /// area: an aggressive or midboard army's units in that band, a standard one's whole army
+    /// (standard is also the class of an army no band leads, so its own band can be a sliver).
+    /// `None` for backboard.
     pub lean: Option<f32>,
     /// Share of the army in each band, front to back, by footprint area.
     pub bands: [f32; 4],
     /// Units in a flank column (they open along the edges of the opponent's half from round 3).
     pub flank: u32,
+}
+
+impl Deployment {
+    /// Grouped on one side.
+    pub fn is_asym(&self) -> bool {
+        self.lean.is_some_and(|lean| lean.abs() >= ASYM_LEAN)
+    }
+
+    /// The side of the board a one-sided army stands on, in the shared frame (1 east, -1 west).
+    fn lane(&self, half: Half) -> Option<i32> {
+        let side = self.lean.filter(|_| self.is_asym())?.signum() as i32;
+        Some(match half {
+            Half::South => side,
+            Half::North => -side,
+        })
+    }
+}
+
+/// How two players' deployments for the same fight meet, when both are grouped on one side.
+pub fn meeting(a: (&Deployment, Half), b: (&Deployment, Half)) -> Option<Meeting> {
+    let (a, b) = (a.0.lane(a.1)?, b.0.lane(b.1)?);
+    Some(if a == b {
+        Meeting::Headbutt
+    } else {
+        Meeting::OppositeLanes
+    })
 }
 
 /// One fight from one player's side.
@@ -102,8 +157,16 @@ pub struct FightSummary {
     /// Reactor core HP going into the fight.
     pub hp: i32,
     pub units: u32,
+    /// The army's worth in supply: each unit's own sell value, as the game records it (discounts
+    /// and free units included; upgrades and techs not). `None` if a unit's isn't known.
+    pub value: Option<u32>,
     /// `None` before the 2.0 board, outside 1v1, or for an empty army.
     pub deployment: Option<Deployment>,
+    /// In a 1v1, how the two players' deployments met, when both were grouped on one side.
+    pub meeting: Option<Meeting>,
+    /// The half this fight's army stood on, when its deployment is classified.
+    #[serde(skip)]
+    half: Option<Half>,
     /// The army as it fought, in the board's shared frame, for drawing it: `[unit_id, x, y,
     /// width, depth, level, band]`, with positions in replay units (10 per square), the
     /// footprint in squares after rotation, the level 1-based, and the unit's `Depth` band as
@@ -144,6 +207,10 @@ pub struct PlayerGame {
     pub final_units: u32,
     /// Most units fielded in one fight.
     pub peak_units: u32,
+    /// The last fight's army's worth in supply (`FightSummary::value`).
+    pub final_value: Option<u32>,
+    /// The most any fight's army was worth. `None` if a fight's worth isn't known.
+    pub peak_value: Option<u32>,
     /// Mean level of the last fight's army, 1-based.
     pub mean_level: f32,
     /// Highest level in the last fight's army, 1-based. (`UnitUse::max_level` covers the match.)
@@ -166,6 +233,8 @@ pub struct PlayerGame {
     /// judge the layout by round 1's positioning, not the last round's). `None` when round 1
     /// isn't recorded or isn't classified; a later round never stands in for it.
     pub opening: Option<String>,
+    /// How round 1's deployments met (`FightSummary::meeting`).
+    pub opening_meeting: Option<Meeting>,
     /// Most fielded first.
     pub units: Vec<UnitUse>,
     pub fights: Vec<FightSummary>,
@@ -272,14 +341,16 @@ pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     } else {
         Depth::Standard
     };
-    // The lean of the units that give the army its class.
-    let (l, r) = (left[depth as usize], right[depth as usize]);
-    let lean = (depth.has_sides() && l + r > 0.0).then(|| (r - l) / (r + l));
-    let label = match lean {
-        Some(lean) if lean.abs() >= ASYM_LEAN => format!("Asym {}", depth.name().to_lowercase()),
-        Some(_) => format!("Sym {}", depth.name().to_lowercase()),
-        None => depth.name().to_owned(),
+    // The lean of the units that give the army its class: that band's, or for standard, which no
+    // band may lead, the whole army's.
+    let (l, r) = match depth {
+        Depth::Standard => (left.iter().sum(), right.iter().sum()),
+        _ => (left[depth as usize], right[depth as usize]),
     };
+    let lean = (depth.has_sides() && l + r > 0.0).then(|| (r - l) / (r + l));
+    let label = depth
+        .label(lean.map(|lean| lean.abs() >= ASYM_LEAN))
+        .to_owned();
     Some(Deployment {
         label,
         depth,
@@ -298,6 +369,32 @@ impl MatchDetail {
 
     /// The match from each player's side, in `players` order.
     pub fn player_games(&self) -> Vec<PlayerGame> {
+        let mut games = self.player_games_apart();
+        // How the two deployments met, fight by fight, in a 1v1.
+        if let [a, b] = games.as_mut_slice() {
+            for fa in &mut a.fights {
+                let Some(fb) = b.fights.iter_mut().find(|f| f.fight == fa.fight) else {
+                    continue;
+                };
+                let met = match (&fa.deployment, fa.half, &fb.deployment, fb.half) {
+                    (Some(da), Some(ha), Some(db), Some(hb)) => meeting((da, ha), (db, hb)),
+                    _ => None,
+                };
+                fa.meeting = met;
+                fb.meeting = met;
+            }
+            for game in [a, b] {
+                game.opening_meeting = game
+                    .fights
+                    .iter()
+                    .find(|f| f.fight == 1)
+                    .and_then(|f| f.meeting);
+            }
+        }
+        games
+    }
+
+    fn player_games_apart(&self) -> Vec<PlayerGame> {
         let classify_deployments = self.deployments_known();
         // Flank columns turn units on end on the 2.0 board in every mode, classified or not.
         let board_2 = self.version >= DEPLOYMENT_GEOMETRY_FROM;
@@ -393,7 +490,14 @@ impl MatchDetail {
                             result: side.result.clone(),
                             hp: side.hp,
                             units: side.units.len() as u32,
+                            // Saturating: an upload can claim any SellSupply.
+                            value: side
+                                .units
+                                .iter()
+                                .try_fold(0u32, |sum, u| Some(sum.saturating_add(u.value?))),
                             deployment: half.and_then(|half| classify(&side.units, half)),
+                            meeting: None,
+                            half,
                             board: side
                                 .units
                                 .iter()
@@ -426,6 +530,12 @@ impl MatchDetail {
                     fights_won: fights.iter().filter(|f| f.result == "Win").count() as u32,
                     final_units,
                     peak_units: fights.iter().map(|f| f.units).max().unwrap_or(0),
+                    final_value: fights.last().and_then(|f| f.value),
+                    peak_value: fights
+                        .iter()
+                        .map(|f| f.value)
+                        .collect::<Option<Vec<u32>>>()
+                        .and_then(|values| values.into_iter().max()),
                     mean_level: last.map_or(0.0, |side| {
                         side.units
                             .iter()
@@ -453,6 +563,7 @@ impl MatchDetail {
                         .iter()
                         .find(|f| f.fight == 1)
                         .and_then(|f| Some(f.deployment.as_ref()?.label.clone())),
+                    opening_meeting: None,
                     units,
                     fights,
                 }
@@ -482,15 +593,16 @@ mod tests {
             equipment: vec![],
             is_new: false,
             xp_gained: None,
+            value: Some(100),
         }
     }
 
     #[test]
     fn test_bands_follow_the_line_and_the_towers() {
-        // A 2x2 Marksman (id 2), in the south half's own frame. Front edge 3 squares behind the
-        // zone's front edge: aggressive. 4 squares: standard.
-        assert_eq!(depth_of(0, -50, 20), Depth::Aggressive);
-        assert_eq!(depth_of(0, -60, 20), Depth::Standard);
+        // A 2x2 Marksman (id 2), in the south half's own frame. Front edge 5 squares behind the
+        // zone's front edge (-10): aggressive. 6 squares: standard.
+        assert_eq!(depth_of(0, -70, 20), Depth::Aggressive);
+        assert_eq!(depth_of(0, -80, 20), Depth::Standard);
         // The towers' front faces are at -160: up to 5 squares in front is midboard, and so is
         // level with them back to their centers (-170). Behind that is backboard.
         assert_eq!(depth_of(0, -110, 20), Depth::Midboard);
@@ -499,9 +611,10 @@ mod tests {
         assert_eq!(depth_of(0, -180, 20), Depth::Backboard);
         // Flank columns are past the line however deep they reach.
         assert_eq!(depth_of(330, 200, 20), Depth::Aggressive);
-        // A 7x7 Abyss flush with the front edge is aggressive though its center is 4.5 squares
-        // back.
-        assert_eq!(depth_of(0, -45, 70), Depth::Aggressive);
+        // A 7x7 Abyss is aggressive with its front edge 5 squares back, though its center is 8.5
+        // squares back.
+        assert_eq!(depth_of(0, -95, 70), Depth::Aggressive);
+        assert_eq!(depth_of(0, -105, 70), Depth::Standard);
     }
 
     #[test]
@@ -561,27 +674,95 @@ mod tests {
         let mut split = one_side;
         split[4].x = 215;
         assert_eq!(classify(&split, Half::South).unwrap().label, "Sym midboard");
-        // Standard is never sided, however lopsided: nothing is "asym standard".
-        let standard = [unit(2, 100, -80), unit(2, 150, -80), unit(2, 200, -80)];
+        // At standard depth, symmetric is standard and one-sided is asym mid aggro (J): nothing is
+        // "asym standard".
+        let standard = [unit(2, -100, -80), unit(2, 0, -80), unit(2, 100, -80)];
         let d = classify(&standard, Half::South).unwrap();
-        assert_eq!((d.label.as_str(), d.lean), ("Standard", None));
+        assert_eq!((d.label.as_str(), d.lean), ("Standard", Some(0.0)));
+        let lopsided = [unit(2, 100, -80), unit(2, 150, -80), unit(2, 200, -80)];
+        let d = classify(&lopsided, Half::South).unwrap();
+        assert_eq!((d.label.as_str(), d.lean), ("Asym mid aggro", Some(1.0)));
 
-        // Spread evenly, front to back: no band leads with 40%, so standard.
+        // Spread evenly, front to back: no band leads with 40%, so standard, sided by the whole
+        // army.
         let spread = [
             unit(2, -100, -20),
-            unit(2, -100, -80),
+            unit(2, 100, -80),
             unit(2, -100, -150),
-            unit(2, -100, -250),
             unit(2, 100, -250),
+            unit(2, -100, -250),
         ];
         let d = classify(&spread, Half::South).unwrap();
         assert_eq!(d.bands, [0.2, 0.2, 0.2, 0.4]);
         assert_eq!(d.label, "Backboard", "40% is enough");
         let d = classify(&spread[..4], Half::South).unwrap();
         assert_eq!(d.label, "Standard");
-        assert_eq!(d.lean, None);
+        assert_eq!(d.lean, Some(0.0));
+        // The same spread all on one side: its standard ground alone is on one side whatever
+        // happens, so the whole army decides.
+        let one_side: Vec<PlacedUnit> = spread[..4]
+            .iter()
+            .map(|u| unit(u.unit_id, -u.x.abs(), u.y))
+            .collect();
+        assert_eq!(
+            classify(&one_side, Half::South).unwrap().label,
+            "Asym mid aggro"
+        );
 
         assert_eq!(classify(&[], Half::South), None);
+    }
+
+    /// J's asym headbutt (2026-10-27): round 1 of 20261027--67347842, exactly as recorded (shared
+    /// frame). "Neither one of us is in standard -- we're in an asym headbutt."
+    #[test]
+    fn test_asym_mid_aggro_and_headbutt() {
+        let turned = |id, x, y| {
+            let mut u = unit(id, x, y);
+            u.rotated = true;
+            u
+        };
+        // South: three 4x2s (id 30) and two 3x3 Tarantulas (24) in a row at standard depth, two
+        // Crawlers (10) turned behind them, all on the player's right.
+        let south = [
+            unit(30, 230, -90),
+            unit(30, 50, -90),
+            unit(30, 140, -90),
+            unit(24, 95, -85),
+            unit(24, 185, -85),
+            turned(10, 50, -125),
+            turned(10, 230, -125),
+        ];
+        let s = classify(&south, Half::South).unwrap();
+        assert_eq!((s.label.as_str(), s.lean), ("Asym mid aggro", Some(1.0)));
+        assert!((s.bands[1] - 42.0 / 62.0).abs() < 1e-6, "{:?}", s.bands);
+        // North: the Tarantulas' front edges are 3 squares from the zone's: aggressive, 47% of
+        // the ground, all on the player's left.
+        let north = [
+            unit(31, 140, 80),
+            unit(31, 60, 80),
+            unit(31, 220, 80),
+            unit(24, 185, 55),
+            unit(24, 95, 55),
+            unit(2, 180, 130),
+            unit(2, 90, 130),
+        ];
+        let n = classify(&north, Half::North).unwrap();
+        assert_eq!((n.label.as_str(), n.lean), ("Asym aggressive", Some(-1.0)));
+        // One's right is the other's left: both on the shared frame's east lane.
+        assert_eq!(
+            meeting((&s, Half::South), (&n, Half::North)),
+            Some(Meeting::Headbutt)
+        );
+        // North on the west lane instead: they pass each other.
+        let west: Vec<PlacedUnit> = north.iter().map(|u| unit(u.unit_id, -u.x, u.y)).collect();
+        let w = classify(&west, Half::North).unwrap();
+        assert_eq!(
+            meeting((&s, Half::South), (&w, Half::North)),
+            Some(Meeting::OppositeLanes)
+        );
+        // A symmetric army meets nobody head on.
+        let spread = classify(&[unit(2, -100, -80), unit(2, 100, -80)], Half::South).unwrap();
+        assert_eq!(meeting((&spread, Half::South), (&n, Half::North)), None);
     }
 
     /// The 2340 fixture (opponent's name removed): every fight's result is listed, the last one
@@ -646,6 +827,22 @@ mod tests {
         }
         // The two armies stand on opposite halves.
         assert_ne!(games[0].half, games[1].half);
+
+        // Both sides see the same meeting each fight, and round 1's classes the match.
+        for (a, b) in games[0].fights.iter().zip(&games[1].fights) {
+            assert_eq!(a.meeting, b.meeting, "fight {}", a.fight);
+            let both_asym = a.deployment.as_ref().unwrap().is_asym()
+                && b.deployment.as_ref().unwrap().is_asym();
+            assert_eq!(a.meeting.is_some(), both_asym, "fight {}", a.fight);
+        }
+        for game in &games {
+            assert_eq!(game.opening_meeting, game.fights[0].meeting);
+            // Every fight is priced: the last fight's purchases from the match's own records or
+            // the list prices.
+            assert!(game.fights.iter().all(|f| f.value.is_some()));
+            assert_eq!(game.final_value, game.fights.last().unwrap().value);
+            assert!(game.peak_value >= game.final_value);
+        }
     }
 
     /// Before 2340 the last fight's result is the match result, as `detail` has it.

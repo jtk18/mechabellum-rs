@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS player_games (
     fights_won  INTEGER NOT NULL,
     final_units INTEGER NOT NULL,
     peak_units  INTEGER NOT NULL,
+    -- Supply the last fight's army, and the costliest one, were worth; NULL when unpriced.
+    final_value INTEGER,
+    peak_value  INTEGER,
     mean_level  REAL NOT NULL,
     max_level   INTEGER NOT NULL,
     level_ups   INTEGER NOT NULL,
@@ -99,6 +102,8 @@ CREATE TABLE IF NOT EXISTS player_games (
     cards       INTEGER NOT NULL,
     -- Round 1's deployment label, which classes the match for this player.
     opening     TEXT,
+    -- How round 1's deployments met when both were one-sided (an asym headbutt).
+    meeting     TEXT,
     -- JSON mechabellum::PlayerGame, which a match card draws.
     card        TEXT NOT NULL,
     PRIMARY KEY (battle_id, player_id),
@@ -186,8 +191,10 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// in the most fights. 12: midboard armies are sym or asym too. 13: the review's fixes: version
 /// 2340 results never fall back to "Win", a concession during deployment ends the match a fight
 /// early, techs include the last round's research, level-ups count upgrades bought, units
-/// added and sold need fights from the first; the derived tables are recreated.
-const SCHEMA_VERSION: i64 = 13;
+/// added and sold need fights from the first; the derived tables are recreated. 14: aggressive
+/// reaches 5 squares, a one-sided standard-depth army is "Asym mid aggro", round 1's meeting
+/// (asym headbutt), and army values in supply.
+const SCHEMA_VERSION: i64 = 14;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -563,6 +570,8 @@ pub struct MatchRow {
     /// for them, when classified.
     pub winner_deployments: Vec<Option<String>>,
     pub loser_deployments: Vec<Option<String>>,
+    /// How round 1's deployments met in a 1v1, when both were one-sided ("Asym headbutt").
+    pub meeting: Option<String>,
 }
 
 impl Store {
@@ -1569,7 +1578,9 @@ impl Store {
                                 ON r.battle_id = p.battle_id AND r.player_id = p.player_id
                               LEFT JOIN player_games g
                                 ON g.battle_id = p.battle_id AND g.player_id = p.player_id
-                              WHERE p.battle_id = m.battle_id AND p.won = 0), '[]')
+                              WHERE p.battle_id = m.battle_id AND p.won = 0), '[]'),
+                    (SELECT g.meeting FROM player_games g
+                     WHERE g.battle_id = m.battle_id AND g.meeting IS NOT NULL LIMIT 1)
              FROM matches m ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?1",
         )?;
         // Each side as a JSON array of players. JSON, not separator characters: names come
@@ -1623,6 +1634,7 @@ impl Store {
                     loser_packs,
                     winner_deployments,
                     loser_deployments,
+                    meeting: r.get(9)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -1765,15 +1777,18 @@ fn insert_games(tx: &Connection, battle_id: &str, detail: &MatchDetail) -> Resul
         }
         tx.execute(
             "INSERT OR IGNORE INTO player_games
-                 (battle_id, player_id, fights_won, final_units, peak_units, mean_level,
-                  max_level, level_ups, units_added, units_sold, techs, cards, opening, card)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 (battle_id, player_id, fights_won, final_units, peak_units, final_value,
+                  peak_value, mean_level, max_level, level_ups, units_added, units_sold, techs,
+                  cards, opening, meeting, card)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 battle_id,
                 player_id,
                 game.fights_won,
                 game.final_units,
                 game.peak_units,
+                game.final_value,
+                game.peak_value,
                 game.mean_level,
                 game.max_level,
                 game.level_ups,
@@ -1782,6 +1797,7 @@ fn insert_games(tx: &Connection, battle_id: &str, detail: &MatchDetail) -> Resul
                 game.techs,
                 game.cards,
                 game.opening,
+                game.opening_meeting.map(mechabellum::Meeting::label),
                 serde_json::to_string(&game)?,
             ],
         )?;

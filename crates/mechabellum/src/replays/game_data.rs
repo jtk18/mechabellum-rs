@@ -90,6 +90,26 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
     })
 }
 
+/// Earliest version `list_price` was measured on.
+pub const LIST_PRICES_FROM: u32 = 2324;
+
+/// A unit's usual price in supply on the 2.0 board: the `SellSupply` most often recorded for it
+/// across the 13 2.0 matches on hand (versions 2324 and 2340, 2026-10-27). Units can cost less
+/// (specialists' discounts; free reinforcements read half) or more (one match's Tarantulas read
+/// 250), so a match's own records come first and this is the last resort. `None` for units not
+/// seen in those matches.
+pub fn list_price(unit_id: u32) -> Option<u32> {
+    Some(match base_id(unit_id) {
+        1 => 500, // Fortress
+        2 | 9 | 10 | 15 | 28 | 30 | 31 => 100,
+        3 | 23 | 27 => 400,
+        5 | 6 | 7 | 8 | 12 | 13 | 14 | 16 | 20 | 21 | 24 | 25 => 200,
+        17 => 800, // War Factory
+        18 | 19 | 22 | 26 | 32 => 300,
+        _ => return None,
+    })
+}
+
 /// Newest version whose XP caps were checked against replays. Balance patches change caps, so
 /// newer versions shouldn't be judged by this table until it's re-measured.
 pub const XP_TABLE_VERIFIED_THROUGH: u32 = 2324;
