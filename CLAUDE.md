@@ -7,9 +7,10 @@ what's still open, `docs/TODO.md` the backlog. `crates/tester/CLAUDE.md` covers 
 ## Commands
 
 ```sh
-# The local gate before any push
-cargo test -p mechabellum -p mechabellum-server
-cargo clippy -p mechabellum -p mechabellum-server --all-targets
+# The local gate before any push: the whole workspace, not only the crates touched
+(cd apps/desktop && npx --no-install vite build)   # the desktop crate embeds dist/
+cargo test --workspace --exclude mechabellum-tester  # the tester needs Windows
+cargo clippy --workspace --all-targets --exclude mechabellum-tester
 cargo fmt --check -p mechabellum -p mechabellum-server   # see "Formatting" below
 (cd apps/desktop && npx --no-install tsc --noEmit -p .)
 

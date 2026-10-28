@@ -1,7 +1,8 @@
 name: Release
 
 # Builds installers for every platform into a draft GitHub release. Push a tag like v0.2.0, or
-# run it by hand; review the draft, then publish it.
+# run it by hand; review the draft, then publish it. The tests run first, and nothing is built
+# if they fail.
 on:
   push:
     tags: ["v*"]
@@ -10,9 +11,55 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app reports the version in tauri.conf.json; a tag that disagrees would name the
+      # release one thing and the installers another.
+      - name: Tag matches the app version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match the app version $version in tauri.conf.json"
+            exit 1
+          fi
+
+      - name: Linux packages for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      # The desktop crate embeds the built frontend, so build it first.
+      - name: Build frontend
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run build
+
+      # The tester drives the game through Windows APIs and is left out, as in CI.
+      - name: Test
+        run: cargo test --workspace --exclude mechabellum-tester
+
   bundle:
     name: Bundle (${{ matrix.os }})
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +71,10 @@ jobs:
           - os: ubuntu-24.04
             args: ""
     runs-on: ${{ matrix.os }}
+    env:
+      # The macOS build is signed and notarized once these secrets exist; until then it's built
+      # unsigned. (A secret can't be read in an `if`, so its presence is passed through here.)
+      APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +98,29 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Bundle, signed and notarized
+        if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The Developer ID Application certificate, exported as .p12 and base64-encoded.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # Notarization: the Apple ID, an app-specific password for it, and the team ID.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+          releaseName: Mechabellum Stats ${{ github.ref_type == 'tag' && github.ref_name || format('build {0}', github.run_number) }}
+          releaseDraft: true
+          prerelease: ${{ github.ref_type != 'tag' }}
+          args: ${{ matrix.args }}
+
+      - name: Bundle
+        if: runner.os != 'macOS' || env.APPLE_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
