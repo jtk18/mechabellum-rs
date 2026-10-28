@@ -737,7 +737,7 @@ export async function openMatch(battleId: string, mainPlayerId: string | null, o
   detail = await invoke<MatchDetail>("match_detail", { battleId });
   const m = detail;
   bottom = Math.max(0, m.players.findIndex((p) => p.id === mainPlayerId));
-  // Open on round 1: the layout the match is classed by (J: judge the layout by round 1).
+  // Open on round 1: the layout the match is classed by.
   roundIndex = 0;
   selected = null;
   setupFrame(m);

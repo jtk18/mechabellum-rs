@@ -94,18 +94,16 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
 pub const LIST_PRICES_FROM: u32 = 2324;
 
 /// A unit's usual price in supply on the 2.0 board: the `SellSupply` most often recorded for it
-/// across the 13 2.0 matches on hand (versions 2324 and 2340, 2026-10-27), and J's prices for
-/// the big units (2026-10-27): "mountains cost the same amount as warfactories and abyss 800",
-/// "500 for overlords, 400 for all the giants". The replays agree where they have them (War
-/// Factory 800; Vulcan, Sandworm and Raiden 400). Their only Fortresses read 500, and that player
+/// across the 13 2.0 matches on hand (versions 2324 and 2340, 2026-10-27), and J's base prices
+/// for the big units (2026-10-27): Mountain, War Factory and Abyss 800, Overlord 500, the giants
+/// 400. The replays agree where they have them (War Factory 800; Vulcan, Sandworm and Raiden 400). Their only Fortresses read 500, and that player
 /// had Improved Fortress. Units can cost less (specialists' discounts; free reinforcements read
 /// half) or more (that Fortress; one match's Tarantulas read 250), so a match's own records come
 /// first and this is the last resort. `None` for units with neither (the Death Knells).
 pub fn list_price(unit_id: u32) -> Option<u32> {
     Some(match base_id(unit_id) {
         2 | 9 | 10 | 15 | 28 | 30 | 31 => 100,
-        // The giants (J: "fortress, melting point, vulcan, worm, raidan all are giants and 400
-        // base cost").
+        // The giants: Fortress, Vulcan, Melting Point, Sandworm, Raiden.
         1 | 3 | 4 | 23 | 27 => 400,
         11 => 500, // Overlord
         5 | 6 | 7 | 8 | 12 | 13 | 14 | 16 | 20 | 21 | 24 | 25 => 200,
@@ -242,11 +240,10 @@ mod tests {
 
     #[test]
     fn test_list_prices() {
-        // J: Mountain, War Factory and Abyss cost 800.
+        // The big units' base prices.
         assert_eq!(list_price(2002), Some(800));
         assert_eq!(list_price(17), Some(800));
         assert_eq!(list_price(29), Some(800));
-        // J: Overlord 500, every giant 400.
         assert_eq!(list_price(11), Some(500));
         for giant in [1, 3, 4, 23, 27] {
             assert_eq!(list_price(giant), Some(400), "unit {giant}");

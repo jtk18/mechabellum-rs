@@ -73,14 +73,16 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     Me / My opponents / Everyone view), each player's most used deployment in the match list, and
     in the match view each side's class per round, band lines on the board, and a whole-match
     strip under it (a fight tape that picks the round, the tale of the tape, units used).
-    A match is classed by round 1's layout (J, 2026-10-27: "use the positioning on round 1 not the
-    last round"; schema 11). The headline everywhere, the stats, and the match-against-match grid
-    use round 1; cards open on round 1. The per-fight classes stay on the fight tape and the round
-    bar. The desktop match view still opens on the last round, as before.
-    Sym and asym apply to midboard as well as aggressive, never to standard (J: "that's an asym
-    midboard; I'd hesitate to call anything asym standard"; schema 12). Checked on J's example,
-    the opponent's round 1 on Forest Eye (`20261027--67342143`): Asym midboard, lean -1. Backboard
-    isn't split until J rules on it.
+    A match is classed by round 1's layout, not the last round's (J, 2026-10-27; schema 11). The
+    headline everywhere, the stats, and the match-against-match grid use round 1; cards and the
+    desktop match view open on round 1. The per-fight classes stay on the fight tape and the round
+    bar.
+    Sym and asym apply to aggressive, standard depth and midboard (J, 2026-10-27; schemas 12 and
+    14): a one-sided standard-depth army is Asym mid aggro, a symmetric one Standard. Checked on
+    J's example, the opponent's round 1 on Forest Eye (`20261027--67342143`): Asym midboard,
+    lean -1. Backboard isn't split until J rules on it. Aggressive reaches 5 squares from the
+    zone's front edge (schema 14). Two one-sided 1v1 armies meet in an asym headbutt or on
+    opposite lanes.
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every

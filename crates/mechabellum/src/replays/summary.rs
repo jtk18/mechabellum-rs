@@ -18,9 +18,8 @@ use std::collections::BTreeMap;
 /// coordinates; only 2v2 and brawls reach past ±1,000.)
 pub const DEPLOYMENT_GEOMETRY_FROM: u32 = 2259;
 
-/// A unit is aggressive when its front edge is within this of the zone's front edge (J,
-/// 2026-10-27: "make aggressive within 5 squares from front"; it was 3, from "within 2-3 squares
-/// from the line").
+/// A unit is aggressive when its front edge is within this of the zone's front edge (J's rule,
+/// 2026-10-27; it was 3 squares before that).
 const AGGRESSIVE_REACH: i32 = 5 * GRID_SQUARE;
 /// Midboard is the ground right in front of the towers (J): from the towers' centers forward to
 /// this far in front of their front faces. Behind the towers' centers is backboard.
@@ -64,8 +63,8 @@ impl Depth {
     ];
 
     /// The class's name, by whether the army is grouped on one side. Standard depth has its own
-    /// pair (J, 2026-10-27): "standard is when the units are symmetrically distributed [...],
-    /// otherwise it's asym mid aggro". Nothing is "asym standard".
+    /// pair (J, 2026-10-27): symmetric is "Standard" and one-sided is "Asym mid aggro". No class
+    /// is called asym standard.
     fn label(self, asym: Option<bool>) -> &'static str {
         match (self, asym) {
             (Depth::Aggressive, Some(true)) => "Asym aggressive",
@@ -82,7 +81,7 @@ impl Depth {
 /// How two 1v1 deployments meet when both are grouped on one side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Meeting {
-    /// On the same lane, so the two armies meet head on (J: "we're in an asym headbutt").
+    /// On the same lane, so the two armies meet head on.
     #[serde(rename = "Asym headbutt")]
     Headbutt,
     /// On opposite lanes, so each army faces the other's empty side.
@@ -229,9 +228,9 @@ pub struct PlayerGame {
     pub techs: u32,
     /// Cards picked between rounds.
     pub cards: u32,
-    /// Round 1's deployment label: how the match is classed for this player (J, 2026-10-27:
-    /// judge the layout by round 1's positioning, not the last round's). `None` when round 1
-    /// isn't recorded or isn't classified; a later round never stands in for it.
+    /// Round 1's deployment label: how the match is classed for this player (J's rule,
+    /// 2026-10-27: round 1's positioning, not the last round's). `None` when round 1 isn't
+    /// recorded or isn't classified; a later round never stands in for it.
     pub opening: Option<String>,
     /// How round 1's deployments met (`FightSummary::meeting`).
     pub opening_meeting: Option<Meeting>,
@@ -674,8 +673,8 @@ mod tests {
         let mut split = one_side;
         split[4].x = 215;
         assert_eq!(classify(&split, Half::South).unwrap().label, "Sym midboard");
-        // At standard depth, symmetric is standard and one-sided is asym mid aggro (J): nothing is
-        // "asym standard".
+        // At standard depth, symmetric is standard and one-sided is asym mid aggro; no class is
+        // called asym standard.
         let standard = [unit(2, -100, -80), unit(2, 0, -80), unit(2, 100, -80)];
         let d = classify(&standard, Half::South).unwrap();
         assert_eq!((d.label.as_str(), d.lean), ("Standard", Some(0.0)));
@@ -712,8 +711,8 @@ mod tests {
         assert_eq!(classify(&[], Half::South), None);
     }
 
-    /// J's asym headbutt (2026-10-27): round 1 of 20261027--67347842, exactly as recorded (shared
-    /// frame). "Neither one of us is in standard -- we're in an asym headbutt."
+    /// The asym headbutt J pointed out (2026-10-27): round 1 of 20261027--67347842, exactly as
+    /// recorded (shared frame). Neither army is standard.
     #[test]
     fn test_asym_mid_aggro_and_headbutt() {
         let turned = |id, x, y| {
