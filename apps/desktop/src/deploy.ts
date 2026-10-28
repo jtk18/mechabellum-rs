@@ -46,11 +46,12 @@ export interface PlayerGame {
   peak_value: number | null;
   mean_level: number;
   max_level: number;
-  level_ups: number;
+  /** Null when the replay doesn't run from fight 1 (as for units_added). */
+  level_ups: number | null;
   units_added: number | null;
   units_sold: number | null;
   techs: number;
-  cards: number;
+  cards: number | null;
   /** Round 1's deployment label, which classes the match; null when round 1 isn't recorded. */
   opening: string | null;
   /** How round 1's deployments met. */
@@ -156,7 +157,7 @@ export const MEASURES: Record<string, string> = {
   "Fights won": "Fights won over the match, the last one included.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
-  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show.",
+  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show, else the unit's list price; an army with a unit no price is known for is left out.",
   "Peak army value": "The most supply any one fight's army was worth, by the same measure.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
@@ -172,13 +173,13 @@ export function renderTale(
   container: HTMLElement,
   heads: [HTMLElement, HTMLElement],
   names: [string, string],
-  rows: [string, number | null | undefined, number | null | undefined, number][],
+  rows: [string, number | null | undefined, number | null | undefined, number, string?][],
   note?: string,
 ) {
   heads[0].classList.add("tale-head", "left");
   heads[1].classList.add("tale-head", "right");
   const cells: HTMLElement[] = [heads[0], el("div"), heads[1]];
-  for (const [label, a, b, digits] of rows) {
+  for (const [label, a, b, digits, over] of rows) {
     if (a == null || b == null) continue;
     const max = Math.max(a, b) || 1;
     const track = (v: number, hi: boolean, side: string) => {
@@ -189,6 +190,8 @@ export function renderTale(
       return t;
     };
     const name = el("div", "tale-label", label);
+    // A row averaged over fewer results than the header says shows how many.
+    if (over) name.append(el("span", "tale-sub", over));
     // One keyboard stop per row, so the explanation is reachable without a mouse.
     name.tabIndex = 0;
     const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -201,7 +204,7 @@ export function renderTale(
     ];
     const tip: Tip = {
       title: label,
-      lines: [MEASURES[label] ?? "", `${names[0]}: ${fmt(a)}`, `${names[1]}: ${fmt(b)}`],
+      lines: [MEASURES[label] ?? "", `${names[0]}: ${fmt(a)}`, `${names[1]}: ${fmt(b)}`, ...(over ? [`Averaged over ${over} results.`] : [])],
       note,
     };
     // The whole row answers the hover, not just the label.

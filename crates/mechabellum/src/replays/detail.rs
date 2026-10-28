@@ -168,6 +168,9 @@ pub struct PlacedUnit {
     pub xp_to_next: Option<u32>,
     pub x: i32,
     pub y: i32,
+    /// False when the replay gives no position (1.x purchases that are never moved): the unit
+    /// counts, but isn't drawn or put in a band, and `x`, `y` are 0.
+    pub placed: bool,
     pub rotated: bool,
     /// Grid squares (width, depth) before rotation, when known.
     pub footprint: Option<(u8, u8)>,
@@ -286,9 +289,40 @@ fn unit_name(raw_id: &str) -> String {
     Unit::from_replay_id(raw_id).display_name()
 }
 
+/// Bounds on what a replay can claim for a unit. Real boards stay within ±1,000 replay units
+/// (only 2v2 and brawls reach past that) and levels in single digits; beyond these a file is
+/// crafted, and clamping keeps the geometry and level arithmetic in range.
+const POSITION_LIMIT: i32 = 100_000;
+const LEVEL_LIMIT: u32 = 1_000;
+/// The most a unit's `SellSupply` can plausibly be: the dearest units list at 800, and no 1.x
+/// replay shows more than 1,000. A higher value is treated as unknown, so one upload can't
+/// carry an army worth billions into the shared means.
+pub(crate) const MAX_UNIT_VALUE: u32 = 2_000;
+
+/// A unit's `SellSupply`, when it's a plausible one.
+fn unit_value(data: &UnitsNewUnitData) -> Option<u32> {
+    data.sell_supply
+        .trim()
+        .parse()
+        .ok()
+        .filter(|&value| value <= MAX_UNIT_VALUE)
+}
+
 fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
     let unit_id = base_unit_id(&data.id)?;
-    let level = data.level.trim().parse().unwrap_or(0);
+    let level = data
+        .level
+        .trim()
+        .parse::<u32>()
+        .unwrap_or(0)
+        .min(LEVEL_LIMIT);
+    let coordinate = |value: &str| {
+        value
+            .trim()
+            .parse::<i32>()
+            .unwrap_or(0)
+            .clamp(-POSITION_LIMIT, POSITION_LIMIT)
+    };
     Some(PlacedUnit {
         unit_id,
         name: unit_name(&data.id),
@@ -297,13 +331,14 @@ fn placed_unit(data: &UnitsNewUnitData) -> Option<PlacedUnit> {
         exp: data.exp.trim().parse().unwrap_or(0),
         // Star Expedition copies level at their own rates, so look up the raw ID.
         xp_to_next: xp_to_next_level(data.id.trim().parse().unwrap_or(unit_id), level),
-        x: data.position.x.trim().parse().unwrap_or(0),
-        y: data.position.y.trim().parse().unwrap_or(0),
+        x: coordinate(&data.position.x),
+        y: coordinate(&data.position.y),
+        placed: !data.position.x.trim().is_empty() && !data.position.y.trim().is_empty(),
         rotated: data.is_rotate.trim().eq_ignore_ascii_case("true"),
         footprint: footprint(unit_id),
         is_new: false,
         xp_gained: None,
-        value: data.sell_supply.trim().parse().ok(),
+        value: unit_value(data),
         equipment: data
             .equipments
             .ids(&data.equipment_id)
@@ -445,10 +480,8 @@ fn unit_prices(players: &[&PlayerRecord]) -> (Vec<BTreeMap<u32, u32>>, BTreeMap<
             let mut prices = BTreeMap::new();
             for record in &player.player_round_records.player_round_record {
                 for unit in &record.player_data.units.new_unit_data {
-                    let (Some(unit_id), Ok(value)) = (
-                        base_unit_id(&unit.id),
-                        unit.sell_supply.trim().parse::<u32>(),
-                    ) else {
+                    let (Some(unit_id), Some(value)) = (base_unit_id(&unit.id), unit_value(unit))
+                    else {
                         continue;
                     };
                     prices.insert(unit_id, value);

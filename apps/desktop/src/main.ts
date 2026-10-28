@@ -110,13 +110,17 @@ interface ArmyMeans {
   peak_units: number;
   final_value: number | null;
   peak_value: number | null;
+  /** Results with every fight priced: the value means are over these. */
+  priced: number;
   mean_level: number;
   max_level: number;
-  level_ups: number;
+  /** Over the `complete` results: replays that run from fight 1, outside AsyncBattle. */
+  level_ups: number | null;
+  complete: number;
   units_added: number | null;
   units_sold: number | null;
   techs: number;
-  cards: number;
+  cards: number | null;
 }
 
 /** Units a player's starter pack put on the board for round 1. */
@@ -636,7 +640,8 @@ function renderDeployments(g: GameStats) {
       deploymentPill(d.label),
       el("div", "num", String(d.results)),
       small ? record : winBar(d.results ? d.wins / d.results : 0.5),
-      el("div", "num", small ? `${d.round_one_wins}–${d.results - d.round_one_wins}` : pct(d.round_one_wins / d.results)),
+      // "n of m", not a record: a drawn round 1 is neither a win nor a loss.
+      el("div", "num", small ? `${d.round_one_wins} of ${d.results}` : pct(d.round_one_wins / d.results)),
     ];
     const tip: Tip = {
       title: `${d.label} in round 1`,
@@ -726,19 +731,23 @@ function renderArmy(g: GameStats) {
     h.dataset.tip = JSON.stringify(tip);
     return h;
   };
+  // A row over fewer results than the headers says how many, winners then losers.
+  const over = (a: number, b: number) => (a < w.results || b < l.results ? `${a} of ${w.results} · ${b} of ${l.results}` : undefined);
+  const priced = over(w.priced, l.priced);
+  const complete = over(w.complete, l.complete);
   renderTale($("army"), [head("Winners", w.results, "won"), head("Losers", l.results, "lost")], ["Winners' mean", "Losers' mean"], [
     ["Final army", w.final_units, l.final_units, 1],
     ["Peak army", w.peak_units, l.peak_units, 1],
-    ["Army value", w.final_value, l.final_value, 0],
-    ["Peak army value", w.peak_value, l.peak_value, 0],
+    ["Army value", w.final_value, l.final_value, 0, priced],
+    ["Peak army value", w.peak_value, l.peak_value, 0, priced],
     ["Mean level", w.mean_level, l.mean_level, 1],
     ["Top level", w.max_level, l.max_level, 1],
-    ["Level-ups", w.level_ups, l.level_ups, 1],
-    ["Units added", w.units_added, l.units_added, 1],
-    ["Units sold", w.units_sold, l.units_sold, 1],
+    ["Level-ups", w.level_ups, l.level_ups, 1, complete],
+    ["Units added", w.units_added, l.units_added, 1, complete],
+    ["Units sold", w.units_sold, l.units_sold, 1, complete],
     ["Techs", w.techs, l.techs, 1],
-    ["Cards picked", w.cards, l.cards, 1],
-  ], "Means per player result, not capped per uploader. Units added and sold leave out AsyncBattle, whose opponents' rounds come from other games.");
+    ["Cards picked", w.cards, l.cards, 1, complete],
+  ], "Means per player result, not capped per uploader. A row marked \"n of N\" is over fewer results: army value needs every unit priced, and level-ups, units added and sold, and cards picked need the replay from fight 1 (some start mid-match; AsyncBattle rounds come from other games).");
 }
 
 function renderLengths(g: GameStats) {
@@ -769,17 +778,22 @@ function renderUsed(g: GameStats) {
   const container = $("used");
   // Centre the bars on the share of results that won in these filters: a brawl has three losers
   // per winner, so under all modes 50% would paint nearly every unit as losing.
-  const base = g.winners && g.losers ? g.winners.results / (g.winners.results + g.losers.results) : 0.5;
-  const heads = ["Unit", "Used", `Win rate (centre ${pct(base)})`, "Kept", "Sold", "Top level"].map((h, i) => el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h));
-  heads[2].dataset.tip = JSON.stringify({ title: "Win rate", lines: ["Bars grow from the share of all player results in these filters that won."] } satisfies Tip);
+  const won = g.winners?.results ?? 0;
+  const counted = won + (g.losers?.results ?? 0);
+  const base = counted ? won / counted : 0.5;
+  const heads = ["Unit", "Used", `Win rate (centre ${pct(base)})`, "Kept", "Sold", "Mean top level"].map((h, i) => el("div", `head${i === 0 || i === 2 ? "" : " num"}`, h));
+  heads[2].dataset.tip = JSON.stringify({ title: "Win rate", lines: ["Bars grow from the share of all player results in these filters that won.", `Under ${SMALL_SAMPLE} games a unit shows its record (wins–losses) instead: a game or two only allows 0% or 100%.`] } satisfies Tip);
+  heads[5].dataset.tip = JSON.stringify({ title: "Mean top level", lines: ["The highest level any copy reached in a match, averaged over the results that fielded the unit."] } satisfies Tip);
   const rows = g.units.slice(0, 40).flatMap((u) => {
     const name = el("div", "name");
     name.append(nameIcon(art.unitIconByName(u.name)), el("span", "", u.name));
+    const small = u.games < SMALL_SAMPLE;
     const cells = [
       name,
       el("div", "num", pct(u.use_rate)),
-      winBar(u.win_rate, base),
-      el("div", "num", pct(u.games ? u.kept / u.games : 0)),
+      // A handful of games only allows a few rates (1-0 reads 100%), so show the record instead.
+      small ? el("div", "record", `${u.wins}–${u.games - u.wins}`) : winBar(u.win_rate, base),
+      el("div", "num", small ? `${u.kept} of ${u.games}` : pct(u.games ? u.kept / u.games : 0)),
       el("div", "num", `${u.sold} of ${u.added}`),
       el("div", "num", u.mean_max_level.toFixed(1)),
     ];
@@ -790,10 +804,10 @@ function renderUsed(g: GameStats) {
         `Still fielded in the last fight in ${u.kept} of them`,
         `Up to ${u.mean_peak.toFixed(1)} copies at once on average; ${u.sold} of ${u.added} added copies sold`,
       ],
-      note: u.games < SMALL_SAMPLE ? `Fewer than ${SMALL_SAMPLE} games: treat the win rate as noise.` : undefined,
+      note: small ? `Fewer than ${SMALL_SAMPLE} games: shown as wins–losses, too few for a rate.` : undefined,
     };
     for (const c of cells) {
-      if (u.games < SMALL_SAMPLE) c.classList.add("muted");
+      if (small) c.classList.add("muted");
       c.dataset.tip = JSON.stringify(tip);
     }
     return cells;

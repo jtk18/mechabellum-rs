@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS matches (
     map_id      TEXT NOT NULL,
     rounds      INTEGER NOT NULL,
     occurred_on TEXT NOT NULL,
-    ingested_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    ingested_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    -- 0 when the replay doesn't say who won (mechabellum's results_settled): kept for the match
+    -- list, left out of every stat.
+    settled     INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS players (
     battle_id TEXT NOT NULL REFERENCES matches(battle_id) ON DELETE CASCADE,
@@ -94,12 +97,13 @@ CREATE TABLE IF NOT EXISTS player_games (
     peak_value  INTEGER,
     mean_level  REAL NOT NULL,
     max_level   INTEGER NOT NULL,
-    level_ups   INTEGER NOT NULL,
-    -- NULL in AsyncBattle, whose opponents' rounds don't follow on from each other.
+    -- NULL unless the fights run from the first without a gap, and in AsyncBattle, whose
+    -- opponents' rounds don't follow on from each other.
+    level_ups   INTEGER,
     units_added INTEGER,
     units_sold  INTEGER,
     techs       INTEGER NOT NULL,
-    cards       INTEGER NOT NULL,
+    cards       INTEGER,
     -- Round 1's deployment label, which classes the match for this player.
     opening     TEXT,
     -- How round 1's deployments met when both were one-sided (an asym headbutt).
@@ -196,8 +200,10 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// (asym headbutt), and army values in supply. 15: base prices for the big units (Mountain, War
 /// Factory and Abyss 800, Overlord 500, giants 400). 16: three bands; standard is a symmetric
 /// midboard army, Asym mid aggro a one-sided one. 17: asym armies on opposite lanes are an asym
-/// crossfire.
-const SCHEMA_VERSION: i64 = 17;
+/// crossfire. 18: implausible positions, levels and sell values are bounded; level-ups and cards
+/// need fights from the first; a pre-2340 result needs the round before the last; matches that
+/// don't say who won (`matches.settled`) leave the stats.
+const SCHEMA_VERSION: i64 = 18;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -326,11 +332,15 @@ pub(crate) const SCOPE: &str = "WITH scope AS (
       AND (?4 IS NULL OR m.game_mode = ?4)
       AND (?5 IS NULL OR p.player_id = ?5)
       AND (?6 IS NULL OR (p.player_id != ?6 AND EXISTS (
-          SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6)))
+          SELECT 1 FROM players me WHERE me.battle_id = p.battle_id AND me.player_id = ?6
+          -- Teams aren't stored; a 2v2 teammate shares the result, an opponent doesn't.
+          AND (m.match_mode != 'VS_2_2' OR me.won IS NOT p.won))))
       AND (?7 = 0 OR m.battle_id IN (
           SELECT battle_id FROM match_copies GROUP BY battle_id
           HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2))
-      AND (?8 = 1 OR instr(m.battle_id, '__') = 0))";
+      AND (?8 = 1 OR instr(m.battle_id, '__') = 0)
+      -- A match whose replay doesn't say who won can't count toward any rate.
+      AND m.settled = 1)";
 
 impl StatsFilter {
     pub(crate) fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
@@ -514,6 +524,22 @@ pub struct MatchCopy {
     pub at: String,
 }
 
+/// Runs parser work on one replay with a panic turned into an error. A crafted replay that trips
+/// an unchecked assumption must cost that replay alone: never a whole rebuild (every command
+/// upgrades first, so a panic there would stop the server starting) or a request.
+fn contained<T>(battle_id: &str, work: impl FnOnce() -> Result<T>) -> Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or_else(|panic| {
+        let message = panic
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_owned())
+            .or_else(|| panic.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        Err(anyhow::anyhow!(
+            "{battle_id}: the parser panicked: {message}"
+        ))
+    })
+}
+
 /// What every copy of a match must agree on: each round's armies (unit, position, level, XP,
 /// rotation), HP, and results. Names, and anything only one client records, are left out.
 fn fingerprint(record: &BattleRecord) -> String {
@@ -619,6 +645,14 @@ impl Store {
         if !players_have_packs {
             conn.execute_batch("ALTER TABLE players ADD COLUMN starter_pack TEXT")?;
         }
+        let matches_settled = conn
+            .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'settled'")?
+            .exists([])?;
+        if !matches_settled {
+            conn.execute_batch(
+                "ALTER TABLE matches ADD COLUMN settled INTEGER NOT NULL DEFAULT 1",
+            )?;
+        }
         let store = Store {
             conn: Mutex::new(conn),
         };
@@ -688,7 +722,7 @@ impl Store {
             document.len()
         );
         let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
-        let detail = record.match_detail();
+        let detail = contained(&source.display().to_string(), || Ok(record.match_detail()))?;
         let battle_id = match record.battle_info.battle_id.trim() {
             "" | "0" => format!("sha256:{:x}", Sha256::digest(document.as_bytes())),
             id => id.to_owned(),
@@ -705,7 +739,9 @@ impl Store {
         if exists {
             return Ok(IngestOutcome::Duplicate { battle_id });
         }
-        insert_record(&tx, &battle_id, &record, &detail, uploaded_by)?;
+        contained(&battle_id, || {
+            insert_record(&tx, &battle_id, &record, &detail, uploaded_by)
+        })?;
         // A blob with no match row is left from a failed rebuild; this copy replaces it.
         tx.execute(
             "INSERT OR REPLACE INTO replay_blobs (battle_id, xml_gz) VALUES (?1, ?2)",
@@ -1331,7 +1367,7 @@ impl Store {
         let mut xml = String::new();
         GzDecoder::new(gz.as_slice()).read_to_string(&mut xml)?;
         let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
-        Ok(Some(record.match_detail()))
+        contained(battle_id, || Ok(record.match_detail())).map(Some)
     }
 
     /// Like `stats`, but broken down by game version. The filter's version bounds still apply.
@@ -1398,17 +1434,21 @@ impl Store {
 
     pub fn facets(&self) -> Result<Facets> {
         let conn = self.conn();
+        // Counts are of the matches the stats count by default (SCOPE): with players, settled,
+        // not offline. Every version and mode is still listed, so offline-only ones can be picked.
+        const COUNTED: &str = "settled = 1 AND instr(battle_id, '__') = 0
+            AND EXISTS (SELECT 1 FROM players p WHERE p.battle_id = matches.battle_id)";
         let versions = conn
-            .prepare(
-                "SELECT version, COUNT(*) FROM matches GROUP BY version ORDER BY version DESC",
-            )?
+            .prepare(&format!(
+                "SELECT version, SUM({COUNTED}) FROM matches GROUP BY version ORDER BY version DESC"
+            ))?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         let modes = conn
-            .prepare(
-                "SELECT match_mode, game_mode, COUNT(*) FROM matches
-                 GROUP BY match_mode, game_mode ORDER BY COUNT(*) DESC",
-            )?
+            .prepare(&format!(
+                "SELECT match_mode, game_mode, SUM({COUNTED}) FROM matches
+                 GROUP BY match_mode, game_mode ORDER BY SUM({COUNTED}) DESC, COUNT(*) DESC"
+            ))?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<_>>()?;
         // "Me": the account the game says is logged in here, once it has a stored match.
@@ -1489,11 +1529,11 @@ impl Store {
                     Path::new(battle_id),
                 )?)
             })();
-            match parsed {
-                Ok(record) => {
-                    let detail = record.match_detail();
-                    Some((record, detail))
-                }
+            match parsed.and_then(|record| {
+                let detail = contained(battle_id, || Ok(record.match_detail()))?;
+                Ok((record, detail))
+            }) {
+                Ok(parsed) => Some(parsed),
                 // Keep the rest of the database usable if one stored replay is unreadable.
                 Err(e) => {
                     log::warn!("reindex {battle_id}: {e:#}");
@@ -1544,13 +1584,15 @@ impl Store {
             // One record that won't insert is logged and skipped, not allowed to undo the rest:
             // every command upgrades first, so a failure here would stop the server starting.
             let savepoint = tx.savepoint()?;
-            match insert_record(
-                &savepoint,
-                battle_id,
-                record,
-                detail,
-                uploaded_by.as_deref(),
-            ) {
+            match contained(battle_id, || {
+                insert_record(
+                    &savepoint,
+                    battle_id,
+                    record,
+                    detail,
+                    uploaded_by.as_deref(),
+                )
+            }) {
                 Ok(()) => {
                     savepoint.commit()?;
                     inserted += 1;
@@ -1738,8 +1780,9 @@ fn insert_record(
     let overview = record.get_battle_overview()?;
     tx.execute(
         "INSERT INTO matches
-             (battle_id, version, match_mode, game_mode, map_id, rounds, occurred_on, uploaded_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (battle_id, version, match_mode, game_mode, map_id, rounds, occurred_on, uploaded_by,
+              settled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             battle_id,
             overview.version,
@@ -1749,6 +1792,7 @@ fn insert_record(
             overview.rounds as i64,
             overview.occurred_on,
             uploaded_by,
+            record.results_settled(),
         ],
     )?;
     let sides = overview
@@ -1923,4 +1967,21 @@ fn insert_player(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_a_parser_panic_is_one_replay_error() {
+        let err = contained("b1", || -> Result<()> {
+            panic!("attempt to add with overflow")
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("b1"), "{err}");
+        assert!(err.to_string().contains("overflow"), "{err}");
+        assert_eq!(contained("b2", || Ok(7)).unwrap(), 7);
+        assert!(contained("b3", || -> Result<()> { anyhow::bail!("plain error") }).is_err());
+    }
 }

@@ -101,6 +101,7 @@
   .vs .h { color: var(--muted); font-size: 12px; }
   .vs .l { text-align: right; }
   .vs .label { color: var(--text-2); text-align: center; white-space: nowrap; font-size: 12px; }
+  .vs .label small { display: block; color: var(--muted); font-size: 11px; }
   .vs .t { height: 6px; display: flex; }
   .vs .t.l { justify-content: flex-end; }
   .vs .t span { display: block; height: 100%; border-radius: 3px; background: #4a555d; }
@@ -155,7 +156,7 @@
     <section class="panel">
       <h2>Deployment against deployment <small>round 1 layouts; match win rate of the row</small></h2>
       <div class="scroll"><table class="matrix" id="matchups" aria-label="Deployment matchups"></table></div>
-      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 matches, shown as wins–losses</span></div>
+      <div class="legend" aria-hidden="true"><span>25% or less</span><span class="ramp"></span><span>75% or more</span><span>Striped: fewer than 10 results, shown as wins–losses; mirror cells give the match count</span></div>
       <p class="note" id="meetings" title="Asym headbutt: both armies grouped on the same lane of the board, so they meet head on. Asym crossfire: on opposite lanes, so each faces the other's empty side."></p>
     </section>
     <section class="panel">
@@ -165,6 +166,7 @@
     <section class="panel">
       <h2>Winners and losers <small>mean per player result</small></h2>
       <div class="vs" id="army"></div>
+      <p class="note">A row marked "n of N" is over fewer results: army value needs every unit priced, and level-ups, units added and sold, and cards picked need the replay from fight 1.</p>
     </section>
     <section class="panel">
       <h2>Units used <small>at any point in a match</small></h2>
@@ -324,7 +326,8 @@ function renderDeployments(g) {
     else win.append(winBar(rate(d.wins, d.results)));
     tr.title = `${d.label} in round 1: won ${d.wins} of ${d.results} player results, and round 1 itself in ${d.round_one_wins}`;
     tr.append(labelCell(d.label), el("td", "", d.results.toLocaleString()), win,
-      el("td", "", small ? `${d.round_one_wins}–${d.results - d.round_one_wins}` : pct(rate(d.round_one_wins, d.results))));
+      // "won n of m", not a record: a drawn round 1 is neither a win nor a loss.
+      el("td", "", small ? `${d.round_one_wins} of ${d.results}` : pct(rate(d.round_one_wins, d.results))));
     return tr;
   });
   table.replaceChildren(head, ...rows);
@@ -415,7 +418,7 @@ const MEASURES = {
   "Fights won": "Fights won over the match, the last one included.",
   "Final army": "Units fielded in the last fight.",
   "Peak army": "Most units fielded in any one fight.",
-  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show.",
+  "Army value": "Supply the last fight's army was worth: each unit's sell value as the game records it, discounts and half-price free units included. Upgrades and techs aren't in it. Units bought in the last round take the price their other copies in the match show, else the unit's list price; an army with a unit no price is known for is left out.",
   "Peak army value": "The most supply any one fight's army was worth, by the same measure.",
   "Mean level": "Average level of the units in the last fight. Level 1 is a unit never upgraded.",
   "Top level": "Highest level of any unit in the last fight.",
@@ -433,17 +436,22 @@ function renderArmy(g) {
   const parts = [el("div", "h l", `Winners (${w.results})`), el("div"), el("div"), el("div"), el("div", "h", `Losers (${l.results})`)];
   parts[0].title = `Means over the ${w.results} player results that won their match, in these filters`;
   parts[4].title = `Means over the ${l.results} player results that lost their match, in these filters`;
-  const rows = [["Final army", "final_units"], ["Peak army", "peak_units"], ["Army value", "final_value", 0], ["Peak army value", "peak_value", 0],
-    ["Mean level", "mean_level"], ["Top level", "max_level"], ["Level-ups", "level_ups"], ["Units added", "units_added"], ["Units sold", "units_sold"],
-    ["Techs", "techs"], ["Cards picked", "cards"]];
-  for (const [label, key, digits = 1] of rows) {
+  // A row over fewer results than the headers says how many, winners then losers.
+  const over = (key) => (w[key] < w.results || l[key] < l.results ? `${w[key]} of ${w.results} · ${l[key]} of ${l.results}` : "");
+  const rows = [["Final army", "final_units"], ["Peak army", "peak_units"], ["Army value", "final_value", 0, "priced"], ["Peak army value", "peak_value", 0, "priced"],
+    ["Mean level", "mean_level"], ["Top level", "max_level"], ["Level-ups", "level_ups", 1, "complete"], ["Units added", "units_added", 1, "complete"],
+    ["Units sold", "units_sold", 1, "complete"], ["Techs", "techs"], ["Cards picked", "cards", 1, "complete"]];
+  for (const [label, key, digits = 1, count] of rows) {
     const fmt = (v) => v.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
     const a = w[key], b = l[key];
     if (a == null || b == null) continue;
     const max = Math.max(a, b) || 1;
     const track = (v, hi, side) => { const t = el("div", "t " + side); const s = el("span", hi ? "hi" : ""); s.style.width = `${(v / max) * 100}%`; t.append(s); return t; };
-    const row = [el("div", "l" + (a > b ? " hi" : ""), fmt(a)), track(a, a > b, "l"), el("div", "label", label), track(b, b > a, "r"), el("div", b > a ? "hi" : "", fmt(b))];
-    for (const cell of row) cell.title = `${label}: ${MEASURES[label]}\nWinners' mean ${fmt(a)}, losers' mean ${fmt(b)}`;
+    const sub = count ? over(count) : "";
+    const name = el("div", "label", label);
+    if (sub) name.append(el("small", "", sub));
+    const row = [el("div", "l" + (a > b ? " hi" : ""), fmt(a)), track(a, a > b, "l"), name, track(b, b > a, "r"), el("div", b > a ? "hi" : "", fmt(b))];
+    for (const cell of row) cell.title = `${label}: ${MEASURES[label]}\nWinners' mean ${fmt(a)}, losers' mean ${fmt(b)}${sub ? `\nAveraged over ${sub} results.` : ""}`;
     parts.push(...row);
   }
   box.replaceChildren(...parts);
@@ -453,18 +461,24 @@ function renderArmy(g) {
 function renderUsed(g) {
   const table = $("used");
   const head = el("tr");
-  for (const h of ["Unit", "Used", "Win rate", "Kept", "Sold", "Top level"]) head.append(el("th", "", h));
+  for (const h of ["Unit", "Used", "Win rate", "Kept", "Sold", "Mean top level"]) head.append(el("th", "", h));
   // Centre the bars on the share of results that won in these filters: a brawl has three losers
   // per winner, so under all modes 50% would paint nearly every unit as losing.
-  const base = g.winners && g.losers ? g.winners.results / (g.winners.results + g.losers.results) : 0.5;
+  const won = g.winners ? g.winners.results : 0;
+  const counted = won + (g.losers ? g.losers.results : 0);
+  const base = counted ? won / counted : 0.5;
   head.children[2].textContent = `Win rate (centre ${pct(base)})`;
-  head.children[2].title = "Bars grow from the share of all player results in these filters that won";
+  head.children[2].title = `Bars grow from the share of all player results in these filters that won. Under ${SMALL} games a unit shows its record (wins–losses) instead.`;
+  head.children[5].title = "The highest level any copy reached in a match, averaged over the results that fielded the unit";
   const rows = g.units.slice(0, 40).map((u) => {
     const tr = el("tr", u.games < SMALL ? "row-small" : "");
+    const small = u.games < SMALL;
     const win = el("td", "barcell");
-    win.append(winBar(u.win_rate, base));
+    // A handful of games only allows a few rates (1-0 reads 100%), so show the record instead.
+    if (small) win.append(el("span", "muted", `${u.wins}–${u.games - u.wins}`));
+    else win.append(winBar(u.win_rate, base));
     tr.title = `${u.name}: fielded in ${u.games} results, won ${u.wins}; up to ${u.mean_peak.toFixed(1)} copies on average`;
-    tr.append(el("td", "", u.name), el("td", "", pct(u.use_rate)), win, el("td", "", pct(rate(u.kept, u.games))),
+    tr.append(el("td", "", u.name), el("td", "", pct(u.use_rate)), win, el("td", "", small ? `${u.kept} of ${u.games}` : pct(rate(u.kept, u.games))),
       el("td", "", `${u.sold} of ${u.added}`), el("td", "", u.mean_max_level.toFixed(1)));
     return tr;
   });

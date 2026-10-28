@@ -5,10 +5,10 @@
 //! round has no record after it, so its army is rebuilt here by replaying that round's actions
 //! onto its starting snapshot.
 //!
-//! Replaying every earlier round and comparing with the next record reproduces 99.2% of units
-//! exactly across 473 replays (versions 1425-2324). The misses: units sold by a commander skill
-//! whose ID the replay hides, cards that add units which are never moved afterwards, and older
-//! replays' purchases that are never moved (those record no position).
+//! Replaying every earlier round and comparing with the next record reproduces every round of
+//! the 13 2.0 replays on hand (184 of 184, 2,801 units) and 99.7% of units across the 473 1.x
+//! replays (5,944 of 6,156 rounds exact). 1.x records no buy positions, so a purchase is placed
+//! by its move; the misses are mostly cards that add units which are never moved afterwards.
 
 use super::battle_record::{
     MatchActionData, PlayerData, PlayerDataUnitsNewUnitDataPosition, UnitEquipment,
@@ -19,47 +19,110 @@ use super::names::GameNames;
 
 use std::collections::BTreeMap;
 
-/// Replay one round's deployment actions onto the army it started with. Units whose position
-/// is unknown are left out.
+/// Replay one round's deployment actions onto the army it started with. A unit the replay gives
+/// no position (older replays record none for a purchase that's never moved) is kept with an
+/// empty one: it's in the army and its value, but can't be drawn or put in a band.
+///
+/// Purchases take the next free unit indices in order, but unit cards and summoning skills take
+/// indices too, and the replay doesn't say how many. Every `MoveUnit` names an index and the unit
+/// type there, so the count each card or summon took is chosen to agree with the most of those
+/// facts (see `align_claims`). Skills gained during the round (skill cards, and blueprints named
+/// after a skill) add skill slots, so a hidden skill ID released through a new slot resolves too.
 pub(crate) fn replay_deployment(
     start: &PlayerData,
     actions: &[MatchActionData],
 ) -> Vec<UnitsNewUnitData> {
-    let mut deploy = Deployment {
-        units: start
-            .units
-            .new_unit_data
-            .iter()
-            .filter_map(|u| Some((u.index.trim().parse().ok()?, u.clone())))
-            .collect(),
-        next_index: start.unit_index.trim().parse().unwrap_or(0),
-        bought: Vec::new(),
-    };
-    let skills: BTreeMap<&str, &str> = start
+    let actions = standing_actions(actions);
+    let mut units: BTreeMap<i64, UnitsNewUnitData> = start
+        .units
+        .new_unit_data
+        .iter()
+        .filter_map(|u| Some((u.index.trim().parse().ok()?, u.clone())))
+        .collect();
+    let first_index: i64 = start.unit_index.trim().parse().unwrap_or(0);
+    let claimed = align_claims(&actions, &units, first_index);
+    let mut slots: BTreeMap<u32, String> = start
         .commander_skills
         .commander_skill_data
         .iter()
-        .map(|s| (s.index.trim(), s.id.trim()))
+        .filter_map(|s| Some((s.index.trim().parse().ok()?, s.id.trim().to_owned())))
         .collect();
-    let mut history: Vec<Deployment> = Vec::new();
 
-    for action in actions {
-        let kind = action.xsi_type.trim_start_matches("PAD_");
-        match kind {
-            "Undo" => {
-                if let Some(previous) = history.pop() {
-                    deploy = previous;
+    let mut next_index = first_index;
+    // Indices of this round's purchases, in order.
+    let mut bought: Vec<i64> = Vec::new();
+    for (position, action) in actions.iter().enumerate() {
+        next_index += claimed.get(&position).copied().unwrap_or(0);
+        match action.xsi_type.trim_start_matches("PAD_") {
+            "ChooseReinforceItem" | "ActiveBlueprint" => {
+                if let Some(skill) = skill_gained(action) {
+                    let slot = slots.keys().next_back().map_or(0, |last| last + 1);
+                    slots.insert(slot, skill.to_string());
                 }
-                continue;
             }
-            "FinishDeploy" => continue,
-            _ => history.push(deploy.clone()),
-        }
-        match kind {
-            "BuyUnit" => deploy.buy(action),
-            "MoveUnit" => deploy.moves(action),
+            "BuyUnit" => {
+                let Some(unit_id) = action.uid.as_deref().map(str::trim) else {
+                    continue;
+                };
+                let position = action
+                    .buy_position
+                    .as_ref()
+                    .map(|p| (p.x.trim(), p.y.trim()))
+                    .unwrap_or(("", ""));
+                // Past any index a card's unit, first seen when moved, already holds.
+                while units.contains_key(&next_index) {
+                    next_index += 1;
+                }
+                units.insert(next_index, new_unit(unit_id, next_index, position, false));
+                bought.push(next_index);
+                next_index += 1;
+            }
+            "MoveUnit" => {
+                let Some(moves) = &action.move_unit_datas else {
+                    continue;
+                };
+                for m in &moves.move_unit_data {
+                    let Ok(i) = m.unit_index.trim().parse::<i64>() else {
+                        continue;
+                    };
+                    let position = (m.position.x.trim(), m.position.y.trim());
+                    let rotated = m.is_rotate.trim().eq_ignore_ascii_case("true");
+                    match units.get_mut(&i) {
+                        Some(unit) => {
+                            unit.position.x = position.0.to_owned();
+                            unit.position.y = position.1.to_owned();
+                            unit.is_rotate = rotated.to_string();
+                        }
+                        None => {
+                            // A purchase of this type not yet placed (older replays record no
+                            // buy position) took another index than the one it's moved under:
+                            // this move places it.
+                            let unplaced = bought.iter().copied().find(|b| {
+                                units.get(b).is_some_and(|u| {
+                                    u.id.trim() == m.unit_id.trim()
+                                        && u.position.x.trim().is_empty()
+                                })
+                            });
+                            let mut unit = match unplaced.and_then(|b| units.remove(&b)) {
+                                Some(unit) => {
+                                    bought.retain(|b| Some(*b) != unplaced);
+                                    unit
+                                }
+                                // A unit a card or skill added this round: first seen when moved.
+                                None => new_unit(m.unit_id.trim(), i, position, rotated),
+                            };
+                            unit.index = i.to_string();
+                            unit.position.x = position.0.to_owned();
+                            unit.position.y = position.1.to_owned();
+                            unit.is_rotate = rotated.to_string();
+                            units.insert(i, unit);
+                            next_index = next_index.max(i + 1);
+                        }
+                    }
+                }
+            }
             "UpgradeUnit" => {
-                if let Some(unit) = index(&action.uidx).and_then(|i| deploy.units.get_mut(&i)) {
+                if let Some(unit) = index(&action.uidx).and_then(|i| units.get_mut(&i)) {
                     let level: u32 = unit.level.trim().parse().unwrap_or(0);
                     // Upgrading spends the XP bar: what's left over carries into the new level.
                     let exp: u32 = unit.exp.trim().parse().unwrap_or(0);
@@ -70,11 +133,11 @@ pub(crate) fn replay_deployment(
                         .ok()
                         .and_then(|id| xp_to_next_level(id, level));
                     unit.exp = exp.saturating_sub(cap.unwrap_or(exp)).to_string();
-                    unit.level = (level + 1).to_string();
+                    unit.level = level.saturating_add(1).to_string();
                 }
             }
             "UseEquipment" => {
-                let unit = index(&action.unit_index).and_then(|i| deploy.units.get_mut(&i));
+                let unit = index(&action.unit_index).and_then(|i| units.get_mut(&i));
                 if let (Some(unit), Some(id)) = (unit, &action.equipment_id) {
                     unit.equipments.equipment.push(UnitEquipment {
                         data: id.trim().to_owned(),
@@ -88,14 +151,14 @@ pub(crate) fn replay_deployment(
                     .as_deref()
                     .map(str::trim)
                     .filter(|id| !id.is_empty() && *id != "0")
+                    .map(str::to_owned)
                     .or_else(|| {
-                        skills
-                            .get(action.skill_index.as_deref().unwrap_or("").trim())
-                            .copied()
+                        let slot = action.skill_index.as_deref()?.trim().parse().ok()?;
+                        slots.get(&slot).cloned()
                     });
-                if id.is_some_and(sells_unit) {
+                if id.as_deref().is_some_and(sells_unit) {
                     if let Some(i) = index(&action.unit_index) {
-                        deploy.units.remove(&i);
+                        units.remove(&i);
                     }
                 }
             }
@@ -103,11 +166,143 @@ pub(crate) fn replay_deployment(
         }
     }
 
-    deploy
-        .units
-        .into_values()
-        .filter(|u| !u.position.x.trim().is_empty() && !u.position.y.trim().is_empty())
-        .collect()
+    units.into_values().collect()
+}
+
+/// Most unit indices one unit card can take (cards give one to four units), and one summoning
+/// skill.
+const MAX_CARD_UNITS: i64 = 4;
+const MAX_SUMMONED: i64 = 2;
+/// Cards and summons whose counts are searched; any beyond these take none. Real rounds have one
+/// or two, and the search grows as 5^n.
+const MAX_CLAIMS_SEARCHED: usize = 5;
+
+/// How many unit indices each unit card or summoning skill in the round took, by its position in
+/// `actions`: the counts that agree with the most `MoveUnit` facts (an index holding the named
+/// unit type when it's moved), each disagreement costing two agreements, ties going to fewer.
+fn align_claims(
+    actions: &[&MatchActionData],
+    start: &BTreeMap<i64, UnitsNewUnitData>,
+    first_index: i64,
+) -> BTreeMap<usize, i64> {
+    let names = GameNames::bundled();
+    let unit_cards = names.categories.get("UnitReinforceData");
+    let claims: Vec<(usize, i64)> = actions
+        .iter()
+        .enumerate()
+        .filter_map(
+            |(position, action)| match action.xsi_type.trim_start_matches("PAD_") {
+                "ChooseReinforceItem" => {
+                    let id: u64 = action.id.as_deref()?.trim().parse().ok()?;
+                    unit_cards
+                        .is_some_and(|cards| cards.contains_key(&id))
+                        .then_some((position, MAX_CARD_UNITS))
+                }
+                // A skill released on no unit can summon some.
+                "ReleaseCommanderSkill" => index(&action.unit_index)
+                    .is_none_or(|i| i < 0)
+                    .then_some((position, MAX_SUMMONED)),
+                _ => None,
+            },
+        )
+        .take(MAX_CLAIMS_SEARCHED)
+        .collect();
+    if claims.is_empty() {
+        return BTreeMap::new();
+    }
+    // (position, index, unit type) for every unit moved.
+    let facts: Vec<(usize, i64, &str)> = actions
+        .iter()
+        .enumerate()
+        .filter_map(|(position, action)| Some((position, action.move_unit_datas.as_ref()?)))
+        .flat_map(|(position, moves)| {
+            moves.move_unit_data.iter().filter_map(move |m| {
+                Some((
+                    position,
+                    m.unit_index.trim().parse().ok()?,
+                    m.unit_id.trim(),
+                ))
+            })
+        })
+        .collect();
+
+    let mut counts = vec![0i64; claims.len()];
+    let mut best: Option<((i64, i64), Vec<i64>)> = None;
+    loop {
+        // Who holds each index under these counts: a purchase (its unit type and position) or a
+        // card's or summon's claim (its position).
+        let mut owners: BTreeMap<i64, (usize, Option<&str>)> = BTreeMap::new();
+        let mut next_index = first_index;
+        for (position, action) in actions.iter().enumerate() {
+            if let Some(n) = claims.iter().position(|(p, _)| *p == position) {
+                for _ in 0..counts[n] {
+                    owners.insert(next_index, (position, None));
+                    next_index += 1;
+                }
+            }
+            if action.xsi_type.ends_with("BuyUnit") {
+                owners.insert(next_index, (position, action.uid.as_deref().map(str::trim)));
+                next_index += 1;
+            }
+        }
+        let score: i64 = facts
+            .iter()
+            .map(|&(position, i, unit_id)| {
+                let agrees = match (start.get(&i), owners.get(&i)) {
+                    (Some(unit), _) if unit.id.trim() == unit_id => true,
+                    (_, Some(&(owner, bought))) => {
+                        owner < position && bought.is_none_or(|bought| bought == unit_id)
+                    }
+                    _ => false,
+                };
+                if agrees {
+                    1
+                } else {
+                    -2
+                }
+            })
+            .sum();
+        let key = (score, -counts.iter().sum::<i64>());
+        if best.as_ref().is_none_or(|(b, _)| key > *b) {
+            best = Some((key, counts.clone()));
+        }
+        // The next combination of counts, odometer style.
+        let mut digit = 0;
+        loop {
+            if digit == counts.len() {
+                let (_, counts) = best.unwrap_or_default();
+                return claims.iter().map(|(p, _)| *p).zip(counts).collect();
+            }
+            if counts[digit] < claims[digit].1 {
+                counts[digit] += 1;
+                break;
+            }
+            counts[digit] = 0;
+            digit += 1;
+        }
+    }
+}
+
+/// The skill a card pick or blueprint adds to the player's skill slots, if it adds one: a skill
+/// card, or a blueprint named after a skill.
+fn skill_gained(action: &MatchActionData) -> Option<u64> {
+    let names = GameNames::bundled();
+    let id: u64 = action.id.as_deref()?.trim().parse().ok()?;
+    let skills = || {
+        names
+            .categories
+            .iter()
+            .filter(|(category, _)| category.starts_with("CSD_"))
+            .flat_map(|(_, skills)| skills.iter())
+    };
+    if action.xsi_type.ends_with("ChooseReinforceItem") {
+        return skills().any(|(skill, _)| *skill == id).then_some(id);
+    }
+    let blueprint = names.categories.get("BlueprintData")?.get(&id)?;
+    skills()
+        .filter(|(_, name)| *name == blueprint)
+        .map(|(skill, _)| *skill)
+        .min()
 }
 
 /// The round's actions still standing after undos. Each `PAD_Undo` takes back the latest action
@@ -143,75 +338,6 @@ pub(crate) fn upgrades_bought(actions: &[MatchActionData]) -> u32 {
         .into_iter()
         .filter(|a| a.xsi_type.ends_with("UpgradeUnit"))
         .count() as u32
-}
-
-#[derive(Clone)]
-struct Deployment {
-    units: BTreeMap<i64, UnitsNewUnitData>,
-    next_index: i64,
-    /// Indices of units bought this round, in order.
-    bought: Vec<i64>,
-}
-
-impl Deployment {
-    fn buy(&mut self, action: &MatchActionData) {
-        let Some(unit_id) = action.uid.as_deref().map(str::trim) else {
-            return;
-        };
-        let position = action
-            .buy_position
-            .as_ref()
-            .map(|p| (p.x.trim(), p.y.trim()))
-            .unwrap_or(("", ""));
-        self.units.insert(
-            self.next_index,
-            new_unit(unit_id, self.next_index, position, false),
-        );
-        self.bought.push(self.next_index);
-        self.next_index += 1;
-    }
-
-    fn moves(&mut self, action: &MatchActionData) {
-        let Some(moves) = &action.move_unit_datas else {
-            return;
-        };
-        for m in &moves.move_unit_data {
-            let Ok(i) = m.unit_index.trim().parse::<i64>() else {
-                continue;
-            };
-            let unit_id = m.unit_id.trim();
-            let position = (m.position.x.trim(), m.position.y.trim());
-            let rotated = m.is_rotate.trim().eq_ignore_ascii_case("true");
-            match self.units.get_mut(&i) {
-                // A card's unit holds this index, not the purchase filed under it: move this
-                // round's purchases from i up by one.
-                Some(unit) if unit.id.trim() != unit_id && self.bought.contains(&i) => {
-                    for b in self.bought.iter_mut().rev().filter(|b| **b >= i) {
-                        if let Some(bought) = self.units.remove(b) {
-                            let mut bought = bought;
-                            bought.index = (*b + 1).to_string();
-                            self.units.insert(*b + 1, bought);
-                        }
-                        *b += 1;
-                    }
-                    self.next_index += 1;
-                    self.units
-                        .insert(i, new_unit(unit_id, i, position, rotated));
-                }
-                Some(unit) => {
-                    unit.position.x = position.0.to_owned();
-                    unit.position.y = position.1.to_owned();
-                    unit.is_rotate = rotated.to_string();
-                }
-                // A unit this round added some other way (a card): first seen when moved.
-                None => {
-                    self.units
-                        .insert(i, new_unit(unit_id, i, position, rotated));
-                    self.next_index = self.next_index.max(i + 1);
-                }
-            }
-        }
-    }
 }
 
 fn new_unit(id: &str, index: i64, (x, y): (&str, &str), rotated: bool) -> UnitsNewUnitData {

@@ -723,13 +723,36 @@ impl BattleRecord {
                         _ => None,
                     };
                 }
-                if last <= 1 {
+                // The result is read off the record for the last round, which needs the round
+                // before it recorded too: Competition replays that keep only round 0 and one late
+                // round say "Win" for every player.
+                let recorded = |round: u32| {
+                    p.player_round_records
+                        .player_round_record
+                        .iter()
+                        .any(|r| r.round.trim().parse::<u32>().ok() == Some(round))
+                };
+                if last <= 1 || !recorded(last - 1) {
                     return None;
                 }
                 let record = p.player_round_records.player_round_record.last()?;
                 Some(record.player_data.pre_round_fight_result.trim() == "Win")
             })
             .collect()
+    }
+
+    /// Whether the replay says who won: the winners are as many as the mode has (one in 1v1 and
+    /// brawls, a team of two in 2v2). Players whose result is unknown lost, then; brawls leave
+    /// some eliminated players' results unknown. A match that isn't settled can't count toward
+    /// any win rate.
+    pub fn results_settled(&self) -> bool {
+        let results = self.match_results();
+        let winners = results.iter().filter(|r| **r == Some(true)).count();
+        match self.battle_info.match_mode.trim() {
+            "VS_1_1" | "VS_4_Scuffle" => winners == 1,
+            "VS_2_2" => winners == 2,
+            _ => winners >= 1,
+        }
     }
 }
 

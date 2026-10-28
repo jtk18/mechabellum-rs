@@ -1949,13 +1949,14 @@ h1 {
   grid-template-columns: minmax(150px, 1fr) 64px minmax(160px, 2fr) 96px;
 }
 
-.deploy-table .record {
+.deploy-table .record,
+.used-table .record {
   color: var(--text-muted);
   font-size: 12px;
 }
 
 .used-table {
-  grid-template-columns: minmax(120px, 1.4fr) 44px minmax(90px, 1.3fr) 44px 64px 54px;
+  grid-template-columns: minmax(120px, 1.4fr) 44px minmax(90px, 1.3fr) 54px 64px 54px;
 }
 
 .deploy-table .head,
@@ -2078,6 +2079,12 @@ h1 {
   color: var(--text-secondary);
   text-align: center;
   white-space: nowrap;
+}
+
+.tale-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .tale-track {

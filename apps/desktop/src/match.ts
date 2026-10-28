@@ -24,6 +24,8 @@ interface PlacedUnit {
   xp_to_next: number | null;
   x: number;
   y: number;
+  /** False when the replay gives no position (1.x purchases never moved): counted, not drawn. */
+  placed: boolean;
   rotated: boolean;
   footprint: [number, number] | null;
   equipment: { id: string; name: string | null }[];
@@ -294,7 +296,7 @@ function bandGuides() {
 function drawUnits(sides: (SideLayout | null)[]) {
   const units = svg("g", { class: "units" });
   sides.forEach((side, s) => {
-    for (const u of side?.units ?? []) {
+    for (const u of (side?.units ?? []).filter((u) => u.placed !== false)) {
       const [bx, by] = toBoard(u.x, u.y);
       const [w, h] = size(u);
       const isSelected = selected?.side === s && selected.index === u.index;

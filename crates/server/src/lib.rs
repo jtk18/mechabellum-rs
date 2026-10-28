@@ -675,6 +675,11 @@ mod tests {
         assert_eq!((w.results, l.results), (3, 3));
         // The 2.0 fixtures price every army.
         assert!(w.final_value.unwrap() > 0.0 && w.peak_value >= w.final_value);
+        // Each row says how many results it's over.
+        for side in [&w, &l] {
+            assert!(side.priced <= side.results && side.complete <= side.results);
+            assert_eq!(side.level_ups.is_some(), side.complete > 0);
+        }
         // Meetings count 1v1 matches with both round 1s classed, once each: the one 2340
         // match, whose round 1s weren't both one-sided.
         assert_eq!(stats.meetings.len(), 1);
@@ -940,6 +945,69 @@ mod tests {
             )
             .unwrap();
         assert_eq!(uploader.as_deref(), Some("alice"));
+    }
+
+    /// A match whose replay doesn't say who won stays in the match list but leaves every stat.
+    #[test]
+    fn test_unsettled_matches_leave_the_stats() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .ingest(&fixture("battle_record_2340.xml"), Path::new("a"), None)
+            .unwrap();
+        let count = |store: &Store| {
+            let g = store.game_stats(&StatsFilter::default()).unwrap();
+            let s = store.stats(&StatsFilter::default()).unwrap();
+            (g.matches, s.matches, g.winners.map_or(0, |w| w.results))
+        };
+        assert_eq!(count(&store), (1, 1, 1));
+        store
+            .conn()
+            .execute("UPDATE matches SET settled = 0", [])
+            .unwrap();
+        assert_eq!(count(&store), (0, 0, 0));
+        assert_eq!(store.recent_matches(10).unwrap().len(), 1);
+    }
+
+    /// In 2v2 the "my opponents" view takes the other team only: a teammate shares the result,
+    /// so it's left out. (Teams aren't stored; the brawl fixture stands in, relabeled 2v2.)
+    #[test]
+    fn test_opponents_in_2v2_leave_out_teammates() {
+        let store = Store::open_in_memory().unwrap();
+        let brawl = String::from_utf8(fixture("4player_brawl.xml")).unwrap();
+        let two_v_two = brawl.replace(
+            "<MatchMode>VS_4_Scuffle</MatchMode>",
+            "<MatchMode>VS_2_2</MatchMode>",
+        );
+        store
+            .ingest(two_v_two.as_bytes(), Path::new("2v2"), None)
+            .unwrap();
+        // A brawl has one winner, which a 2v2 can't: count it anyway, it's teams under test.
+        store
+            .conn()
+            .execute("UPDATE matches SET settled = 1", [])
+            .unwrap();
+        let players: Vec<(String, Option<bool>)> = store
+            .conn()
+            .prepare("SELECT player_id, won FROM players")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(players.len(), 4);
+        for (me, won) in &players {
+            let theirs = store
+                .stats(&StatsFilter {
+                    opponents_of: Some(me.clone()),
+                    ..Default::default()
+                })
+                .unwrap();
+            let other_side = players
+                .iter()
+                .filter(|(id, w)| id != me && w.is_some() && won.is_some() && w != won)
+                .count() as u64;
+            assert_eq!(theirs.player_results, other_side, "{me}");
+        }
     }
 
     /// Many threads and two separate connections (like `import` running beside the server)

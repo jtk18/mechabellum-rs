@@ -199,9 +199,10 @@ pub struct PlayerGame {
     pub mean_level: f32,
     /// Highest level in the last fight's army, 1-based. (`UnitUse::max_level` covers the match.)
     pub max_level: u32,
-    /// Unit upgrades bought over the recorded rounds, units later sold included. Levels units
-    /// arrive with, from cards or techs, aren't upgrades.
-    pub level_ups: u32,
+    /// Unit upgrades bought over the match, units later sold included. Levels units arrive with,
+    /// from cards or techs, aren't upgrades. `None` as for `units_added`: a replay that starts
+    /// mid-match would count only part of the match.
+    pub level_ups: Option<u32>,
     /// Units added over the match (starter pack, purchases, cards). `None` unless the fights run
     /// from the first without a gap, and in AsyncBattle, whose opponents' rounds come from
     /// different games and don't follow on from each other.
@@ -211,8 +212,8 @@ pub struct PlayerGame {
     pub units_sold: Option<u32>,
     /// Techs researched by the last fight.
     pub techs: u32,
-    /// Cards picked between rounds.
-    pub cards: u32,
+    /// Cards picked between rounds. `None` as for `level_ups`.
+    pub cards: Option<u32>,
     /// Round 1's deployment label: how the match is classed for this player, by round 1's
     /// positioning, not the last round's. `None` when round 1 isn't recorded or isn't classified;
     /// a later round never stands in for it.
@@ -252,11 +253,11 @@ fn extent(unit: &PlacedUnit, board_2: bool) -> (i32, i32) {
 fn half_of(units: &[PlacedUnit]) -> Option<Half> {
     let mut ys: Vec<i32> = units
         .iter()
-        .filter(|u| !in_flank_column(u.x))
+        .filter(|u| u.placed && !in_flank_column(u.x))
         .map(|u| u.y)
         .collect();
     if ys.is_empty() {
-        ys = units.iter().map(|u| u.y).collect();
+        ys = units.iter().filter(|u| u.placed).map(|u| u.y).collect();
     }
     ys.sort_unstable();
     let y = *ys.get(ys.len() / 2)?;
@@ -288,7 +289,8 @@ pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     // Area on the player's own left and right, per band.
     let (mut left, mut right) = ([0f32; 3], [0f32; 3]);
     let mut flank = 0;
-    for unit in units {
+    // A unit with no recorded position has no band.
+    for unit in units.iter().filter(|u| u.placed) {
         let (x, _) = own_frame(half, unit.x, unit.y);
         let (w, d) = extent(unit, true);
         let area = (w * d) as f32;
@@ -393,7 +395,9 @@ impl MatchDetail {
                 // when the fights run from the first without a gap: a missing round 1 would leave
                 // the starting army uncounted. AsyncBattle opponents' rounds come from different
                 // games, so their armies don't follow on from each other at all.
+                // No fights at all is nothing to count, not a count of zero.
                 let comparable = !async_battle
+                    && !sides.is_empty()
                     && sides
                         .iter()
                         .enumerate()
@@ -482,6 +486,7 @@ impl MatchDetail {
                             board: side
                                 .units
                                 .iter()
+                                .filter(|u| u.placed)
                                 .map(|u| {
                                     let (w, d) = extent(u, board_2);
                                     [
@@ -520,14 +525,15 @@ impl MatchDetail {
                     mean_level: last.map_or(0.0, |side| {
                         side.units
                             .iter()
-                            .map(|u| u.level.saturating_add(1))
-                            .sum::<u32>() as f32
+                            .map(|u| u64::from(u.level.saturating_add(1)))
+                            .sum::<u64>() as f32
                             / side.units.len().max(1) as f32
                     }),
                     max_level: last
                         .and_then(|side| side.units.iter().map(|u| u.level.saturating_add(1)).max())
                         .unwrap_or(0),
-                    level_ups: sides.iter().map(|(_, side)| side.upgrades_bought).sum(),
+                    level_ups: comparable
+                        .then(|| sides.iter().map(|(_, side)| side.upgrades_bought).sum()),
                     units_added: comparable.then_some(added),
                     units_sold: comparable.then_some(sold),
                     techs: last.map_or(0, |side| {
@@ -536,10 +542,12 @@ impl MatchDetail {
                             .map(|t| t.techs.len() as u32)
                             .sum()
                     }),
-                    cards: sides
-                        .iter()
-                        .map(|(_, side)| side.cards_chosen.len() as u32)
-                        .sum(),
+                    cards: comparable.then(|| {
+                        sides
+                            .iter()
+                            .map(|(_, side)| side.cards_chosen.len() as u32)
+                            .sum()
+                    }),
                     opening: fights
                         .iter()
                         .find(|f| f.fight == 1)
@@ -569,6 +577,7 @@ mod tests {
             xp_to_next: None,
             x,
             y,
+            placed: true,
             rotated: false,
             footprint: super::super::footprint(unit_id),
             equipment: vec![],
@@ -873,6 +882,55 @@ mod tests {
         .unwrap()
     }
 
+    /// Every tag `<name>` in `xml` from byte `from` on, up to `limit` of them, with its content
+    /// replaced by `value`.
+    fn set_tags(xml: &str, from: usize, limit: usize, name: &str, value: &str) -> String {
+        let (open, close) = (format!("<{name}>"), format!("</{name}>"));
+        let mut out = String::from(&xml[..from]);
+        let mut rest = &xml[from..];
+        for _ in 0..limit {
+            let Some(start) = rest.find(&open) else {
+                break;
+            };
+            let after = start + open.len();
+            let Some(end) = rest[after..].find(&close) else {
+                break;
+            };
+            out.push_str(&rest[..after]);
+            out.push_str(value);
+            rest = &rest[after + end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// A crafted replay claiming a position at the edges of i32, absurd levels and sell values
+    /// is summarized without overflowing anything (a debug build panicked on each), and the
+    /// implausible values don't count: units fall back to list prices.
+    #[test]
+    fn test_crafted_extremes_stay_in_range() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/battle_record_2340.xml");
+        let mut xml = std::fs::read_to_string(&path).unwrap();
+        // One unit of the south army that fought fight 1 (round 2's record), far off the board:
+        // the rest keep the army on its half, so the geometry runs in the south frame.
+        let fought = xml.find("<round>2</round>").unwrap();
+        xml = set_tags(&xml, fought, 1, "x", "-2147483648");
+        xml = set_tags(&xml, fought, 1, "y", "2147483647");
+        xml = set_tags(&xml, 0, usize::MAX, "Level", "4000000000");
+        xml = set_tags(&xml, 0, usize::MAX, "SellSupply", "4294967295");
+        let record = BattleRecord::from_bytes(xml.as_bytes(), &path).unwrap();
+        let games = record.match_detail().player_games();
+        assert_eq!(games.len(), 2);
+        for game in &games {
+            for fight in &game.fights {
+                let value = fight.value.expect("list prices cover every unit here");
+                assert!(value <= fight.units * 800, "fight {}: {value}", fight.fight);
+            }
+            assert!(game.mean_level.is_finite() && game.max_level <= 1_001);
+        }
+    }
+
     /// A concession during the last round's deployment: that round is never fought, the player
     /// who conceded loses, and their final army is the one that fought the round before.
     #[test]
@@ -952,6 +1010,37 @@ mod tests {
                 .retain(|r| r.round.trim().parse::<u32>().is_ok_and(|n| n <= 1));
         }
         assert!(record.match_results().iter().all(Option::is_none));
+    }
+
+    /// Competition replays that keep only round 0 and one late round write "Win" for every
+    /// player (four of the 1.x replays on hand: two winners each). Without the round before the
+    /// last, the result is unknown.
+    #[test]
+    fn test_a_gap_before_the_last_round_leaves_the_result_unknown() {
+        let mut record = fixture("battle_record.xml");
+        let full = record.match_results();
+        assert_eq!(
+            full.iter().filter(|r| **r == Some(true)).count(),
+            1,
+            "{full:?}"
+        );
+        assert!(record.results_settled());
+        for player in &mut record.player_records.player_record {
+            let records = &mut player.player_round_records.player_round_record;
+            let last = records
+                .iter()
+                .filter_map(|r| r.round.trim().parse::<u32>().ok())
+                .max()
+                .unwrap();
+            records.retain(|r| {
+                r.round
+                    .trim()
+                    .parse::<u32>()
+                    .is_ok_and(|n| n == 0 || n == last)
+            });
+        }
+        assert!(record.match_results().iter().all(Option::is_none));
+        assert!(!record.results_settled());
     }
 
     /// The control for the last round's techs: what a round researched, added to what it began

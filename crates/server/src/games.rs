@@ -98,17 +98,22 @@ pub struct ArmyMeans {
     pub results: u64,
     pub final_units: f64,
     pub peak_units: f64,
-    /// Supply the armies were worth (`PlayerGame::final_value`), over the results priced.
+    /// Supply the armies were worth (`PlayerGame::final_value`), over the `priced` results.
     pub final_value: Option<f64>,
     pub peak_value: Option<f64>,
+    /// Results whose every fight is priced. The rest leave the value means.
+    pub priced: u64,
     pub mean_level: f64,
     pub max_level: f64,
-    pub level_ups: f64,
-    /// `None` when every result is from AsyncBattle (see `PlayerGame::units_added`).
+    /// Over the `complete` results (see `PlayerGame::units_added`); `None` when there are none.
+    pub level_ups: Option<f64>,
     pub units_added: Option<f64>,
     pub units_sold: Option<f64>,
+    /// Results whose fights run from the first without a gap, outside AsyncBattle: the ones
+    /// level-ups, units added and sold, and cards picked are averaged over.
+    pub complete: u64,
     pub techs: f64,
-    pub cards: f64,
+    pub cards: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -291,8 +296,10 @@ impl Store {
         let mut stmt = conn.prepare(&format!(
             "{scope} SELECT s.won, COUNT(*), AVG(g.final_units), AVG(g.peak_units),
                     AVG(g.mean_level), AVG(g.max_level), AVG(g.level_ups), AVG(g.units_added),
-                    AVG(g.units_sold), AVG(g.techs), AVG(g.cards), AVG(g.final_value),
-                    AVG(g.peak_value)
+                    AVG(g.units_sold), AVG(g.techs), AVG(g.cards),
+                    -- Both values over one set: the results with every fight priced.
+                    AVG(CASE WHEN g.peak_value IS NOT NULL THEN g.final_value END),
+                    AVG(g.peak_value), COUNT(g.peak_value), COUNT(g.units_added)
              FROM scope s
              JOIN player_games g ON g.battle_id = s.battle_id AND g.player_id = s.player_id
              GROUP BY s.won"
@@ -313,6 +320,8 @@ impl Store {
                     cards: r.get(10)?,
                     final_value: r.get(11)?,
                     peak_value: r.get(12)?,
+                    priced: r.get(13)?,
+                    complete: r.get(14)?,
                 },
             ))
         })?;
