@@ -965,7 +965,11 @@ mod tests {
             .execute("UPDATE matches SET settled = 0", [])
             .unwrap();
         assert_eq!(count(&store), (0, 0, 0));
-        assert_eq!(store.recent_matches(10).unwrap().len(), 1);
+        // Both match lists still show it, marked.
+        let rows = store.recent_matches(10).unwrap();
+        assert_eq!((rows.len(), rows[0].settled), (1, false));
+        let page = store.cards(&StatsFilter::default(), 10, 0).unwrap();
+        assert_eq!((page.total, page.cards[0].settled), (1, false));
     }
 
     /// In 2v2 the "my opponents" view takes the other team only: a teammate shares the result,

@@ -202,8 +202,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// midboard army, Asym mid aggro a one-sided one. 17: asym armies on opposite lanes are an asym
 /// crossfire. 18: implausible positions, levels and sell values are bounded; level-ups and cards
 /// need fights from the first; a pre-2340 result needs the round before the last; matches that
-/// don't say who won (`matches.settled`) leave the stats.
-const SCHEMA_VERSION: i64 = 18;
+/// don't say who won (`matches.settled`) leave the stats. 19: a match with no fight recorded
+/// isn't settled either.
+const SCHEMA_VERSION: i64 = 19;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -320,10 +321,12 @@ impl Period {
     }
 }
 
-/// The player results a stats query counts, as
-/// `scope(battle_id, player_id, won, version, occurred_on)`.
-/// Parameters come from `StatsFilter::params`.
-pub(crate) const SCOPE: &str = "WITH scope AS (
+/// `scope(battle_id, player_id, won, version, occurred_on)` over the player results `StatsFilter`
+/// allows, with `$settled` added to the conditions.
+macro_rules! scope {
+    ($settled:literal) => {
+        concat!(
+            "WITH scope AS (
     SELECT p.battle_id, p.player_id, p.won, m.version, m.occurred_on FROM players p
     JOIN matches m ON m.battle_id = p.battle_id
     WHERE (?1 IS NULL OR m.version >= ?1)
@@ -338,9 +341,19 @@ pub(crate) const SCOPE: &str = "WITH scope AS (
       AND (?7 = 0 OR m.battle_id IN (
           SELECT battle_id FROM match_copies GROUP BY battle_id
           HAVING COUNT(DISTINCT fingerprint) = 1 AND COUNT(DISTINCT player_id) >= 2))
-      AND (?8 = 1 OR instr(m.battle_id, '__') = 0)
-      -- A match whose replay doesn't say who won can't count toward any rate.
-      AND m.settled = 1)";
+      AND (?8 = 1 OR instr(m.battle_id, '__') = 0)",
+            $settled,
+            ")"
+        )
+    };
+}
+
+/// The player results a stats query counts. Parameters come from `StatsFilter::params`. A match
+/// whose replay doesn't say who won can't count toward any rate.
+pub(crate) const SCOPE: &str = scope!(" AND m.settled = 1");
+/// The same without the settled condition, for listing matches: one with no known winner is
+/// still shown, as "result unknown".
+pub(crate) const MATCH_SCOPE: &str = scope!("");
 
 impl StatsFilter {
     pub(crate) fn params(&self) -> [&dyn rusqlite::ToSql; 8] {
@@ -601,6 +614,9 @@ pub struct MatchRow {
     pub loser_deployments: Vec<Option<String>>,
     /// How round 1's deployments met in a 1v1, when both were one-sided ("Asym headbutt").
     pub meeting: Option<String>,
+    /// False when the replay doesn't say who won: everyone is listed as a loser then, and the
+    /// match counts toward no stat.
+    pub settled: bool,
 }
 
 impl Store {
@@ -1625,7 +1641,8 @@ impl Store {
                                 ON g.battle_id = p.battle_id AND g.player_id = p.player_id
                               WHERE p.battle_id = m.battle_id AND p.won = 0), '[]'),
                     (SELECT g.meeting FROM player_games g
-                     WHERE g.battle_id = m.battle_id AND g.meeting IS NOT NULL LIMIT 1)
+                     WHERE g.battle_id = m.battle_id AND g.meeting IS NOT NULL LIMIT 1),
+                    m.settled
              FROM matches m ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?1",
         )?;
         // Each side as a JSON array of players. JSON, not separator characters: names come
@@ -1680,6 +1697,7 @@ impl Store {
                     winner_deployments,
                     loser_deployments,
                     meeting: r.get(9)?,
+                    settled: r.get(10)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -1792,7 +1810,9 @@ fn insert_record(
             overview.rounds as i64,
             overview.occurred_on,
             uploaded_by,
-            record.results_settled(),
+            // A match with no fight recorded (an offline game ended at once) has no result to
+            // count either.
+            record.results_settled() && !detail.rounds.is_empty(),
         ],
     )?;
     let sides = overview

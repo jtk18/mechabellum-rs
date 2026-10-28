@@ -412,7 +412,8 @@ function unitList(p, side) {
 function playerHead(p, side) {
   const box = el("div", "player " + side);
   const name = el("div", "name");
-  const tag = el("span", "tag " + (p.won ? "won" : "lost"), p.won ? "WON" : "LOST");
+  // won is null when the replay doesn't say who won.
+  const tag = el("span", "tag " + (p.won ? "won" : "lost"), p.won == null ? "UNKNOWN" : p.won ? "WON" : "LOST");
   if (side === "right") name.append(tag, document.createTextNode(p.name));
   else name.append(document.createTextNode(p.name), tag);
   box.append(name);
@@ -547,7 +548,7 @@ function multiPlayerCard(players) {
   for (const p of players) {
     const tr = el("tr");
     const g = p.game;
-    tr.append(el("td", "", p.name), el("td", "", p.won ? "Won" : "Lost"), el("td", "", g ? String(g.final_units) : "–"),
+    tr.append(el("td", "", p.name), el("td", "", p.won == null ? "Unknown" : p.won ? "Won" : "Lost"), el("td", "", g ? String(g.final_units) : "–"),
       el("td", "", g ? g.mean_level.toFixed(1) : "–"), el("td", "", g?.units_sold != null ? String(g.units_sold) : "–"), el("td", "", g?.opening || "–"));
     table.append(tr);
   }
@@ -563,18 +564,19 @@ function renderCard(card) {
   const when = isNaN(date) ? card.occurred_on : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   title.append(el("div", "meta", `${modeLabel(card.match_mode, card.game_mode)} · patch ${card.version} · ${when}`));
   head.append(title);
-  const players = orderPlayers(card.players);
+  // A replay that doesn't say who won has no winner and no loser: everyone reads "unknown".
+  const players = orderPlayers(card.players.map((p) => (card.settled === false ? { ...p, won: null } : p)));
   if (players.length === 2 && players.every((p) => p.game)) {
     // Reactor HP decides a match, not fights won, so the headline is who won.
     const winner = players.find((p) => p.won);
-    const score = el("div", "score", winner ? `${iso(winner.name)} won` : "No result");
+    const score = el("div", "score", winner ? `${iso(winner.name)} won` : "Result unknown");
     score.append(el("small", "", `${fightNumbers(players).length} fights · ${players[0].game.fights_won}–${players[1].game.fights_won} in fights`));
     head.append(score);
     art.append(head, twoPlayerCard(card, players));
   } else {
     art.append(head, multiPlayerCard(players));
   }
-  art.setAttribute("aria-label", `${card.map}, ${players.map((p) => `${iso(p.name)} ${p.won ? "won" : "lost"}`).join(", ")}`);
+  art.setAttribute("aria-label", `${card.map}, ${card.settled === false ? "result unknown, " : ""}${players.map((p) => `${iso(p.name)} ${p.won == null ? "" : p.won ? "won" : "lost"}`.trim()).join(", ")}`);
   return art;
 }
 
@@ -624,11 +626,12 @@ async function start() {
   renderLegend();
   try {
     const facets = await get("/api/facets");
-    $("patch").replaceChildren(el("option", "", "All patches"), ...facets.versions.map(([v, n]) => {
+    $("patch").replaceChildren(el("option", "", "All patches"), ...facets.versions.filter(([, n]) => n > 0).map(([v, n]) => {
       const o = el("option", "", `${v} (${n})`); o.value = v; return o;
     }));
     $("patch").firstChild.value = "";
-    $("mode").replaceChildren(el("option", "", "All modes"), ...facets.modes.map(([m, g, n]) => {
+    // This page has no offline toggle, so modes with nothing to show aren't offered.
+    $("mode").replaceChildren(el("option", "", "All modes"), ...facets.modes.filter(([, , n]) => n > 0).map(([m, g, n]) => {
       const o = el("option", "", `${modeLabel(m, g)} (${n})`); o.value = `${m}|${g}`; return o;
     }));
     $("mode").firstChild.value = "";

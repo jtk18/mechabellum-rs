@@ -37,9 +37,9 @@ pub(crate) fn replay_deployment(
         .units
         .new_unit_data
         .iter()
-        .filter_map(|u| Some((u.index.trim().parse().ok()?, u.clone())))
+        .filter_map(|u| Some((unit_index(&u.index)?, u.clone())))
         .collect();
-    let first_index: i64 = start.unit_index.trim().parse().unwrap_or(0);
+    let first_index = unit_index(&start.unit_index).unwrap_or(0).max(0);
     let claimed = align_claims(&actions, &units, first_index);
     let mut slots: BTreeMap<u32, String> = start
         .commander_skills
@@ -82,7 +82,7 @@ pub(crate) fn replay_deployment(
                     continue;
                 };
                 for m in &moves.move_unit_data {
-                    let Ok(i) = m.unit_index.trim().parse::<i64>() else {
+                    let Some(i) = unit_index(&m.unit_index) else {
                         continue;
                     };
                     let position = (m.position.x.trim(), m.position.y.trim());
@@ -176,6 +176,8 @@ const MAX_SUMMONED: i64 = 2;
 /// Cards and summons whose counts are searched; any beyond these take none. Real rounds have one
 /// or two, and the search grows as 5^n.
 const MAX_CLAIMS_SEARCHED: usize = 5;
+/// The most actions and moves a round can have for the search to run.
+const MAX_SEARCHED_ROUND: usize = 1_000;
 
 /// How many unit indices each unit card or summoning skill in the round took, by its position in
 /// `actions`: the counts that agree with the most `MoveUnit` facts (an index holding the named
@@ -216,15 +218,18 @@ fn align_claims(
         .enumerate()
         .filter_map(|(position, action)| Some((position, action.move_unit_datas.as_ref()?)))
         .flat_map(|(position, moves)| {
-            moves.move_unit_data.iter().filter_map(move |m| {
-                Some((
-                    position,
-                    m.unit_index.trim().parse().ok()?,
-                    m.unit_id.trim(),
-                ))
-            })
+            moves
+                .move_unit_data
+                .iter()
+                .filter_map(move |m| Some((position, unit_index(&m.unit_index)?, m.unit_id.trim())))
         })
         .collect();
+    // Real rounds have at most 44 actions and 90 moves (8,199 rounds on hand). The search below
+    // tries up to 5^5 combinations, each over every action and move, so a crafted round past
+    // this gets none and its purchases simply skip taken indices.
+    if actions.len() + facts.len() > MAX_SEARCHED_ROUND {
+        return BTreeMap::new();
+    }
 
     let mut counts = vec![0i64; claims.len()];
     let mut best: Option<((i64, i64), Vec<i64>)> = None;
@@ -357,8 +362,21 @@ fn new_unit(id: &str, index: i64, (x, y): (&str, &str), rotated: bool) -> UnitsN
     }
 }
 
+/// Unit indices count up from 0 over a match, so real ones stay in the hundreds. One far outside
+/// this is crafted and ignored, which keeps the index arithmetic in range. Negative ones are
+/// kept: a skill released on no unit names -1.
+const INDEX_LIMIT: i64 = 1_000_000;
+
+fn unit_index(value: &str) -> Option<i64> {
+    value
+        .trim()
+        .parse()
+        .ok()
+        .filter(|i| (-INDEX_LIMIT..=INDEX_LIMIT).contains(i))
+}
+
 fn index(value: &Option<String>) -> Option<i64> {
-    value.as_deref()?.trim().parse().ok()
+    unit_index(value.as_deref()?)
 }
 
 /// Commander skills that sell (recycle) the unit they target.

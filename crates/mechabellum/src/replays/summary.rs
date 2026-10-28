@@ -360,7 +360,10 @@ impl MatchDetail {
                     continue;
                 };
                 let met = match (&fa.deployment, fa.half, &fb.deployment, fb.half) {
-                    (Some(da), Some(ha), Some(db), Some(hb)) => meeting((da, ha), (db, hb)),
+                    // Two armies on one half can only come from a crafted replay.
+                    (Some(da), Some(ha), Some(db), Some(hb)) if ha != hb => {
+                        meeting((da, ha), (db, hb))
+                    }
                     _ => None,
                 };
                 fa.meeting = met;
@@ -919,6 +922,8 @@ mod tests {
         xml = set_tags(&xml, fought, 1, "y", "2147483647");
         xml = set_tags(&xml, 0, usize::MAX, "Level", "4000000000");
         xml = set_tags(&xml, 0, usize::MAX, "SellSupply", "4294967295");
+        // Unit indices at the edge of i64 (a summon makes the rebuild count them).
+        xml = set_tags(&xml, 0, usize::MAX, "unitIndex", "9223372036854775807");
         let record = BattleRecord::from_bytes(xml.as_bytes(), &path).unwrap();
         let games = record.match_detail().player_games();
         assert_eq!(games.len(), 2);
@@ -928,6 +933,25 @@ mod tests {
                 assert!(value <= fight.units * 800, "fight {}: {value}", fight.fight);
             }
             assert!(game.mean_level.is_finite() && game.max_level <= 1_001);
+        }
+    }
+
+    /// A replay claiming a mode with more players than it holds (a 1v1 labelled 2v2) is read
+    /// without indexing past its players.
+    #[test]
+    fn test_a_mode_claiming_more_players_than_recorded() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/battle_record_2340.xml");
+        let xml = std::fs::read_to_string(&path).unwrap();
+        for mode in ["VS_2_2", "VS_4_Scuffle"] {
+            let crafted = xml.replace(
+                "<MatchMode>VS_1_1</MatchMode>",
+                &format!("<MatchMode>{mode}</MatchMode>"),
+            );
+            assert_ne!(crafted, xml, "the fixture names its mode");
+            let record = BattleRecord::from_bytes(crafted.as_bytes(), &path).unwrap();
+            assert!(record.get_battle_overview().is_ok(), "{mode}");
+            assert_eq!(record.match_detail().player_games().len(), 2, "{mode}");
         }
     }
 

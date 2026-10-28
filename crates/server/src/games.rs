@@ -1,7 +1,7 @@
 //! Whole matches rather than final armies: match cards, and stats over every fight, every unit
 //! fielded, and how armies were deployed. Built on the rows `insert_games` stores.
 
-use crate::store::{StatsFilter, Store, SCOPE};
+use crate::store::{StatsFilter, Store, MATCH_SCOPE, SCOPE};
 
 use anyhow::Result;
 use serde::Serialize;
@@ -24,6 +24,9 @@ pub struct MatchCard {
     /// Map name, or its ID when the name is unknown.
     pub map: String,
     pub occurred_on: String,
+    /// False when the replay doesn't say who won: no player is the winner then, and the match
+    /// counts toward no stat.
+    pub settled: bool,
     /// Winners first. Names as stored: a shared upload keeps only the uploader's.
     pub players: Vec<CardPlayer>,
 }
@@ -148,11 +151,11 @@ impl Store {
         Ok(self.match_detail(battle_id)?.map(|d| d.player_games()))
     }
 
-    /// Match cards for the matches `filter` allows, newest first. A player filter picks the
-    /// matches; the cards still show every player in them.
+    /// Match cards for the matches `filter` allows, newest first, unsettled ones included. A
+    /// player filter picks the matches; the cards still show every player in them.
     pub fn cards(&self, filter: &StatsFilter, limit: u32, offset: u32) -> Result<CardPage> {
         let conn = self.conn();
-        let scope = SCOPE;
+        let scope = MATCH_SCOPE;
         let args = filter.params();
         let total: u64 = conn.query_row(
             &format!("{scope} SELECT COUNT(DISTINCT battle_id) FROM scope"),
@@ -165,7 +168,7 @@ impl Store {
         let mut cards: Vec<MatchCard> = conn
             .prepare(&format!(
                 "{scope} SELECT m.battle_id, m.version, m.match_mode, m.game_mode, m.map_id,
-                        m.occurred_on
+                        m.occurred_on, m.settled
                  FROM matches m WHERE m.battle_id IN (SELECT battle_id FROM scope)
                  ORDER BY m.occurred_on DESC, m.battle_id DESC LIMIT ?9 OFFSET ?10"
             ))?
@@ -179,6 +182,7 @@ impl Store {
                     map: mechabellum::resolve_name(mechabellum::NameKind::Map, &map_id)
                         .map_or(map_id, str::to_owned),
                     occurred_on: r.get(5)?,
+                    settled: r.get(6)?,
                     players: Vec::new(),
                 })
             })?

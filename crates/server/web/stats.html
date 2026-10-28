@@ -518,11 +518,12 @@ async function refresh() {
 async function start() {
   try {
     const facets = await get("/api/facets");
-    $("patch").replaceChildren(el("option", "", "All patches"), ...facets.versions.map(([v, n]) => {
+    $("patch").replaceChildren(el("option", "", "All patches"), ...facets.versions.filter(([, n]) => n > 0).map(([v, n]) => {
       const o = el("option", "", `${v} (${n})`); o.value = v; return o;
     }));
     $("patch").firstChild.value = "";
-    $("mode").replaceChildren(el("option", "", "All modes"), ...facets.modes.map(([m, g, n]) => {
+    // This page has no offline toggle, so modes with nothing to show aren't offered.
+    $("mode").replaceChildren(el("option", "", "All modes"), ...facets.modes.filter(([, , n]) => n > 0).map(([m, g, n]) => {
       const o = el("option", "", `${modeLabel(m, g)} (${n})`); o.value = `${m}|${g}`; return o;
     }));
     $("mode").firstChild.value = "";

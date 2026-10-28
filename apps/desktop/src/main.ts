@@ -73,6 +73,8 @@ interface MatchRow {
   loser_deployments: (string | null)[];
   /** How round 1's deployments met in a 1v1 when both were one-sided ("Asym headbutt"). */
   meeting: string | null;
+  /** False when the replay doesn't say who won: everyone is listed as a loser, and the match counts toward no stat. */
+  settled: boolean;
 }
 
 /** Whole-match stats (mechabellum_server::GameStats). */
@@ -479,14 +481,15 @@ function renderMatchList() {
     ...shown.slice(0, 400).map((m) => {
       const item = el("li", "match-row");
       const when = new Date(m.occurred_on);
-      const iWon = me !== null && m.winners.includes(me);
-      const iLost = me !== null && m.losers.includes(me);
+      const iWon = m.settled !== false && me !== null && m.winners.includes(me);
+      const iLost = m.settled !== false && me !== null && m.losers.includes(me);
       const outcome = el("span", `outcome ${iWon ? "won" : iLost ? "lost" : "other"}`, iWon ? "Won" : iLost ? "Lost" : "");
+      if (m.settled === false) outcome.title = "The replay doesn't say who won; this match counts toward no stat.";
       // One line per player, winners first, each with the starter pack they opened with.
       const players = el("span", "players");
       const line = (name: string, elo: number | null, deployment: string | null, pack: StarterPack | null, won: boolean) => {
         const row = el("span", `player-line${won ? " winner" : ""}`);
-        row.append(el("span", "result-tag", won ? "Won" : "Lost"));
+        row.append(el("span", "result-tag", m.settled === false ? "?" : won ? "Won" : "Lost"));
         const who = el("span", "name", name);
         who.title = name;
         if (elo != null) {
