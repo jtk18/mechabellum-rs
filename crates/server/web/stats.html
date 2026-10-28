@@ -291,14 +291,13 @@ function renderHeat(trends) {
 }
 
 // Deployment bands front to back: one ordinal ramp in a hue no win/loss color uses.
-const BAND_COLORS = ["#c4f2df", "#6fd9b0", "#25b07f", "#137d58"];
-const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Sym midboard", "Asym midboard", "Backboard"];
+const BAND_COLORS = ["#c4f2df", "#4cc596", "#137d58"];
+const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Backboard"];
 function bandOf(label) {
-  // "Sym midboard" and "Asym midboard" are the midboard band, and likewise aggressive; "Asym mid
-  // aggro" is standard depth.
-  if (label === "Asym mid aggro") return 1;
+  // Standard and Asym mid aggro are the midboard band; both aggressive classes are aggressive.
+  if (label === "Standard" || label === "Asym mid aggro") return 1;
   const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
-  return ["aggressive", "standard", "midboard", "backboard"].indexOf(band);
+  return ["aggressive", "midboard", "backboard"].indexOf(band);
 }
 function labelCell(label) {
   const td = el("td");

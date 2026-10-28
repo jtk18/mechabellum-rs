@@ -4,8 +4,8 @@ import { el, pct, type Tip } from "./util";
 export interface Deployment {
   /** One of DEPLOYMENTS. */
   label: string;
-  depth: "aggressive" | "standard" | "midboard" | "backboard";
-  /** How the army leans, -1 all on the player's own left, 1 all on their right: an aggressive or midboard army's units in that band, a standard one's whole army. Null for backboard. */
+  depth: "aggressive" | "midboard" | "backboard";
+  /** How the army leans, -1 all on the player's own left, 1 all on their right: an aggressive army's units in that band, a midboard one's whole army. Null for backboard. */
   lean: number | null;
   /** Share of the army in each band, front to back, by footprint area. */
   bands: [number, number, number, number];
@@ -59,10 +59,10 @@ export interface PlayerGame {
   fights: FightSummary[];
 }
 
-export const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
+export const BANDS = ["Aggressive", "Midboard", "Backboard"];
 
 /** Every deployment class, front to back (mechabellum::Deployment::label). */
-export const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Sym midboard", "Asym midboard", "Backboard"];
+export const DEPLOYMENTS = ["Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Backboard"];
 
 /** How two one-sided 1v1 deployments meet (mechabellum::Meeting). */
 export type Meeting = "Asym headbutt" | "Asym, opposite lanes";
@@ -81,21 +81,20 @@ export const RULES: Tip = {
   title: "Deployment classes",
   lines: [
     "Aggressive: front edge within 5 squares of the zone's front edge, or in a flank column.",
-    "Midboard: from 5 squares in front of the towers back to their centers.",
+    "Midboard: from the aggressive band back to the towers' centers.",
     "Backboard: behind the towers' centers.",
-    "Standard ground is the rest of the zone, between aggressive and midboard.",
-    "Each unit counts by the ground it covers. An army is aggressive, midboard or backboard when that band holds the most of its ground and at least 40%; otherwise it's standard, even if little of it stands on standard ground.",
-    "An army is asym when three quarters or more of its ground stands on one side of the board: for aggressive and midboard, that band's ground; at standard depth, the whole army's. A symmetric standard army is Standard; a one-sided one is Asym mid aggro. Backboard isn't split.",
+    "Each unit counts by the ground it covers. An army is aggressive or backboard when that band holds the most of its ground and at least 40%; otherwise it's midboard.",
+    "A midboard army is Standard when its ground is spread across both sides, and Asym mid aggro when three quarters or more of it stands on one side. An aggressive army is sym or asym by its aggressive ground the same way. Backboard isn't split.",
     "Two asym armies on the same lane are an asym headbutt.",
   ],
   note: "A match is classed by round 1's layout; later fights are classed the same way to show how the board grew. 1v1 on the 2.0 board, build 2259 on.",
 };
 
-/** The band of a deployment label: "Sym midboard" and "Asym midboard" are both midboard, "Asym
- * mid aggro" is standard depth, and so on. -1 when unknown. */
+/** The band of a deployment label: Standard and Asym mid aggro are midboard, both aggressive
+ * classes aggressive. -1 when unknown. */
 export function labelBand(label: string | null | undefined) {
   if (!label) return -1;
-  if (label === "Asym mid aggro") return 1;
+  if (label === "Standard" || label === "Asym mid aggro") return 1;
   const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
   return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
@@ -109,7 +108,7 @@ export function meetingTag(meeting: Meeting | null | undefined) {
 }
 
 /** A band's color; unclassified marks get the muted ink (3:1 on the panel), not the near-invisible track. */
-export const bandColor = (band: number) => (band >= 0 && band < 4 ? `var(--band-${band})` : "var(--text-muted)");
+export const bandColor = (band: number) => (band >= 0 && band < BANDS.length ? `var(--band-${band})` : "var(--text-muted)");
 
 /** A swatch and a label, e.g. ■ Standard. */
 export function deploymentPill(label: string | null | undefined) {

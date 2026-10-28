@@ -34,9 +34,8 @@
      put backboard on the same blue as you, win and pick rate). Validated as an ordinal ramp on
      the dark panel. Classes are always named in text beside the color. */
   --band-0: #c4f2df;
-  --band-1: #6fd9b0;
-  --band-2: #25b07f;
-  --band-3: #137d58;
+  --band-1: #4cc596;
+  --band-2: #137d58;
 
   font-family: "Bahnschrift", "DIN Alternate", "D-DIN", "Barlow", "Roboto Condensed", system-ui, sans-serif;
   font-size: 14px;

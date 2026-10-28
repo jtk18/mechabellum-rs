@@ -48,13 +48,13 @@ landing page yet.
 
 **Deployment classes** (`mechabellum::classify`, per player per fight, 1v1 on the 2.0 board from build
 2259): each unit falls in a band by where it stands in its own half. **Aggressive**: front edge within 5
-squares of the zone's front edge, or in a flank column. **Midboard**: from 5 squares in front of the towers' front
-faces back to their centers. **Backboard**: behind the towers' centers. Everything else is the standard
-band. Units weigh by footprint area; the army takes the class of the band holding the most of it when that's
-aggressive, midboard or backboard with at least 40%, and takes standard depth otherwise. An army is **asym** when
-three quarters or more of its ground stands on one side, **sym** otherwise: an aggressive or midboard army by that
-band's ground, a standard-depth one by the whole army's, since no band may lead it. A symmetric standard-depth
-army is **standard** and a one-sided one **asym mid aggro**; backboard isn't split yet. When both players in a 1v1 are
+squares of the zone's front edge, or in a flank column. **Midboard**: from there back to the towers' centers.
+**Backboard**: behind the towers' centers. Units weigh by footprint area; the army takes the class of the band
+holding the most of it when that's aggressive or backboard with at least 40%, and is midboard otherwise. A
+midboard army is **standard** when its ground is spread across both sides and **asym mid aggro** when three
+quarters or more of it stands on one side (judged on the whole army, since midboard is also the class of an army
+no band leads). An aggressive army is **sym** or **asym** by its aggressive ground the same way; backboard isn't
+split yet. When both players in a 1v1 are
 asym, they meet in an **asym headbutt** on the same lane, or on opposite lanes (`mechabellum::meeting`). A match is
 classed by each player's **round 1** layout, not the last round's; a replay with no round 1 record isn't
 classed. Later fights are classed the same way, which the

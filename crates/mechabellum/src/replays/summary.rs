@@ -6,7 +6,7 @@
 
 use super::detail::{MatchDetail, PlacedUnit, SideLayout};
 use super::game_data::GRID_SQUARE;
-use crate::board::{Half, TOWER_SIZE, TOWER_Y, ZONE_FRONT, ZONE_HALF_WIDTH};
+use crate::board::{Half, TOWER_Y, ZONE_FRONT, ZONE_HALF_WIDTH};
 
 use serde::Serialize;
 
@@ -21,12 +21,9 @@ pub const DEPLOYMENT_GEOMETRY_FROM: u32 = 2259;
 /// A unit is aggressive when its front edge is within this of the zone's front edge (3 squares
 /// before 2026-10-27).
 const AGGRESSIVE_REACH: i32 = 5 * GRID_SQUARE;
-/// Midboard is the ground right in front of the towers: from the towers' centers forward to
-/// this far in front of their front faces. Behind the towers' centers is backboard.
-const MIDBOARD_REACH: i32 = 5 * GRID_SQUARE;
-/// An army is aggressive, midboard or backboard when that band holds the largest share of it
-/// and at least this much; otherwise it's standard. Without a floor, an army spread evenly
-/// (25/27/24/24) changed class from fight to fight on a percentage point.
+/// An army is aggressive or backboard when that band holds the largest share of it and at least
+/// this much; otherwise it's midboard. Without a floor, an army spread evenly changed class from
+/// fight to fight on a percentage point.
 const DISTINCT_SHARE: f32 = 0.4;
 /// A deployment is asymmetric when its units lean at least this far to one side: (right - left)
 /// / total, by footprint area. 0.5 is three quarters on one side.
@@ -38,10 +35,8 @@ const ASYM_LEAN: f32 = 0.5;
 pub enum Depth {
     /// At the line: front edge within 5 squares of the zone's front edge, or in a flank column.
     Aggressive,
-    /// Between the aggressive band and midboard. Also the class of an army that no other band
-    /// leads with `DISTINCT_SHARE` of it.
-    Standard,
-    /// Right in front of the towers, up to level with their centers.
+    /// From the aggressive band back to the towers' centers. Also the class of an army that
+    /// neither other band leads with `DISTINCT_SHARE` of it.
     Midboard,
     /// Behind the towers' centers.
     Backboard,
@@ -51,27 +46,19 @@ impl Depth {
     /// Whether an army of this class is called sym or asym: one grouped on one side is a different
     /// deployment from one spread across both. Backboard isn't split yet.
     fn has_sides(self) -> bool {
-        matches!(self, Depth::Aggressive | Depth::Standard | Depth::Midboard)
+        matches!(self, Depth::Aggressive | Depth::Midboard)
     }
 
-    const ALL: [Depth; 4] = [
-        Depth::Aggressive,
-        Depth::Standard,
-        Depth::Midboard,
-        Depth::Backboard,
-    ];
+    const ALL: [Depth; 3] = [Depth::Aggressive, Depth::Midboard, Depth::Backboard];
 
-    /// The class's name, by whether the army is grouped on one side. Standard depth has its own
-    /// pair: symmetric is "Standard" and one-sided is "Asym mid aggro". No class
-    /// is called asym standard.
+    /// The class's name, by whether the army is grouped on one side. A symmetric midboard army is
+    /// "Standard" and a one-sided one "Asym mid aggro".
     fn label(self, asym: Option<bool>) -> &'static str {
         match (self, asym) {
             (Depth::Aggressive, Some(true)) => "Asym aggressive",
             (Depth::Aggressive, _) => "Sym aggressive",
-            (Depth::Standard, Some(true)) => "Asym mid aggro",
-            (Depth::Standard, _) => "Standard",
-            (Depth::Midboard, Some(true)) => "Asym midboard",
-            (Depth::Midboard, _) => "Sym midboard",
+            (Depth::Midboard, Some(true)) => "Asym mid aggro",
+            (Depth::Midboard, _) => "Standard",
             (Depth::Backboard, _) => "Backboard",
         }
     }
@@ -101,19 +88,18 @@ impl Meeting {
 /// How one player's army was deployed for one fight.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Deployment {
-    /// "Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro", "Sym midboard",
-    /// "Asym midboard" or "Backboard".
+    /// "Sym aggressive", "Asym aggressive", "Standard", "Asym mid aggro" or "Backboard".
     pub label: String,
     /// The band holding the largest share of the army (ties go to the one further forward), when
-    /// that's aggressive, midboard or backboard with at least 40% of it; otherwise standard.
+    /// that's aggressive or backboard with at least 40% of it; otherwise midboard.
     pub depth: Depth,
     /// How the army leans, -1 all on the player's own left, 1 all on their right, by footprint
-    /// area: an aggressive or midboard army's units in that band, a standard one's whole army
-    /// (standard is also the class of an army no band leads, so its own band can be a sliver).
-    /// `None` for backboard.
+    /// area: an aggressive army's units in that band, a midboard one's whole army (midboard is
+    /// also the class of an army no band leads, so its own band can be a sliver). `None` for
+    /// backboard.
     pub lean: Option<f32>,
     /// Share of the army in each band, front to back, by footprint area.
-    pub bands: [f32; 4],
+    pub bands: [f32; 3],
     /// Units in a flank column (they open along the edges of the opponent's half from round 3).
     pub flank: u32,
 }
@@ -168,7 +154,7 @@ pub struct FightSummary {
     /// The army as it fought, in the board's shared frame, for drawing it: `[unit_id, x, y,
     /// width, depth, level, band]`, with positions in replay units (10 per square), the
     /// footprint in squares after rotation, the level 1-based, and the unit's `Depth` band as
-    /// 0-3 front to back (-1 when the deployment isn't classified). Units with no known
+    /// 0-2 front to back (-1 when the deployment isn't classified). Units with no known
     /// footprint are 2x2.
     pub board: Vec<[i32; 7]>,
 }
@@ -280,11 +266,8 @@ fn half_of(units: &[PlacedUnit]) -> Option<Half> {
 /// The band a unit stands in, from its position in its own side's frame.
 fn depth_of(x: i32, y: i32, depth: i32) -> Depth {
     let front_edge = y + depth / 2;
-    let tower_front = TOWER_Y + TOWER_SIZE / 2;
     if in_flank_column(x) || front_edge >= ZONE_FRONT - AGGRESSIVE_REACH {
         Depth::Aggressive
-    } else if y > tower_front + MIDBOARD_REACH {
-        Depth::Standard
     } else if y >= TOWER_Y {
         Depth::Midboard
     } else {
@@ -301,9 +284,9 @@ fn unit_depth(unit: &PlacedUnit, half: Half) -> Depth {
 /// Classify one army on the 2.0 board. Each unit counts by its footprint's area, so a 7x7 Abyss weighs what it
 /// covers rather than what a Marksman does.
 pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
-    let mut bands = [0f32; 4];
+    let mut bands = [0f32; 3];
     // Area on the player's own left and right, per band.
-    let (mut left, mut right) = ([0f32; 4], [0f32; 4]);
+    let (mut left, mut right) = ([0f32; 3], [0f32; 3]);
     let mut flank = 0;
     for unit in units {
         let (x, _) = own_frame(half, unit.x, unit.y);
@@ -337,12 +320,12 @@ pub fn classify(units: &[PlacedUnit], half: Half) -> Option<Deployment> {
     let depth = if bands[lead as usize] >= DISTINCT_SHARE {
         lead
     } else {
-        Depth::Standard
+        Depth::Midboard
     };
-    // The lean of the units that give the army its class: that band's, or for standard, which no
-    // band may lead, the whole army's.
+    // The lean of the units that give the army its class: the aggressive band's, or for midboard,
+    // which is also the class of an army no band leads, the whole army's.
     let (l, r) = match depth {
-        Depth::Standard => (left.iter().sum(), right.iter().sum()),
+        Depth::Midboard => (left.iter().sum(), right.iter().sum()),
         _ => (left[depth as usize], right[depth as usize]),
     };
     let lean = (depth.has_sides() && l + r > 0.0).then(|| (r - l) / (r + l));
@@ -598,13 +581,11 @@ mod tests {
     #[test]
     fn test_bands_follow_the_line_and_the_towers() {
         // A 2x2 Marksman (id 2), in the south half's own frame. Front edge 5 squares behind the
-        // zone's front edge (-10): aggressive. 6 squares: standard.
+        // zone's front edge (-10): aggressive. 6 squares: midboard, which runs back to the
+        // towers' centers (-170). Behind that is backboard.
         assert_eq!(depth_of(0, -70, 20), Depth::Aggressive);
-        assert_eq!(depth_of(0, -80, 20), Depth::Standard);
-        // The towers' front faces are at -160: up to 5 squares in front is midboard, and so is
-        // level with them back to their centers (-170). Behind that is backboard.
+        assert_eq!(depth_of(0, -80, 20), Depth::Midboard);
         assert_eq!(depth_of(0, -110, 20), Depth::Midboard);
-        assert_eq!(depth_of(0, -100, 20), Depth::Standard);
         assert_eq!(depth_of(0, -170, 20), Depth::Midboard);
         assert_eq!(depth_of(0, -180, 20), Depth::Backboard);
         // Flank columns are past the line however deep they reach.
@@ -612,7 +593,7 @@ mod tests {
         // A 7x7 Abyss is aggressive with its front edge 5 squares back, though its center is 8.5
         // squares back.
         assert_eq!(depth_of(0, -95, 70), Depth::Aggressive);
-        assert_eq!(depth_of(0, -105, 70), Depth::Standard);
+        assert_eq!(depth_of(0, -105, 70), Depth::Midboard);
     }
 
     #[test]
@@ -638,7 +619,7 @@ mod tests {
         assert_eq!(d.label, "Backboard");
         assert_eq!(d.lean, None);
         assert!((d.bands[0] - 4.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
-        assert!((d.bands[3] - 32.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
+        assert!((d.bands[2] - 32.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
 
         // A real asym midboard: the opponent's round 1 in
         // 20261027--67342143, exactly as recorded (shared frame, south half). Ids: 9 Fang 5x2
@@ -656,10 +637,10 @@ mod tests {
         ];
         let d = classify(&one_side, Half::South).unwrap();
         assert_eq!(d.depth, Depth::Midboard, "{:?}", d.bands);
-        assert_eq!(d.label, "Asym midboard");
-        // All its midboard ground (a Fang beside the tower, both Sabertooths) is on its left.
-        assert_eq!(d.lean, Some(-1.0));
-        let expected = [0.0, 18.0 / 56.0, 28.0 / 56.0, 10.0 / 56.0];
+        assert_eq!(d.label, "Asym mid aggro");
+        // Everything but the turned Fang, which straddles the middle, is on its left.
+        assert!((d.lean.unwrap() + 46.0 / 56.0).abs() < 1e-6, "{:?}", d.lean);
+        let expected = [0.0, 46.0 / 56.0, 10.0 / 56.0];
         assert!(
             d.bands
                 .iter()
@@ -668,12 +649,11 @@ mod tests {
             "{:?}",
             d.bands
         );
-        // The same midboard group split across both sides is sym.
+        // The same army spread across both sides is standard: a symmetric midboard.
         let mut split = one_side;
         split[4].x = 215;
-        assert_eq!(classify(&split, Half::South).unwrap().label, "Sym midboard");
-        // At standard depth, symmetric is standard and one-sided is asym mid aggro; no class is
-        // called asym standard.
+        split[6].x = 50;
+        assert_eq!(classify(&split, Half::South).unwrap().label, "Standard");
         let standard = [unit(2, -100, -80), unit(2, 0, -80), unit(2, 100, -80)];
         let d = classify(&standard, Half::South).unwrap();
         assert_eq!((d.label.as_str(), d.lean), ("Standard", Some(0.0)));
@@ -681,24 +661,25 @@ mod tests {
         let d = classify(&lopsided, Half::South).unwrap();
         assert_eq!((d.label.as_str(), d.lean), ("Asym mid aggro", Some(1.0)));
 
-        // Spread evenly, front to back: no band leads with 40%, so standard, sided by the whole
-        // army.
-        let spread = [
+        // Half the ground behind the towers: backboard. 40% is enough.
+        let deepish = [
             unit(2, -100, -20),
             unit(2, 100, -80),
-            unit(2, -100, -150),
             unit(2, 100, -250),
             unit(2, -100, -250),
         ];
+        let d = classify(&deepish, Half::South).unwrap();
+        assert_eq!(d.bands, [0.25, 0.25, 0.5]);
+        assert_eq!(d.label, "Backboard");
+        // Spread evenly, front to back: a third each, so no band leads with 40% and the army is
+        // midboard, sided by the whole army.
+        let spread = [unit(2, -100, -20), unit(2, 100, -80), unit(2, 0, -250)];
         let d = classify(&spread, Half::South).unwrap();
-        assert_eq!(d.bands, [0.2, 0.2, 0.2, 0.4]);
-        assert_eq!(d.label, "Backboard", "40% is enough");
-        let d = classify(&spread[..4], Half::South).unwrap();
         assert_eq!(d.label, "Standard");
         assert_eq!(d.lean, Some(0.0));
-        // The same spread all on one side: its standard ground alone is on one side whatever
+        // The same spread all on one side: its midboard ground alone is on one side whatever
         // happens, so the whole army decides.
-        let one_side: Vec<PlacedUnit> = spread[..4]
+        let one_side: Vec<PlacedUnit> = spread
             .iter()
             .map(|u| unit(u.unit_id, -u.x.abs(), u.y))
             .collect();
@@ -719,7 +700,7 @@ mod tests {
             u.rotated = true;
             u
         };
-        // South: three 4x2s (id 30) and two 3x3 Tarantulas (24) in a row at standard depth, two
+        // South: three 4x2s (id 30) and two 3x3 Tarantulas (24) in a row in midboard, two
         // Crawlers (10) turned behind them, all on the player's right.
         let south = [
             unit(30, 230, -90),
@@ -732,9 +713,9 @@ mod tests {
         ];
         let s = classify(&south, Half::South).unwrap();
         assert_eq!((s.label.as_str(), s.lean), ("Asym mid aggro", Some(1.0)));
-        assert!((s.bands[1] - 42.0 / 62.0).abs() < 1e-6, "{:?}", s.bands);
-        // North: the Tarantulas' front edges are 3 squares from the zone's: aggressive, 47% of
-        // the ground, all on the player's left.
+        assert_eq!(s.bands, [0.0, 1.0, 0.0]);
+        // North: the Tarantulas' front edges are 3 squares from the zone's, aggressive, but the
+        // other 53% of the ground is midboard. All of it is on the player's left.
         let north = [
             unit(31, 140, 80),
             unit(31, 60, 80),
@@ -745,7 +726,7 @@ mod tests {
             unit(2, 90, 130),
         ];
         let n = classify(&north, Half::North).unwrap();
-        assert_eq!((n.label.as_str(), n.lean), ("Asym aggressive", Some(-1.0)));
+        assert_eq!((n.label.as_str(), n.lean), ("Asym mid aggro", Some(-1.0)));
         // One's right is the other's left: both on the shared frame's east lane.
         assert_eq!(
             meeting((&s, Half::South), (&n, Half::North)),

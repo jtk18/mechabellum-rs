@@ -101,9 +101,9 @@ const TOWER_SIZE = 20;
 const NO_DAMAGE_NOTE = "Replays record each unit's XP but not its damage: fight reports only total each side.";
 
 /** Band edges in a side's own frame, as distance back from the middle (replay units): where
- * aggressive, standard, midboard and backboard meet. The towers' centers are 17 squares back.
- * Aggressive is judged by a unit's front edge and the rest by its center, so these are guides. */
-const BAND_EDGES = [60, 110, 170];
+ * aggressive, midboard and backboard meet. The towers' centers are 17 squares back. Aggressive
+ * is judged by a unit's front edge and backboard by its center, so these are guides. */
+const BAND_EDGES = [60, 170];
 
 /** Footprint used when a unit's size is unknown. */
 const FALLBACK: [number, number] = [2, 2];
@@ -274,7 +274,8 @@ function classified() {
 /** Dashed lines where the deployment bands meet on both halves, each band named at the edge. */
 function bandGuides() {
   const g = svg("g", { class: "band-guides" });
-  const bands: [number, number][] = [[ZONE_FRONT, BAND_EDGES[0]], [BAND_EDGES[0], BAND_EDGES[1]], [BAND_EDGES[1], BAND_EDGES[2]], [BAND_EDGES[2], ZONE_BACK]];
+  const stops = [ZONE_FRONT, ...BAND_EDGES, ZONE_BACK];
+  const bands: [number, number][] = BANDS.map((_, i) => [stops[i], stops[i + 1]]);
   for (const sign of [1, -1]) {
     for (const edge of BAND_EDGES) {
       g.append(svg("line", { class: "band-edge", x1: -ZONE_HALF_WIDTH, y1: sign * edge, x2: ZONE_HALF_WIDTH, y2: sign * edge }));

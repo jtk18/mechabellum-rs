@@ -77,12 +77,12 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     headline everywhere, the stats, and the match-against-match grid use round 1; cards and the
     desktop match view open on round 1. The per-fight classes stay on the fight tape and the round
     bar.
-    Sym and asym apply to aggressive, standard depth and midboard (J, 2026-10-27; schemas 12 and
-    14): a one-sided standard-depth army is Asym mid aggro, a symmetric one Standard. Checked on
-    J's example, the opponent's round 1 on Forest Eye (`20261027--67342143`): Asym midboard,
-    lean -1. Backboard isn't split until J rules on it. Aggressive reaches 5 squares from the
-    zone's front edge (schema 14). Two one-sided 1v1 armies meet in an asym headbutt or on
-    opposite lanes.
+    Three bands since schema 16: aggressive (front edge within 5 squares of the zone's front
+    edge), midboard (back to the towers' centers) and backboard. A symmetric midboard army is
+    Standard and a one-sided one Asym mid aggro; aggressive splits into sym and asym. J's
+    example, the opponent's round 1 on Forest Eye (`20261027--67342143`), is Asym mid aggro.
+    Backboard isn't split until J rules on it. Two one-sided 1v1 armies meet in an asym headbutt
+    or on opposite lanes.
     Also fixed: the Settings view showed under every other view (`.sharing-view` set `display`,
     which beat `hidden`).
     Found on the way: version 2340 writes `preRoundFightResult` as "Win" for both players every

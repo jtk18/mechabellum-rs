@@ -21,9 +21,8 @@
     /* Deployment bands, front to back: one ordinal ramp, light to dark, in a hue that no win/loss
        or side color uses. Validated as an ordinal ramp on --panel. */
     --band-0: #c4f2df;
-    --band-1: #6fd9b0;
-    --band-2: #25b07f;
-    --band-3: #137d58;
+    --band-1: #4cc596;
+    --band-2: #137d58;
     --band-none: #5d6870;
   }
   * { box-sizing: border-box; }
@@ -167,17 +166,14 @@
     <summary>How deployments are classed</summary>
     <ul>
       <li><strong>Aggressive</strong>: units whose front edge is within 5 squares of the line, or in a flank column.</li>
-      <li><strong>Midboard</strong>: units right in front of the towers, from 5 squares ahead of their front faces back to level with their centers.</li>
+      <li><strong>Midboard</strong>: units from the aggressive band back to level with the towers' centers.</li>
       <li><strong>Backboard</strong>: units behind the towers' centers.</li>
-      <li><strong>Standard</strong> ground is the rest of the zone, between aggressive and midboard.</li>
       <li>"The line" is the front edge of a side's deployment zone, a square short of the middle.</li>
-      <li>Each unit counts by the ground it covers. An army takes the class of the band holding most of its ground, when
-        that's aggressive, midboard or backboard with at least 40%. Otherwise it's <strong>standard</strong>, even if little
-        of it stands on standard ground.</li>
-      <li>An army is <strong>asym</strong> when three quarters or more of its ground stands on one side of the board, and
-        <strong>sym</strong> otherwise: for aggressive and midboard, that band's ground; at standard depth, the whole army's.
-        A symmetric standard army is <strong>standard</strong>; a one-sided one is <strong>asym mid aggro</strong>.
-        Backboard isn't split.</li>
+      <li>Each unit counts by the ground it covers. An army is aggressive or backboard when that band holds most of its
+        ground and at least 40%; otherwise it's midboard.</li>
+      <li>A midboard army is <strong>standard</strong> when its ground is spread across both sides, and <strong>asym mid
+        aggro</strong> when three quarters or more of it stands on one side. An aggressive army is <strong>sym</strong> or
+        <strong>asym</strong> by its aggressive ground the same way. Backboard isn't split.</li>
       <li>Two asym armies on the same lane are an <strong>asym headbutt</strong>: they meet head on. On opposite lanes,
         each faces the other's empty side.</li>
       <li>A match is classed by how each player deployed for <strong>round 1</strong>. Later fights are classed the same
@@ -219,13 +215,13 @@ function svg(tag, attrs) {
 const PAGE = 12;
 const MODES = { VS_1_1: "1v1", VS_2_2: "2v2", VS_4_Scuffle: "4-player Brawl" };
 const modeLabel = (m, g) => `${MODES[m] || m} ${g.replace(/([a-z])([A-Z])/g, "$1 $2")}`;
-const BANDS = ["Aggressive", "Standard", "Midboard", "Backboard"];
-const bandColor = (i) => (i >= 0 && i < 4 ? `var(--band-${i})` : "var(--band-none)");
-/** A deployment label's band: "Sym midboard" and "Asym midboard" are both midboard, "Asym mid
- * aggro" is standard depth, and so on. */
+const BANDS = ["Aggressive", "Midboard", "Backboard"];
+const bandColor = (i) => (i >= 0 && i < BANDS.length ? `var(--band-${i})` : "var(--band-none)");
+/** A deployment label's band: Standard and Asym mid aggro are midboard, both aggressive classes
+ * aggressive. */
 function labelBand(label) {
   if (!label) return -1;
-  if (label === "Asym mid aggro") return 1;
+  if (label === "Standard" || label === "Asym mid aggro") return 1;
   const band = label.replace(/^(Sym|Asym) /, "").toLowerCase();
   return BANDS.findIndex((b) => b.toLowerCase() === band);
 }
@@ -237,8 +233,8 @@ const TOWER_X = 140, TOWER_Y = 170, TOWER_SIZE = 20;
 // replays on hand.
 const FLANK_OPENS = 2;
 // Band edges in a side's own frame (distance back from the middle), for the board's stripes.
-// Aggressive is judged by a unit's front edge, the rest by its center, so these are guides.
-const STRIPES = [[ZONE_FRONT, 60], [60, 110], [110, TOWER_Y], [TOWER_Y, ZONE_BACK]];
+// Aggressive is judged by a unit's front edge, backboard by its center, so these are guides.
+const STRIPES = [[ZONE_FRONT, 60], [60, TOWER_Y], [TOWER_Y, ZONE_BACK]];
 
 async function get(path, params) {
   const q = new URLSearchParams();
@@ -303,7 +299,7 @@ function drawBoard(svgEl, players, fight) {
   // Zones, band stripes, and flank columns, per half. North is drawn on top (shared y > 0).
   for (const sign of [1, -1]) {
     const yOf = (back) => (sign > 0 ? -back : back); // own-frame distance back -> SVG y
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < STRIPES.length; i++) {
       const [from, to] = STRIPES[i];
       const y0 = Math.min(yOf(from), yOf(to));
       parts.push(svg("rect", { x: -ZONE_HALF_WIDTH, y: y0, width: 2 * ZONE_HALF_WIDTH, height: to - from, fill: bandColor(i), "fill-opacity": 0.16 }));
