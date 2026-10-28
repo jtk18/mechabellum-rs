@@ -183,8 +183,9 @@ pub struct PlacedUnit {
     /// in the rebuilt last round has none recorded; it takes the price that player's other copies
     /// of it show, else any player's most common one, else its usual 2.0 price (`list_price`).
     /// `None` when none of those is known. Control: pricing each purchase this way from the
-    /// records before it gives the next record's value for 557 of 580 purchases in the 13 2.0
-    /// matches on hand (1.3% of their supply off; the list prices come from the same matches).
+    /// records before it gives the next record's value for 556 of 580 purchases in the 13 2.0
+    /// matches on hand (1.5% of their supply off; the list prices come from the same matches and
+    /// from J).
     pub value: Option<u32>,
 }
 

@@ -193,8 +193,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// early, techs include the last round's research, level-ups count upgrades bought, units
 /// added and sold need fights from the first; the derived tables are recreated. 14: aggressive
 /// reaches 5 squares, a one-sided standard-depth army is "Asym mid aggro", round 1's meeting
-/// (asym headbutt), and army values in supply.
-const SCHEMA_VERSION: i64 = 14;
+/// (asym headbutt), and army values in supply. 15: J's prices for the big units (Mountain, War Factory and Abyss 800,
+/// Overlord 500, giants 400).
+const SCHEMA_VERSION: i64 = 15;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
