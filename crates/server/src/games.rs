@@ -340,8 +340,9 @@ impl Store {
 
         let units = conn
             .prepare(&format!(
-                "{scope} SELECT u.unit, COUNT(*), SUM(s.won), SUM(u.last > 0), SUM(u.added),
-                        SUM(u.sold), AVG(u.peak), AVG(u.max_level)
+                "{scope} SELECT u.unit, COUNT(*), SUM(s.won), SUM(u.last > 0),
+                        COALESCE(SUM(u.added), 0), COALESCE(SUM(u.sold), 0), AVG(u.peak),
+                        AVG(u.max_level)
                  FROM player_unit_use u
                  JOIN scope s ON s.battle_id = u.battle_id AND s.player_id = u.player_id
                  GROUP BY u.unit ORDER BY COUNT(*) DESC, u.unit"

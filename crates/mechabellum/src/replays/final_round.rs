@@ -7,7 +7,7 @@
 //!
 //! Replaying every earlier round and comparing with the next record reproduces every round of
 //! the 13 2.0 replays on hand (184 of 184, 2,801 units) and 99.7% of units across the 473 1.x
-//! replays (5,944 of 6,156 rounds exact). 1.x records no buy positions, so a purchase is placed
+//! replays (5,960 of 6,156 rounds exact). 1.x records no buy positions, so a purchase is placed
 //! by its move; the misses are mostly cards that add units which are never moved afterwards.
 
 use super::battle_record::{
@@ -40,13 +40,8 @@ pub(crate) fn replay_deployment(
         .filter_map(|u| Some((unit_index(&u.index)?, u.clone())))
         .collect();
     let first_index = unit_index(&start.unit_index).unwrap_or(0).max(0);
-    let claimed = align_claims(&actions, &units, first_index);
-    let mut slots: BTreeMap<u32, String> = start
-        .commander_skills
-        .commander_skill_data
-        .iter()
-        .filter_map(|s| Some((s.index.trim().parse().ok()?, s.id.trim().to_owned())))
-        .collect();
+    let released = skills_released(start, &actions);
+    let claimed = align_claims(&actions, &released, &units, first_index);
 
     let mut next_index = first_index;
     // Indices of this round's purchases, in order.
@@ -54,12 +49,6 @@ pub(crate) fn replay_deployment(
     for (position, action) in actions.iter().enumerate() {
         next_index += claimed.get(&position).copied().unwrap_or(0);
         match action.xsi_type.trim_start_matches("PAD_") {
-            "ChooseReinforceItem" | "ActiveBlueprint" => {
-                if let Some(skill) = skill_gained(action) {
-                    let slot = slots.keys().next_back().map_or(0, |last| last + 1);
-                    slots.insert(slot, skill.to_string());
-                }
-            }
             "BuyUnit" => {
                 let Some(unit_id) = action.uid.as_deref().map(str::trim) else {
                     continue;
@@ -144,22 +133,9 @@ pub(crate) fn replay_deployment(
                     });
                 }
             }
-            "ReleaseCommanderSkill" => {
-                // Opponents' skill IDs can be hidden (0); the skill slot still says which.
-                let id = action
-                    .id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|id| !id.is_empty() && *id != "0")
-                    .map(str::to_owned)
-                    .or_else(|| {
-                        let slot = action.skill_index.as_deref()?.trim().parse().ok()?;
-                        slots.get(&slot).cloned()
-                    });
-                if id.as_deref().is_some_and(sells_unit) {
-                    if let Some(i) = index(&action.unit_index) {
-                        units.remove(&i);
-                    }
+            "ReleaseCommanderSkill" if released[position].as_deref().is_some_and(sells_unit) => {
+                if let Some(i) = index(&action.unit_index) {
+                    units.remove(&i);
                 }
             }
             _ => {}
@@ -173,8 +149,8 @@ pub(crate) fn replay_deployment(
 /// skill.
 const MAX_CARD_UNITS: i64 = 4;
 const MAX_SUMMONED: i64 = 2;
-/// Cards and summons whose counts are searched; any beyond these take none. Real rounds have one
-/// or two, and the search grows as 5^n.
+/// The most cards and summons a round can have for their counts to be searched. Real rounds have
+/// at most four (5 in five 1.x rounds, 8 in one), and the search grows as 5^n.
 const MAX_CLAIMS_SEARCHED: usize = 5;
 /// The most actions and moves a round can have for the search to run.
 const MAX_SEARCHED_ROUND: usize = 1_000;
@@ -184,32 +160,48 @@ const MAX_SEARCHED_ROUND: usize = 1_000;
 /// unit type when it's moved), each disagreement costing two agreements, ties going to fewer.
 fn align_claims(
     actions: &[&MatchActionData],
+    released: &[Option<String>],
     start: &BTreeMap<i64, UnitsNewUnitData>,
     first_index: i64,
 ) -> BTreeMap<usize, i64> {
     let names = GameNames::bundled();
     let unit_cards = names.categories.get("UnitReinforceData");
-    let claims: Vec<(usize, i64)> = actions
+    let summons = names.categories.get("CSD_SupportUnit");
+    // (position, fewest indices, most indices) for each card or summon.
+    let claims: Vec<(usize, i64, i64)> = actions
         .iter()
         .enumerate()
-        .filter_map(
-            |(position, action)| match action.xsi_type.trim_start_matches("PAD_") {
+        .filter_map(|(position, action)| {
+            match action.xsi_type.trim_start_matches("PAD_") {
                 "ChooseReinforceItem" => {
                     let id: u64 = action.id.as_deref()?.trim().parse().ok()?;
-                    unit_cards
-                        .is_some_and(|cards| cards.contains_key(&id))
-                        .then_some((position, MAX_CARD_UNITS))
+                    if unit_cards.is_some_and(|cards| cards.contains_key(&id)) {
+                        // Every unit card in the 2.0 replays took at least one index.
+                        Some((position, 1, MAX_CARD_UNITS))
+                    } else if names.categories.values().all(|ids| !ids.contains_key(&id)) {
+                        // A card the names table doesn't know (many 1.x ones) may give units.
+                        Some((position, 0, MAX_CARD_UNITS))
+                    } else {
+                        None
+                    }
                 }
-                // A skill released on no unit can summon some.
-                "ReleaseCommanderSkill" => index(&action.unit_index)
-                    .is_none_or(|i| i < 0)
-                    .then_some((position, MAX_SUMMONED)),
+                // A summoning skill, or one the replay hides, released on no unit.
+                "ReleaseCommanderSkill" if index(&action.unit_index).is_none_or(|i| i < 0) => {
+                    let summons_units = match released[position].as_deref() {
+                        Some(skill) => skill.parse::<u64>().is_ok_and(|skill| {
+                            summons.is_some_and(|summons| summons.contains_key(&skill))
+                        }),
+                        None => true,
+                    };
+                    summons_units.then_some((position, 0, MAX_SUMMONED))
+                }
                 _ => None,
-            },
-        )
-        .take(MAX_CLAIMS_SEARCHED)
+            }
+        })
         .collect();
-    if claims.is_empty() {
+    // Past this the search is skipped rather than cut short: a card left out of it would leave
+    // the purchases after it misplaced. Purchases still skip taken indices.
+    if claims.is_empty() || claims.len() > MAX_CLAIMS_SEARCHED {
         return BTreeMap::new();
     }
     // (position, index, unit type) for every unit moved.
@@ -231,7 +223,7 @@ fn align_claims(
         return BTreeMap::new();
     }
 
-    let mut counts = vec![0i64; claims.len()];
+    let mut counts: Vec<i64> = claims.iter().map(|&(_, fewest, _)| fewest).collect();
     let mut best: Option<((i64, i64), Vec<i64>)> = None;
     loop {
         // Who holds each index under these counts: a purchase (its unit type and position) or a
@@ -239,7 +231,7 @@ fn align_claims(
         let mut owners: BTreeMap<i64, (usize, Option<&str>)> = BTreeMap::new();
         let mut next_index = first_index;
         for (position, action) in actions.iter().enumerate() {
-            if let Some(n) = claims.iter().position(|(p, _)| *p == position) {
+            if let Some(n) = claims.iter().position(|(p, _, _)| *p == position) {
                 for _ in 0..counts[n] {
                     owners.insert(next_index, (position, None));
                     next_index += 1;
@@ -276,16 +268,51 @@ fn align_claims(
         loop {
             if digit == counts.len() {
                 let (_, counts) = best.unwrap_or_default();
-                return claims.iter().map(|(p, _)| *p).zip(counts).collect();
+                return claims.iter().map(|(p, _, _)| *p).zip(counts).collect();
             }
-            if counts[digit] < claims[digit].1 {
+            if counts[digit] < claims[digit].2 {
                 counts[digit] += 1;
                 break;
             }
-            counts[digit] = 0;
+            counts[digit] = claims[digit].1;
             digit += 1;
         }
     }
+}
+
+/// The skill each action releases (`ReleaseCommanderSkill`; `None` for every other action, and
+/// for a release whose skill can't be told). Opponents' skill IDs can be hidden (0); the slot
+/// still says which, counting the slots skill cards and blueprints add during the round.
+fn skills_released(start: &PlayerData, actions: &[&MatchActionData]) -> Vec<Option<String>> {
+    let mut slots: BTreeMap<u32, String> = start
+        .commander_skills
+        .commander_skill_data
+        .iter()
+        .filter_map(|s| Some((s.index.trim().parse().ok()?, s.id.trim().to_owned())))
+        .collect();
+    actions
+        .iter()
+        .map(|action| match action.xsi_type.trim_start_matches("PAD_") {
+            "ChooseReinforceItem" | "ActiveBlueprint" => {
+                if let Some(skill) = skill_gained(action) {
+                    let slot = slots.keys().next_back().map_or(0, |last| last + 1);
+                    slots.insert(slot, skill.to_string());
+                }
+                None
+            }
+            "ReleaseCommanderSkill" => action
+                .id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty() && *id != "0")
+                .map(str::to_owned)
+                .or_else(|| {
+                    let slot = action.skill_index.as_deref()?.trim().parse().ok()?;
+                    slots.get(&slot).cloned()
+                }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The skill a card pick or blueprint adds to the player's skill slots, if it adds one: a skill

@@ -164,11 +164,11 @@ pub struct FightSummary {
 pub struct UnitUse {
     pub unit_id: u32,
     pub name: String,
-    /// Copies added over the match: the starter pack's, purchases, and cards'. 0 when
-    /// `PlayerGame::units_added` is `None`.
-    pub added: u32,
-    /// Copies sold. 0 when `PlayerGame::units_sold` is `None`.
-    pub sold: u32,
+    /// Copies added over the match: the starter pack's, purchases, and cards'. `None` when
+    /// `PlayerGame::units_added` is.
+    pub added: Option<u32>,
+    /// Copies sold. `None` when `PlayerGame::units_sold` is.
+    pub sold: Option<u32>,
     /// Most copies fielded in one fight.
     pub peak: u32,
     /// Copies in the last fight.
@@ -416,8 +416,8 @@ impl MatchDetail {
                         let entry = uses.entry(unit.unit_id).or_insert_with(|| UnitUse {
                             unit_id: unit.unit_id,
                             name: unit.name.clone(),
-                            added: 0,
-                            sold: 0,
+                            added: Some(0),
+                            sold: Some(0),
                             peak: 0,
                             last: 0,
                             max_level: 0,
@@ -425,7 +425,7 @@ impl MatchDetail {
                         });
                         entry.max_level = entry.max_level.max(unit.level.saturating_add(1));
                         if unit.is_new {
-                            entry.added += 1;
+                            *entry.added.get_or_insert(0) += 1;
                             added += 1;
                         }
                     }
@@ -446,7 +446,7 @@ impl MatchDetail {
                                 if !kept {
                                     sold += 1;
                                     if let Some(entry) = uses.get_mut(&unit.unit_id) {
-                                        entry.sold += 1;
+                                        *entry.sold.get_or_insert(0) += 1;
                                     }
                                 }
                             }
@@ -510,8 +510,8 @@ impl MatchDetail {
 
                 if !comparable {
                     for unit in &mut units {
-                        unit.added = 0;
-                        unit.sold = 0;
+                        unit.added = None;
+                        unit.sold = None;
                     }
                 }
                 PlayerGame {
@@ -809,7 +809,11 @@ mod tests {
                 game.units_added.unwrap() - game.units_sold.unwrap(),
                 game.final_units
             );
-            let per_type: u32 = game.units.iter().map(|u| u.added - u.sold).sum();
+            let per_type: u32 = game
+                .units
+                .iter()
+                .map(|u| u.added.unwrap() - u.sold.unwrap())
+                .sum();
             assert_eq!(per_type, game.final_units);
             for f in &game.fights {
                 let d = f.deployment.as_ref().unwrap();

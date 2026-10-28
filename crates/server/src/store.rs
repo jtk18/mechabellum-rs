@@ -131,8 +131,9 @@ CREATE TABLE IF NOT EXISTS player_unit_use (
     battle_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
     unit      TEXT NOT NULL,
-    added     INTEGER NOT NULL,
-    sold      INTEGER NOT NULL,
+    -- NULL when the match's own units added and sold are (see player_games).
+    added     INTEGER,
+    sold      INTEGER,
     peak      INTEGER NOT NULL,
     last      INTEGER NOT NULL,
     max_level INTEGER NOT NULL,
@@ -203,8 +204,9 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 /// crossfire. 18: implausible positions, levels and sell values are bounded; level-ups and cards
 /// need fights from the first; a pre-2340 result needs the round before the last; matches that
 /// don't say who won (`matches.settled`) leave the stats. 19: a match with no fight recorded
-/// isn't settled either.
-const SCHEMA_VERSION: i64 = 19;
+/// isn't settled either. 20: per-unit added and sold are NULL when the match's are; the rebuild
+/// counts a unit card as at least one unit and only summoning skills as summons.
+const SCHEMA_VERSION: i64 = 20;
 
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");

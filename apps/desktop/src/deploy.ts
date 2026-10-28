@@ -29,8 +29,9 @@ export interface FightSummary {
 export interface UnitUse {
   unit_id: number;
   name: string;
-  added: number;
-  sold: number;
+  /** Null when the match's units added and sold are (a replay that starts mid-match). */
+  added: number | null;
+  sold: number | null;
   peak: number;
   last: number;
   max_level: number;
