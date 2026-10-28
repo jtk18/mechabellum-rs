@@ -33,7 +33,7 @@ fn base_id(id: u32) -> u32 {
 /// Fang and Crawler were corrected 2026-09-27 from (4, 3) and (2, 3): in 2.0 replays their
 /// centers sit on half squares across (odd width) and on grid lines front to back (even depth)
 /// in 30 of 33 Fangs and 9 of 9 Crawlers, and Fangs stack 2 squares apart. Fang is 5 wide by
-/// 2 deep (J, from play). Crawler is 5 wide (2026-10-01): side by side in a row, 2.0 Crawlers
+/// 2 deep (from play). Crawler is 5 wide (2026-10-01): side by side in a row, 2.0 Crawlers
 /// stand exactly 5 squares apart, never closer (28 pairs; turned ones 5 or more front to back),
 /// and Testing Grounds refused one dropped 4 squares from another.
 ///
@@ -94,10 +94,10 @@ pub fn footprint(unit_id: u32) -> Option<(u8, u8)> {
 pub const LIST_PRICES_FROM: u32 = 2324;
 
 /// A unit's usual price in supply on the 2.0 board: the `SellSupply` most often recorded for it
-/// across the 13 2.0 matches on hand (versions 2324 and 2340, 2026-10-27), and J's base prices
-/// for the big units (2026-10-27): Mountain, War Factory and Abyss 800, Overlord 500, the giants
-/// 400. The replays agree where they have them (War Factory 800; Vulcan, Sandworm and Raiden 400). Their only Fortresses read 500, and that player
-/// had Improved Fortress. Units can cost less (specialists' discounts; free reinforcements read
+/// across the 13 2.0 matches on hand (versions 2324 and 2340, 2026-10-27), and the base prices of
+/// the big units: Mountain, War Factory and Abyss 800, Overlord 500, the giants 400. The replays
+/// agree where they have them (War Factory 800; Vulcan, Sandworm and Raiden 400). Their only
+/// Fortresses read 500, and that player had Improved Fortress. Units can cost less (specialists' discounts; free reinforcements read
 /// half) or more (that Fortress; one match's Tarantulas read 250), so a match's own records come
 /// first and this is the last resort. `None` for units with neither (the Death Knells).
 pub fn list_price(unit_id: u32) -> Option<u32> {

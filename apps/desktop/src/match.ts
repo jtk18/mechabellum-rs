@@ -91,7 +91,7 @@ const ZONE_BACK = 310;
 const FLANK_OUTER = 360;
 /** Fight 2, not 3: 9 units stand in flank columns in fight 2 across 6 of the 13 2.0 replays on
  * hand, the fight reports agreeing (red team, 2026-10-27). board.rs's board-code check still
- * says round 3; that's J's to settle. */
+ * says round 3; which is right is still open. */
 const FLANK_OPENS_ROUND = 2;
 /** Command Center and Research Center: centered 14 squares either side, 17 back, 2x2 (board.rs). */
 const TOWER_X = 140;
@@ -131,7 +131,7 @@ function size(unit: PlacedUnit): [number, number] {
 
 /** Whether the unit is drawn turned 90°. On 2.0 maps a flank column (past the zone's side edge)
  * runs front to back, and the game stands units in it on end: IsRotate reads the other way
- * there. Seen in play (J, 2026-09-27) and in every 2.0 flank unit whose position decides it:
+ * there. Seen in play (2026-09-27) and in every 2.0 flank unit whose position decides it:
  * two Fangs at x = ±310 and a Tarantula at -345 only fit inside the column turned. */
 function turned(unit: PlacedUnit) {
   const inFlank = (detail?.version ?? 0) >= 2000 && Math.abs(unit.x) > ZONE_HALF_WIDTH;

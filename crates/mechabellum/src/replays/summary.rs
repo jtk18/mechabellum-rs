@@ -18,10 +18,10 @@ use std::collections::BTreeMap;
 /// coordinates; only 2v2 and brawls reach past ±1,000.)
 pub const DEPLOYMENT_GEOMETRY_FROM: u32 = 2259;
 
-/// A unit is aggressive when its front edge is within this of the zone's front edge (J's rule,
-/// 2026-10-27; it was 3 squares before that).
+/// A unit is aggressive when its front edge is within this of the zone's front edge (3 squares
+/// before 2026-10-27).
 const AGGRESSIVE_REACH: i32 = 5 * GRID_SQUARE;
-/// Midboard is the ground right in front of the towers (J): from the towers' centers forward to
+/// Midboard is the ground right in front of the towers: from the towers' centers forward to
 /// this far in front of their front faces. Behind the towers' centers is backboard.
 const MIDBOARD_REACH: i32 = 5 * GRID_SQUARE;
 /// An army is aggressive, midboard or backboard when that band holds the largest share of it
@@ -48,9 +48,8 @@ pub enum Depth {
 }
 
 impl Depth {
-    /// Whether an army of this class is called sym or asym (J, 2026-10-27): one grouped on one
-    /// side is a different deployment from one spread across both. Backboard hasn't been ruled on
-    /// and stays plain.
+    /// Whether an army of this class is called sym or asym: one grouped on one side is a different
+    /// deployment from one spread across both. Backboard isn't split yet.
     fn has_sides(self) -> bool {
         matches!(self, Depth::Aggressive | Depth::Standard | Depth::Midboard)
     }
@@ -63,7 +62,7 @@ impl Depth {
     ];
 
     /// The class's name, by whether the army is grouped on one side. Standard depth has its own
-    /// pair (J, 2026-10-27): symmetric is "Standard" and one-sided is "Asym mid aggro". No class
+    /// pair: symmetric is "Standard" and one-sided is "Asym mid aggro". No class
     /// is called asym standard.
     fn label(self, asym: Option<bool>) -> &'static str {
         match (self, asym) {
@@ -228,9 +227,9 @@ pub struct PlayerGame {
     pub techs: u32,
     /// Cards picked between rounds.
     pub cards: u32,
-    /// Round 1's deployment label: how the match is classed for this player (J's rule,
-    /// 2026-10-27: round 1's positioning, not the last round's). `None` when round 1 isn't
-    /// recorded or isn't classified; a later round never stands in for it.
+    /// Round 1's deployment label: how the match is classed for this player, by round 1's
+    /// positioning, not the last round's. `None` when round 1 isn't recorded or isn't classified;
+    /// a later round never stands in for it.
     pub opening: Option<String>,
     /// How round 1's deployments met (`FightSummary::meeting`).
     pub opening_meeting: Option<Meeting>,
@@ -641,7 +640,7 @@ mod tests {
         assert!((d.bands[0] - 4.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
         assert!((d.bands[3] - 32.0 / 36.0).abs() < 1e-6, "{:?}", d.bands);
 
-        // J's example of an asym midboard (2026-10-27): the opponent's round 1 in
+        // A real asym midboard: the opponent's round 1 in
         // 20261027--67342143, exactly as recorded (shared frame, south half). Ids: 9 Fang 5x2
         // (the first one turned), 21 Sabertooth 3x3, 2 Marksman 2x2.
         let mut turned = unit(9, 0, -205);
@@ -711,8 +710,8 @@ mod tests {
         assert_eq!(classify(&[], Half::South), None);
     }
 
-    /// The asym headbutt J pointed out (2026-10-27): round 1 of 20261027--67347842, exactly as
-    /// recorded (shared frame). Neither army is standard.
+    /// A real asym headbutt: round 1 of 20261027--67347842, exactly as recorded (shared frame).
+    /// Neither army is standard.
     #[test]
     fn test_asym_mid_aggro_and_headbutt() {
         let turned = |id, x, y| {
