@@ -90,17 +90,18 @@ struct Redeemed {
 }
 
 async fn finish(app: AppHandle, done: Done) -> Html<String> {
-    let result = redeem(&app, done).await;
-    let message = match &result {
+    let message = match redeem(&app, done).await {
         Ok(server) => {
             let _ = app.emit("steam-signed-in", server.clone());
             format!("You're signed in and sharing with {server}. You can close this tab.")
         }
-        Err(e) => {
+        // Only a sign-in this app started tells the window; anything can request this page.
+        Err(Failed::Ours(e)) => {
             log::warn!("Steam sign-in: {e}");
             let _ = app.emit("steam-sign-in-failed", e.clone());
             format!("Signing in didn't finish: {e}")
         }
+        Err(Failed::NotOurs(e)) => format!("Signing in didn't finish: {e}"),
     };
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
@@ -115,33 +116,48 @@ async fn finish(app: AppHandle, done: Done) -> Html<String> {
     ))
 }
 
+enum Failed {
+    /// The sign-in this app started didn't finish.
+    Ours(String),
+    /// A request that doesn't belong to a sign-in this app is waiting for.
+    NotOurs(String),
+}
+
 /// Check the state, trade the code for a key, and save it. Returns the server's address.
-async fn redeem(app: &AppHandle, done: Done) -> Result<String, String> {
+async fn redeem(app: &AppHandle, done: Done) -> Result<String, Failed> {
     let state = app.state::<AppState>();
-    // Taken whatever happens: each sign-in is finished once.
-    let pending = check(state.sign_in.lock().unwrap().take(), &done.state)?;
+    let pending =
+        take_matching(&mut state.sign_in.lock().unwrap(), &done.state).map_err(Failed::NotOurs)?;
     let (server, verifier, code) = (pending.server.clone(), pending.verifier, done.code);
     let key = tauri::async_runtime::spawn_blocking(move || trade(&server, &code, &verifier))
         .await
-        .map_err(|e| e.to_string())??;
+        .map_err(|e| Failed::Ours(e.to_string()))?
+        .map_err(Failed::Ours)?;
     let sync = crate::sync::SyncSettings {
         enabled: true,
         server: pending.server.clone(),
         key,
     };
-    crate::apply_sync_settings(&state, sync)?;
+    crate::apply_sync_settings(&state, sync).map_err(Failed::Ours)?;
     Ok(pending.server)
 }
 
-/// The waiting sign-in, if `state` is the one it was started with and it hasn't expired.
-fn check(pending: Option<Pending>, state: &str) -> Result<Pending, String> {
-    let pending = pending
-        .filter(|p| p.started.elapsed() < PENDING_TTL)
-        .ok_or("no sign-in is waiting; start again from the app")?;
+/// Take the waiting sign-in if `state` is the one it was started with and it hasn't expired.
+/// A request with any other state leaves it waiting, so nothing that can reach this app's local
+/// server can cancel a sign-in in progress.
+fn take_matching(slot: &mut Option<Pending>, state: &str) -> Result<Pending, String> {
+    if slot
+        .as_ref()
+        .is_some_and(|p| p.started.elapsed() >= PENDING_TTL)
+    {
+        *slot = None;
+    }
+    let waiting = "no sign-in is waiting; start again from the app";
+    let pending = slot.as_ref().ok_or(waiting)?;
     if !mechabellum_server::steam::same_secret(state, &pending.state) {
         return Err("this sign-in wasn't started by this app".into());
     }
-    Ok(pending)
+    slot.take().ok_or_else(|| waiting.into())
 }
 
 /// Trade a one-time code and its verifier for an upload key.
@@ -188,17 +204,19 @@ mod tests {
 
     #[test]
     fn test_only_the_waiting_sign_in_finishes() {
-        assert!(check(None, "s").is_err());
-        assert!(check(Some(pending("x", "right", "v")), "wrong").is_err());
+        assert!(take_matching(&mut None, "s").is_err());
+        // A wrong state is refused and leaves the sign-in waiting for the right one.
+        let mut slot = Some(pending("x", "right", "v"));
+        assert!(take_matching(&mut slot, "wrong").is_err());
+        assert!(slot.is_some());
+        assert_eq!(take_matching(&mut slot, "right").unwrap().server, "x");
+        assert!(slot.is_none(), "finished once");
+        assert!(take_matching(&mut slot, "right").is_err());
         let mut old = pending("x", "right", "v");
         old.started = Instant::now() - PENDING_TTL - Duration::from_secs(1);
-        assert!(check(Some(old), "right").is_err());
-        assert_eq!(
-            check(Some(pending("x", "right", "v")), "right")
-                .unwrap()
-                .server,
-            "x"
-        );
+        let mut slot = Some(old);
+        assert!(take_matching(&mut slot, "right").is_err());
+        assert!(slot.is_none(), "an expired sign-in is dropped");
     }
 
     async fn serve(app: Router) -> String {
@@ -287,7 +305,8 @@ mod tests {
                     .into_owned()
                     .collect();
 
-            let waiting = check(Some(pending(&ours, &state, &verifier)), &params["state"]).unwrap();
+            let mut slot = Some(pending(&ours, &state, &verifier));
+            let waiting = take_matching(&mut slot, &params["state"]).unwrap();
             let key = trade(&waiting.server, &params["code"], &waiting.verifier).unwrap();
             // The code was used up.
             let again = trade(&waiting.server, &params["code"], &waiting.verifier);

@@ -184,8 +184,10 @@ CREATE TABLE IF NOT EXISTS local_player (
 CREATE TABLE IF NOT EXISTS accounts (
     name         TEXT PRIMARY KEY,
     steam        TEXT NOT NULL UNIQUE,
-    -- The Mechabellum account it shares games for, bound on its first upload.
-    player_id    TEXT UNIQUE,
+    -- The Mechabellum account it shares games for, bound on its first upload. Not unique: Steam
+    -- can't say which Mechabellum account is whose, so an exclusive claim would only let the
+    -- first claimant lock the real player out, and tell anyone who tries that the account shares.
+    player_id    TEXT,
     created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     signed_in_at TEXT,
     disabled_at  TEXT
@@ -765,6 +767,14 @@ fn migrate(conn: &Connection) -> Result<()> {
     if !keys_have_accounts {
         conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN account TEXT")?;
     }
+    let ratings_self_reported = conn
+        .prepare("SELECT 1 FROM pragma_table_info('player_ratings') WHERE name = 'self_reported'")?
+        .exists([])?;
+    if !ratings_self_reported {
+        conn.execute_batch(
+            "ALTER TABLE player_ratings ADD COLUMN self_reported INTEGER NOT NULL DEFAULT 0",
+        )?;
+    }
     let techs_have_ids = conn
         .prepare("SELECT 1 FROM pragma_table_info('player_techs') WHERE name = 'tech_id'")?
         .exists([])?;
@@ -1209,12 +1219,8 @@ impl Store {
             return reject(403, reason, vec![]);
         };
         let own_name = own.name.clone();
-        if bound.is_none() && !self.bind_player(key_name, &player)? {
-            return reject(
-                409,
-                "Another member already shares games for this player.".into(),
-                vec![],
-            );
+        if bound.is_none() {
+            self.bind_player(key_name, &player)?;
         }
 
         // A server with pseudonyms rewrites every name and ID as it stores the replay.
@@ -1263,44 +1269,21 @@ impl Store {
             .flatten())
     }
 
-    /// Bind an uploader to the account it shares games for, unless another active uploader
-    /// already shares for that account. Returns whether it's bound.
-    fn bind_player(&self, uploader: &str, player: &str) -> Result<bool> {
+    /// Bind an unbound uploader to the account it shares games for.
+    fn bind_player(&self, uploader: &str, player: &str) -> Result<()> {
         let conn = self.conn();
-        let taken: bool = conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM accounts
-                            WHERE player_id = ?2 AND name != ?1 AND disabled_at IS NULL)
-                 OR EXISTS (SELECT 1 FROM upload_keys
-                            WHERE player_id = ?2 AND name != ?1 AND account IS NULL
-                              AND revoked_at IS NULL)",
-            params![uploader, player],
-            |r| r.get(0),
-        )?;
-        if taken {
-            return Ok(false);
-        }
         let bound = conn.execute(
             "UPDATE accounts SET player_id = ?2 WHERE name = ?1 AND player_id IS NULL",
             params![uploader, player],
-        );
-        match bound {
-            Ok(0) => {
-                conn.execute(
-                    "UPDATE upload_keys SET player_id = ?2
-                     WHERE name = ?1 AND account IS NULL AND player_id IS NULL",
-                    params![uploader, player],
-                )?;
-                Ok(true)
-            }
-            Ok(_) => Ok(true),
-            // Another account bound the same player first.
-            Err(rusqlite::Error::SqliteFailure(e, _))
-                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
-            {
-                Ok(false)
-            }
-            Err(e) => Err(e.into()),
+        )?;
+        if bound == 0 {
+            conn.execute(
+                "UPDATE upload_keys SET player_id = ?2
+                 WHERE name = ?1 AND account IS NULL AND player_id IS NULL",
+                params![uploader, player],
+            )?;
         }
+        Ok(())
     }
 
     /// Whether `player` took part in a stored match.
@@ -1324,9 +1307,61 @@ impl Store {
         Ok(missing)
     }
 
+    /// The battle IDs among `battle_ids` that `uploader` hasn't shared a copy of. Asked per
+    /// uploader, so a member's client sends its own copy of a match the opponent already shared
+    /// (corroborating it, and carrying its ratings), and the answer says nothing about what
+    /// anyone else shared.
+    pub fn missing_for(&self, uploader: &str, battle_ids: &[String]) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT 1 FROM match_copies c JOIN matches m ON m.battle_id = c.battle_id
+             WHERE c.battle_id = ?1 AND c.uploaded_by = ?2",
+        )?;
+        let mut missing = Vec::new();
+        for id in battle_ids {
+            if !stmt.exists(params![id, uploader])? {
+                missing.push(id.clone());
+            }
+        }
+        Ok(missing)
+    }
+
+    /// Record ratings a member's client captured for a match that member shared. Ratings for
+    /// any other match are ignored, so the answer can't say who played in a match. The first
+    /// first-hand report of a player's rating (from the uploader bound to that player) is never
+    /// replaced: binding is only a claim, so a later claimant can't overwrite it, and the real
+    /// player's client reports as each match ends. Returns how many were stored.
+    pub fn add_shared_ratings(
+        &self,
+        battle_id: &str,
+        ratings: &[Rating],
+        uploader: &str,
+    ) -> Result<usize> {
+        let own = self.bound_player(uploader)?;
+        let shared: bool = self.conn().query_row(
+            "SELECT EXISTS (SELECT 1 FROM match_copies WHERE battle_id = ?1 AND uploaded_by = ?2)",
+            params![battle_id, uploader],
+            |r| r.get(0),
+        )?;
+        if !shared {
+            return Ok(0);
+        }
+        self.store_ratings(battle_id, ratings, own.as_deref())
+    }
+
     /// Record ratings for players in a stored match. Returns how many were stored; ratings for
     /// players not in that match are ignored.
     pub fn add_ratings(&self, battle_id: &str, ratings: &[Rating]) -> Result<usize> {
+        self.store_ratings(battle_id, ratings, None)
+    }
+
+    /// `own`: the reporter's own player, whose rating it reports first-hand.
+    fn store_ratings(
+        &self,
+        battle_id: &str,
+        ratings: &[Rating],
+        own: Option<&str>,
+    ) -> Result<usize> {
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut stored = 0;
@@ -1339,17 +1374,24 @@ impl Store {
                 .prepare_cached("SELECT 1 FROM players WHERE battle_id = ?1 AND player_id = ?2")?
                 .exists(params![battle_id, player_id])?;
             if in_match {
+                let first_hand = own == Some(player_id.as_str());
                 stored += tx.execute(
-                    "INSERT OR REPLACE INTO player_ratings
-                         (battle_id, player_id, elo, rank_point, level, elo_games)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO player_ratings
+                         (battle_id, player_id, elo, rank_point, level, elo_games, self_reported)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT (battle_id, player_id) DO UPDATE SET
+                         elo = excluded.elo, rank_point = excluded.rank_point,
+                         level = excluded.level, elo_games = excluded.elo_games,
+                         self_reported = excluded.self_reported
+                     WHERE player_ratings.self_reported = 0",
                     params![
                         battle_id,
                         player_id,
                         r.elo,
                         r.rank_point,
                         r.level,
-                        r.elo_games
+                        r.elo_games,
+                        first_hand
                     ],
                 )?;
             }

@@ -84,14 +84,19 @@ compared by anyone. The keyed ID is stable across renames and uploaders, so key 
 corroboration work as before.
 
 - The key is `pseudonym.key` beside the database (`--pseudonym-key-file` to move it), created the first time
-  `serve --require-auth` runs. **Back it up with the database.** The database records a check value; once it's
-  pseudonymized, every command needs the same key and refuses to run without it, so nothing raw is stored again.
+  `serve --require-auth` runs. **Back it up, but not alongside database backups:** the database alone doesn't
+  carry it, and with it every pseudonym can be reversed in seconds (account IDs are a small, counting space).
+  The database records a check value; once it's pseudonymized, every command needs the same key and refuses to
+  run without it, so nothing raw is stored again.
 - Turning it on for a database that already holds replays rewrites them, the tables that name accounts (ratings, key
   bindings, copies), and rebuilds the stats, once.
 - Responses carry nothing that ties one match to a player's others: players are numbered within each match, ratings
-  are rounded to 100, tech loadouts are left out, and per-player filters (`player_id`, `opponents_of`) are refused.
-  The desktop app's own server is unchanged.
-- Each Mechabellum account can be shared for by one uploader at a time; a second key claiming it gets 409.
+  are rounded to 100, dates are given to the day, tech loadouts are left out, and per-player filters (`player_id`,
+  `opponents_of`) are refused. The desktop app's own server is unchanged.
+- Binding a key to a Mechabellum account is only a claim (nothing can prove which account is whose), so a claim
+  unlocks nothing about that account: several uploaders may claim the same one, ratings count only for matches the
+  uploader shared and get the same answer either way, and a player's first first-hand rating isn't replaced.
+  `/api/replays/missing` answers per uploader: the matches it hasn't shared a copy of.
 
 ### Sign in with Steam
 

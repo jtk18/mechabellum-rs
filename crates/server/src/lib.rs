@@ -254,7 +254,7 @@ async fn missing_replays(
     headers: HeaderMap,
     Json(request): Json<MissingRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    authenticate(&state, &headers).await?;
+    let uploader = authenticate(&state, &headers).await?;
     if request.battle_ids.len() > 5000 {
         return Err(ApiError(
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -262,12 +262,17 @@ async fn missing_replays(
         ));
     }
     let store = state.store.clone();
-    let missing = blocking(move || store.missing(&request.battle_ids)).await?;
+    let missing = blocking(move || match uploader.filter(|u| u != ADMIN) {
+        Some(uploader) => store.missing_for(&uploader, &request.battle_ids),
+        None => store.missing(&request.battle_ids),
+    })
+    .await?;
     Ok(Json(serde_json::json!({ "missing": missing })))
 }
 
-/// Ratings for a match's players, captured from the game's log. A community key may only add
-/// ratings to matches its own player took part in.
+/// Ratings for a match's players, captured from the game's log. A community member's ratings
+/// count only for matches that member shared, and the answer is the same shape either way: a
+/// refusal would tell a member whether the player it's bound to played in any given match.
 async fn add_ratings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -276,26 +281,11 @@ async fn add_ratings(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let uploader = authenticate(&state, &headers).await?;
     let store = state.store.clone();
-    let stored = blocking(move || {
-        if let Some(key) = uploader.filter(|u| u != ADMIN) {
-            let Some(player) = store.key_player(&key)? else {
-                return Ok(None);
-            };
-            if !store.missing(std::slice::from_ref(&battle_id))?.is_empty()
-                || !store.ratings_allowed(&battle_id, &player)?
-            {
-                return Ok(None);
-            }
-        }
-        store.add_ratings(&battle_id, &ratings).map(Some)
+    let stored = blocking(move || match uploader.filter(|u| u != ADMIN) {
+        Some(uploader) => store.add_shared_ratings(&battle_id, &ratings, &uploader),
+        None => store.add_ratings(&battle_id, &ratings),
     })
-    .await?
-    .ok_or_else(|| {
-        ApiError(
-            StatusCode::FORBIDDEN,
-            "ratings can only be added to your own stored matches".into(),
-        )
-    })?;
+    .await?;
     Ok(Json(serde_json::json!({ "stored": stored })))
 }
 
@@ -450,6 +440,7 @@ async fn version_trends(
 /// - ratings rounded to 100: exact ratings chain one match to the next (a rating after one match
 ///   is the rating before the player's next)
 /// - no tech loadouts: which techs an account has unlocked is close to unique to it
+/// - dates to the day: some replays carry the start time to the second
 mod public_view {
     use super::{ApiError, AppState, StatusCode};
     use crate::pseudonym::ANONYMOUS_NAME;
@@ -473,6 +464,7 @@ mod public_view {
     }
 
     pub fn card(card: &mut crate::MatchCard) {
+        card.occurred_on.truncate(10);
         for (seat, player) in card.players.iter_mut().enumerate() {
             player.name = format!("{ANONYMOUS_NAME} {}", seat + 1);
             player.elo = rounded(player.elo);
@@ -480,6 +472,7 @@ mod public_view {
     }
 
     pub fn row(row: &mut crate::MatchRow) {
+        row.occurred_on.truncate(10);
         for name in row.winners.iter_mut().chain(row.losers.iter_mut()) {
             *name = ANONYMOUS_NAME.to_owned();
         }
@@ -1326,18 +1319,25 @@ mod tests {
         let missing: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(missing["missing"], serde_json::json!(["20990101--1"]));
 
-        // Ratings for my own match are accepted; the stranger's aren't.
+        // Ratings count for a match the member shared; the stranger's are ignored, with the same
+        // answer, so it learns nothing about who played.
         let ratings = format!(
             r#"[{{"player_id": "{JTK18}", "elo": 1344, "rank_point": 3285, "level": 352, "elo_games": 1583}},
                 {{"player_id": "{BOLSANO}", "elo": 900, "rank_point": null, "level": 40, "elo_games": null}}]"#
         );
-        for (key, expected) in [(&mine, StatusCode::OK), (&stranger, StatusCode::FORBIDDEN)] {
+        for (key, expected) in [(&stranger, 0), (&mine, 2)] {
             let req = Request::post("/api/replays/20260924--67113734/ratings")
                 .header(header::AUTHORIZATION, bearer(key))
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(ratings.clone()))
                 .unwrap();
-            assert_eq!(status(&app, req).await, expected);
+            let resp = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+                .await
+                .unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["stored"], expected);
         }
         assert_eq!(store.ratings("20260924--67113734").unwrap().len(), 2);
 
@@ -1408,6 +1408,15 @@ mod tests {
         }
     }
 
+    async fn json_of(app: &Router, req: Request<Body>) -> (StatusCode, serde_json::Value) {
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 24)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&body).unwrap_or_default())
+    }
+
     async fn get_json(app: &Router, uri: &str) -> (StatusCode, serde_json::Value) {
         let resp = app
             .clone()
@@ -1438,8 +1447,20 @@ mod tests {
 
         let req = upload_as(Some(&bearer(&mine)), JTK18, fixture(NEW));
         assert_eq!(status(&app, req).await, StatusCode::CREATED);
+        // Asked per member: the opponent's client is told to send its own copy.
+        let missing = |key: String| {
+            Request::post("/api/replays/missing")
+                .header(header::AUTHORIZATION, bearer(&key))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"battle_ids": ["20260924--67113734"]}"#))
+                .unwrap()
+        };
+        let (_, answer) = json_of(&app, missing(theirs.clone())).await;
+        assert_eq!(answer["missing"], serde_json::json!(["20260924--67113734"]));
         let req = upload_as(Some(&bearer(&theirs)), BOLSANO, fixture(NEW));
         assert_eq!(status(&app, req).await, StatusCode::OK);
+        let (_, answer) = json_of(&app, missing(theirs.clone())).await;
+        assert_eq!(answer["missing"], serde_json::json!([]));
         let ratings = format!(
             r#"[{{"player_id": "{JTK18}", "elo": 1344, "rank_point": 3285, "level": 352, "elo_games": 1583}}]"#
         );
@@ -1461,14 +1482,58 @@ mod tests {
         );
         assert_eq!(store.corroboration().unwrap(), (1, 0));
 
-        // A second key can't take over a player another key shares for, and a key told no
-        // pseudonym when its claim isn't in the match.
+        // Anyone can claim an account that's in a replay they hold (Steam can't say whose it is),
+        // so a claim must unlock nothing about that account: no refusal saying it's taken, no
+        // ratings for its other matches, no overwriting what it reported about itself.
         let third = store.create_key("third").unwrap();
         let req = upload_as(Some(&bearer(&third)), JTK18, fixture(NEW));
-        assert_eq!(status(&app, req).await, StatusCode::CONFLICT);
+        assert_eq!(status(&app, req).await, StatusCode::OK);
+        assert_eq!(
+            store.key_player("third").unwrap().as_deref(),
+            Some(me.as_str())
+        );
+        let req = upload_as(Some(&bearer(&mine)), JTK18, fixture(OLD));
+        assert_eq!(status(&app, req).await, StatusCode::CREATED);
+        let old_id: String = store
+            .conn()
+            .query_row(
+                "SELECT battle_id FROM matches WHERE battle_id != '20260924--67113734'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let rate = |key: &str, battle: &str, body: String| {
+            Request::post(format!("/api/replays/{battle}/ratings"))
+                .header(header::AUTHORIZATION, bearer(key))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        };
+        let forged = format!(
+            r#"[{{"player_id": "{JTK18}", "elo": 999, "rank_point": null, "level": 1, "elo_games": 1}}]"#
+        );
+        for (battle, body) in [
+            (old_id.as_str(), "[]".to_owned()),
+            (old_id.as_str(), forged.clone()),
+            ("20990101--1", "[]".to_owned()),
+        ] {
+            let (code, answer) = json_of(&app, rate(&third, battle, body)).await;
+            assert_eq!((code, answer["stored"].clone()), (StatusCode::OK, 0.into()));
+        }
+        assert!(store.ratings(&old_id).unwrap().is_empty());
+        // In a match it did share, its report of the claimed player doesn't replace that
+        // player's own.
+        let (code, answer) = json_of(&app, rate(&third, "20260924--67113734", forged)).await;
+        assert_eq!((code, answer["stored"].clone()), (StatusCode::OK, 0.into()));
+        assert_eq!(
+            store.ratings("20260924--67113734").unwrap()[0].elo,
+            Some(1344)
+        );
+        // An unbound key whose claim isn't in the match is told no pseudonym.
+        let fourth = store.create_key("fourth").unwrap();
         let resp = app
             .clone()
-            .oneshot(upload_as(Some(&bearer(&third)), "42", fixture(NEW)))
+            .oneshot(upload_as(Some(&bearer(&fourth)), "42", fixture(NEW)))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
