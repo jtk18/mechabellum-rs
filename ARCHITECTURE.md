@@ -76,6 +76,12 @@ negative y; each side's own frame mirrors the north (negate x and y).
     (`player_games`, `player_fights`, `player_unit_use`).
   - `SCHEMA_VERSION`: bumping it makes the next open drop the derived tables and `reindex`
     every stored replay. Each bump has a one-line note above the constant.
+  - `reindex` streams: a reader thread pages through `replay_blobs`, parsers in the caller's
+    rayon pool (the desktop app's is low-priority) take them over a bounded channel, and a
+    writer thread fills a scratch database beside the real one (`<db>.rebuild-<pid>-<n>`). Replays
+    stored meanwhile get more unlocked rounds; the swap attaches the scratch file and copies its
+    rows over in one transaction. Memory stays near 100 MB however many replays are stored
+    (7,552 measured), where holding them all took about 1 MB each.
   - `ingest` (local and admin) stores a replay as one transaction; `ingest_shared` (community
     keys) validates first, hides other players' names, and needs the uploader in the match.
   - Parser work on one replay runs inside `contained()`, so a panic costs that replay, never a

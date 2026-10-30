@@ -4,14 +4,15 @@
 use anyhow::{Context, Result};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use mechabellum::{BattleRecord, MatchDetail, PlayerSummary};
-use rayon::prelude::*;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 const SCHEMA: &str = "
@@ -220,6 +221,10 @@ const KEY_PREFIX: &str = "mbk_";
 /// the server runs).
 pub struct Store {
     conn: Mutex<Connection>,
+    /// The database file; `None` in memory. A rebuild stages its rows in a file beside it.
+    path: Option<PathBuf>,
+    /// One rebuild at a time: each one replaces every derived row.
+    rebuilding: Mutex<()>,
 }
 
 #[derive(Debug, Serialize)]
@@ -552,6 +557,190 @@ pub struct MatchCopy {
     pub at: String,
 }
 
+/// Derived tables, parents first: what `insert_record` writes and a rebuild replaces.
+const DERIVED_TABLES: [&str; 9] = [
+    "matches",
+    "players",
+    "player_units",
+    "player_specialists",
+    "player_techs",
+    "player_cards",
+    "player_games",
+    "player_fights",
+    "player_unit_use",
+];
+
+/// Stored replays read per query during a rebuild.
+const REBUILD_PAGE: usize = 16;
+/// Matches written to a rebuild's scratch database per transaction.
+const REBUILD_BATCH: usize = 128;
+/// Most parser threads a rebuild uses. Each holds one parsed replay (about 1 MB) at a time.
+const REBUILD_WORKERS: usize = 8;
+/// Unlocked rounds for replays stored while a rebuild stages. Each is shorter than the last;
+/// the bound is for uploads that never stop.
+const REBUILD_ROUNDS: usize = 3;
+
+/// A replay as stored, on its way to the parser threads.
+struct StoredReplay {
+    battle_id: String,
+    xml_gz: Vec<u8>,
+    uploaded_by: Option<String>,
+}
+
+/// A replay parsed for a rebuild; `parsed` is `None` when it couldn't be read.
+struct StagedReplay {
+    battle_id: String,
+    uploaded_by: Option<String>,
+    parsed: Option<(BattleRecord, MatchDetail)>,
+}
+
+/// A rebuild's scratch database file, deleted when dropped.
+struct Scratch {
+    path: PathBuf,
+}
+
+impl Scratch {
+    /// Beside the database file, so it's on the same disk; in the temp folder for an in-memory
+    /// database. The name is unique to this process and rebuild.
+    fn beside(db: Option<&Path>) -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let unique = format!(
+            "rebuild-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        );
+        let path = match db {
+            Some(db) => {
+                let mut name = db.as_os_str().to_owned();
+                name.push(format!(".{unique}"));
+                PathBuf::from(name)
+            }
+            None => std::env::temp_dir().join(format!("mechabellum-{unique}.db")),
+        };
+        let scratch = Scratch { path };
+        scratch.remove();
+        scratch
+    }
+
+    fn remove(&self) {
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            let mut name = self.path.as_os_str().to_owned();
+            name.push(suffix);
+            let _ = std::fs::remove_file(PathBuf::from(name));
+        }
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        self.remove();
+    }
+}
+
+/// Decompress and parse one stored replay. An unreadable one is logged and skipped, so the rest
+/// of the database stays usable.
+fn parse_stored(battle_id: &str, gz: &[u8]) -> Option<(BattleRecord, MatchDetail)> {
+    let parsed = contained(battle_id, || {
+        let mut xml = String::new();
+        GzDecoder::new(gz).read_to_string(&mut xml)?;
+        let record = BattleRecord::from_bytes(xml.as_bytes(), Path::new(battle_id))?;
+        let detail = record.match_detail();
+        Ok((record, detail))
+    });
+    match parsed {
+        Ok(parsed) => Some(parsed),
+        Err(e) => {
+            log::warn!("reindex {battle_id}: {e:#}");
+            None
+        }
+    }
+}
+
+/// Write parsed replays into a rebuild's scratch database as they arrive. One record that won't
+/// insert is logged and skipped, not allowed to undo the rest: every command upgrades first, so
+/// a failure here would stop the server starting. Unreadable ones go in `rebuild_failed`, so
+/// they aren't taken for replays stored meanwhile.
+fn write_staged(out: &mut Connection, staged: mpsc::Receiver<StagedReplay>) -> Result<usize> {
+    let mut written = 0;
+    let mut staged = staged.into_iter().peekable();
+    while staged.peek().is_some() {
+        let mut tx = out.transaction()?;
+        for replay in staged.by_ref().take(REBUILD_BATCH) {
+            written += 1;
+            let battle_id = replay.battle_id.as_str();
+            let stored = match &replay.parsed {
+                Some((record, detail)) => {
+                    let savepoint = tx.savepoint()?;
+                    match contained(battle_id, || {
+                        insert_record(
+                            &savepoint,
+                            battle_id,
+                            record,
+                            detail,
+                            replay.uploaded_by.as_deref(),
+                        )
+                    }) {
+                        Ok(()) => {
+                            savepoint.commit()?;
+                            true
+                        }
+                        Err(e) => {
+                            log::warn!("reindex {battle_id}: not stored: {e:#}");
+                            false
+                        }
+                    }
+                }
+                None => false,
+            };
+            if !stored {
+                tx.execute(
+                    "INSERT OR IGNORE INTO rebuild_failed (battle_id) VALUES (?1)",
+                    [battle_id],
+                )?;
+            }
+        }
+        tx.commit()?;
+    }
+    Ok(written)
+}
+
+/// Creates the tables and adds the columns later versions brought, on the database and on a
+/// rebuild's scratch copy alike.
+fn migrate(conn: &Connection) -> Result<()> {
+    conn.execute_batch(SCHEMA)?;
+    let has_uploader = conn
+        .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'uploaded_by'")?
+        .exists([])?;
+    if !has_uploader {
+        conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
+    }
+    let keys_bound = conn
+        .prepare("SELECT 1 FROM pragma_table_info('upload_keys') WHERE name = 'player_id'")?
+        .exists([])?;
+    if !keys_bound {
+        conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN player_id TEXT")?;
+    }
+    let techs_have_ids = conn
+        .prepare("SELECT 1 FROM pragma_table_info('player_techs') WHERE name = 'tech_id'")?
+        .exists([])?;
+    if !techs_have_ids {
+        conn.execute_batch("ALTER TABLE player_techs ADD COLUMN tech_id TEXT")?;
+    }
+    let players_have_packs = conn
+        .prepare("SELECT 1 FROM pragma_table_info('players') WHERE name = 'starter_pack'")?
+        .exists([])?;
+    if !players_have_packs {
+        conn.execute_batch("ALTER TABLE players ADD COLUMN starter_pack TEXT")?;
+    }
+    let matches_settled = conn
+        .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'settled'")?
+        .exists([])?;
+    if !matches_settled {
+        conn.execute_batch("ALTER TABLE matches ADD COLUMN settled INTEGER NOT NULL DEFAULT 1")?;
+    }
+    Ok(())
+}
+
 /// Runs parser work on one replay with a panic turned into an error. A crafted replay that trips
 /// an unchecked assumption must cost that replay alone: never a whole rebuild (every command
 /// upgrades first, so a panic there would stop the server starting) or a request.
@@ -636,14 +825,15 @@ pub struct MatchRow {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
-        Self::init(Connection::open(path).with_context(|| format!("opening {}", path.display()))?)
+        let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
+        Self::init(conn, Some(path.to_owned()))
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?)
+        Self::init(Connection::open_in_memory()?, None)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(conn: Connection, path: Option<PathBuf>) -> Result<Self> {
         // Wait for another process's write lock instead of failing with SQLITE_BUSY.
         conn.busy_timeout(std::time::Duration::from_secs(10))?;
         // WAL + synchronous=NORMAL: commits skip an fsync each; a power cut can lose the last few
@@ -651,41 +841,11 @@ impl Store {
         conn.execute_batch(
             "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;",
         )?;
-        conn.execute_batch(SCHEMA)?;
-        let has_uploader = conn
-            .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'uploaded_by'")?
-            .exists([])?;
-        if !has_uploader {
-            conn.execute_batch("ALTER TABLE matches ADD COLUMN uploaded_by TEXT")?;
-        }
-        let keys_bound = conn
-            .prepare("SELECT 1 FROM pragma_table_info('upload_keys') WHERE name = 'player_id'")?
-            .exists([])?;
-        if !keys_bound {
-            conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN player_id TEXT")?;
-        }
-        let techs_have_ids = conn
-            .prepare("SELECT 1 FROM pragma_table_info('player_techs') WHERE name = 'tech_id'")?
-            .exists([])?;
-        if !techs_have_ids {
-            conn.execute_batch("ALTER TABLE player_techs ADD COLUMN tech_id TEXT")?;
-        }
-        let players_have_packs = conn
-            .prepare("SELECT 1 FROM pragma_table_info('players') WHERE name = 'starter_pack'")?
-            .exists([])?;
-        if !players_have_packs {
-            conn.execute_batch("ALTER TABLE players ADD COLUMN starter_pack TEXT")?;
-        }
-        let matches_settled = conn
-            .prepare("SELECT 1 FROM pragma_table_info('matches') WHERE name = 'settled'")?
-            .exists([])?;
-        if !matches_settled {
-            conn.execute_batch(
-                "ALTER TABLE matches ADD COLUMN settled INTEGER NOT NULL DEFAULT 1",
-            )?;
-        }
+        migrate(&conn)?;
         let store = Store {
             conn: Mutex::new(conn),
+            path,
+            rebuilding: Mutex::new(()),
         };
         // A fresh database has nothing to rebuild.
         if store.match_count()? == 0 {
@@ -1546,128 +1706,277 @@ impl Store {
 
     /// Rebuild every derived row from the stored replays. Run after upgrading the parser.
     ///
-    /// Replays are decompressed and parsed on every core without holding the database; only
-    /// the final rewrite is one locked transaction, so readers wait briefly if at all.
+    /// Memory stays flat however many replays are stored: they're read a page at a time, parsed
+    /// on worker threads that hand results on through bounded channels, and written to a scratch
+    /// database beside this one. The parsers run in the caller's rayon pool (the desktop app
+    /// installs a low-priority one), and replays stored meanwhile get further unlocked rounds.
+    /// Only the swap at the end holds the lock, and it copies rows rather than parsing, so readers
+    /// keep seeing the old rows until one short transaction replaces them all.
     pub fn reindex(&self) -> Result<usize> {
-        let parse = |battle_id: &str, gz: &[u8]| -> Option<(BattleRecord, MatchDetail)> {
-            let parsed = (|| -> Result<BattleRecord> {
-                let mut xml = String::new();
-                GzDecoder::new(gz).read_to_string(&mut xml)?;
-                Ok(BattleRecord::from_bytes(
-                    xml.as_bytes(),
-                    Path::new(battle_id),
-                )?)
-            })();
-            match parsed.and_then(|record| {
-                let detail = contained(battle_id, || Ok(record.match_detail()))?;
-                Ok((record, detail))
-            }) {
-                Ok(parsed) => Some(parsed),
-                // Keep the rest of the database usable if one stored replay is unreadable.
-                Err(e) => {
-                    log::warn!("reindex {battle_id}: {e:#}");
-                    None
-                }
-            }
-        };
-        // Replays stored while a round parses (uploads, the desktop app's backfill) are picked
-        // up by the next round, still in parallel and unlocked. Each round is shorter than the
-        // last; the few rounds are a bound in case uploads never stop.
+        let _one_at_a_time = self
+            .rebuilding
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let scratch = Scratch::beside(self.path.as_deref());
         let started = std::time::Instant::now();
-        let mut records: BTreeMap<String, (BattleRecord, MatchDetail)> = BTreeMap::new();
-        let mut attempted: BTreeSet<String> = BTreeSet::new();
-        for _ in 0..4 {
-            let blobs: Vec<(String, Vec<u8>)> = {
-                let conn = self.conn();
-                let ids: Vec<String> = conn
-                    .prepare("SELECT battle_id FROM replay_blobs")?
-                    .query_map([], |r| r.get(0))?
-                    .collect::<rusqlite::Result<_>>()?;
-                let mut stmt =
-                    conn.prepare("SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1")?;
-                ids.into_iter()
-                    .filter(|battle_id| !attempted.contains(battle_id))
-                    .filter_map(|battle_id| {
-                        let gz: Vec<u8> = stmt.query_row([&battle_id], |r| r.get(0)).ok()?;
-                        Some((battle_id, gz))
-                    })
-                    .collect()
+        let parsed = self.stage(&scratch.path)?;
+        log::info!(
+            "reindex: parsed {parsed} replays in {:.1?}",
+            started.elapsed()
+        );
+        let started = std::time::Instant::now();
+        let (stored, late) = self.swap_in(&scratch.path)?;
+        log::info!(
+            "reindex: wrote {stored} matches in {:.1?} ({late} parsed under the lock)",
+            started.elapsed()
+        );
+        Ok(stored)
+    }
+
+    /// Parse every stored replay into a fresh scratch database at `scratch`, then the ones stored
+    /// while that ran (uploads, the desktop app's backfill). Returns how many were parsed.
+    fn stage(&self, scratch: &Path) -> Result<usize> {
+        let mut out =
+            Connection::open(scratch).with_context(|| format!("creating {}", scratch.display()))?;
+        // The scratch copy is thrown away if anything goes wrong, so it needn't survive a crash.
+        out.execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")?;
+        migrate(&out)?;
+        out.execute_batch("CREATE TABLE rebuild_failed (battle_id TEXT PRIMARY KEY);")?;
+
+        let mut after = String::new();
+        let mut parsed = self.stage_pages(&mut out, || {
+            let page = self.stored_page(&after)?;
+            let Some(last) = page.last() else {
+                return Ok(None);
             };
-            if blobs.is_empty() {
+            after = last.battle_id.clone();
+            Ok(Some(page))
+        })?;
+        for _ in 0..REBUILD_ROUNDS {
+            let late = self.unstaged(&out)?;
+            if late.is_empty() {
                 break;
             }
-            attempted.extend(blobs.iter().map(|(battle_id, _)| battle_id.clone()));
-            records.par_extend(blobs.into_par_iter().filter_map(|(battle_id, gz)| {
-                let parsed = parse(&battle_id, &gz)?;
-                Some((battle_id, parsed))
-            }));
-        }
-        log::info!(
-            "reindex: parsed {} replays in {:.1?}",
-            records.len(),
-            started.elapsed()
-        );
-
-        let started = std::time::Instant::now();
-        let mut conn = self.conn();
-        let mut tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // The replays stored now, with their uploaders. Any stored after the last round above
-        // are parsed here, under the lock, and ones removed meanwhile aren't brought back.
-        let stored: BTreeMap<String, Option<String>> = tx
-            .prepare(
-                "SELECT b.battle_id, m.uploaded_by FROM replay_blobs b
-                 LEFT JOIN matches m ON m.battle_id = b.battle_id",
-            )?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-        records.retain(|battle_id, _| stored.contains_key(battle_id));
-        let late: Vec<(String, Vec<u8>)> = {
-            let mut stmt = tx.prepare("SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1")?;
-            stored
-                .keys()
-                .filter(|battle_id| !attempted.contains(*battle_id))
-                .filter_map(|battle_id| {
-                    let gz: Vec<u8> = stmt.query_row([battle_id], |r| r.get(0)).ok()?;
-                    Some((battle_id.clone(), gz))
-                })
-                .collect()
-        };
-        let late_count = late.len();
-        for (battle_id, gz) in late {
-            if let Some(parsed) = parse(&battle_id, &gz) {
-                records.insert(battle_id, parsed);
-            }
-        }
-
-        tx.execute("DELETE FROM matches", [])?;
-        let mut inserted = 0;
-        for (battle_id, (record, detail)) in &records {
-            let uploaded_by = stored.get(battle_id).cloned().flatten();
-            // One record that won't insert is logged and skipped, not allowed to undo the rest:
-            // every command upgrades first, so a failure here would stop the server starting.
-            let savepoint = tx.savepoint()?;
-            match contained(battle_id, || {
-                insert_record(
-                    &savepoint,
-                    battle_id,
-                    record,
-                    detail,
-                    uploaded_by.as_deref(),
-                )
-            }) {
-                Ok(()) => {
-                    savepoint.commit()?;
-                    inserted += 1;
+            let mut late = late.into_iter();
+            parsed += self.stage_pages(&mut out, || {
+                let ids: Vec<String> = late.by_ref().take(REBUILD_PAGE).collect();
+                if ids.is_empty() {
+                    return Ok(None);
                 }
-                Err(e) => log::warn!("reindex {battle_id}: not stored: {e:#}"),
+                self.stored_by_id(&ids).map(Some)
+            })?;
+        }
+        Ok(parsed)
+    }
+
+    /// Parse the pages `next_page` yields (`None` when there are no more) and write them to `out`.
+    /// A reader thread feeds the parsers, the parsers feed a writer thread, and both channels are
+    /// bounded, so only a few replays are in memory at once. Returns how many were written.
+    fn stage_pages(
+        &self,
+        out: &mut Connection,
+        mut next_page: impl FnMut() -> Result<Option<Vec<StoredReplay>>> + Send,
+    ) -> Result<usize> {
+        let workers = rayon::current_num_threads().clamp(1, REBUILD_WORKERS);
+        let stop = AtomicBool::new(false);
+        let stop = &stop;
+        let (stored_tx, stored_rx) = mpsc::sync_channel::<StoredReplay>(workers * 2);
+        let (parsed_tx, parsed_rx) = mpsc::sync_channel::<StagedReplay>(workers * 2);
+        let stored_rx = Mutex::new(stored_rx);
+
+        std::thread::scope(|scope| {
+            let reader = scope.spawn(move || -> Result<()> {
+                while !stop.load(Ordering::Relaxed) {
+                    let Some(page) = next_page()? else { break };
+                    for replay in page {
+                        if stored_tx.send(replay).is_err() {
+                            return Ok(());
+                        }
+                    }
+                }
+                Ok(())
+            });
+            let writer = scope.spawn(move || {
+                let written = write_staged(out, parsed_rx);
+                if written.is_err() {
+                    stop.store(true, Ordering::Relaxed);
+                }
+                written
+            });
+            // The parsers run in the caller's pool. A thread inside a pool runs spawned work
+            // while it waits, so even a one-thread pool gets through it: the reader and the
+            // writer have threads of their own.
+            rayon::scope(|pool| {
+                for _ in 0..workers {
+                    let (stored_rx, parsed_tx) = (&stored_rx, parsed_tx.clone());
+                    pool.spawn(move |_| loop {
+                        let next = stored_rx
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .recv();
+                        let Ok(replay) = next else { break };
+                        if stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let parsed = parse_stored(&replay.battle_id, &replay.xml_gz);
+                        let staged = StagedReplay {
+                            battle_id: replay.battle_id,
+                            uploaded_by: replay.uploaded_by,
+                            parsed,
+                        };
+                        if parsed_tx.send(staged).is_err() {
+                            break;
+                        }
+                    });
+                }
+            });
+            // The parsers' clones are gone; dropping this one lets the writer finish.
+            drop(parsed_tx);
+            let read = reader
+                .join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("the replay reader panicked")));
+            let written = writer
+                .join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("the rebuild writer panicked")));
+            written.and_then(|n| read.map(|()| n))
+        })
+    }
+
+    /// Up to `REBUILD_PAGE` stored replays whose battle IDs sort after `after`, with uploaders.
+    fn stored_page(&self, after: &str) -> Result<Vec<StoredReplay>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT b.battle_id, b.xml_gz, m.uploaded_by FROM replay_blobs b
+             LEFT JOIN matches m ON m.battle_id = b.battle_id
+             WHERE b.battle_id > ?1 ORDER BY b.battle_id LIMIT ?2",
+        )?;
+        let page = stmt
+            .query_map(params![after, REBUILD_PAGE as i64], |r| {
+                Ok(StoredReplay {
+                    battle_id: r.get(0)?,
+                    xml_gz: r.get(1)?,
+                    uploaded_by: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(page)
+    }
+
+    /// The stored replays among `ids`, with uploaders; ones removed meanwhile are skipped.
+    fn stored_by_id(&self, ids: &[String]) -> Result<Vec<StoredReplay>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT b.xml_gz, m.uploaded_by FROM replay_blobs b
+             LEFT JOIN matches m ON m.battle_id = b.battle_id WHERE b.battle_id = ?1",
+        )?;
+        let mut found = Vec::with_capacity(ids.len());
+        for battle_id in ids {
+            let row = stmt
+                .query_row([battle_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?;
+            if let Some((xml_gz, uploaded_by)) = row {
+                found.push(StoredReplay {
+                    battle_id: battle_id.clone(),
+                    xml_gz,
+                    uploaded_by,
+                });
             }
         }
-        tx.commit()?;
-        log::info!(
-            "reindex: wrote {inserted} matches in {:.1?} ({late_count} parsed under the lock)",
-            started.elapsed()
-        );
-        Ok(inserted)
+        Ok(found)
+    }
+
+    /// Stored replays the scratch database `out` has neither staged nor given up on.
+    fn unstaged(&self, out: &Connection) -> Result<Vec<String>> {
+        let staged: BTreeSet<String> = out
+            .prepare("SELECT battle_id FROM matches UNION SELECT battle_id FROM rebuild_failed")?
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let stored: Vec<String> = self
+            .conn()
+            .prepare("SELECT battle_id FROM replay_blobs")?
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(stored
+            .into_iter()
+            .filter(|battle_id| !staged.contains(battle_id))
+            .collect())
+    }
+
+    /// Replace every derived row with the staged ones, in one transaction. Replays stored since
+    /// the last staging round are parsed here, under the lock, and ones removed meanwhile aren't
+    /// brought back. Returns the matches stored and how many were parsed here.
+    fn swap_in(&self, scratch: &Path) -> Result<(usize, usize)> {
+        let scratch = scratch
+            .to_str()
+            .context("the scratch database's path isn't UTF-8")?;
+        let mut conn = self.conn();
+        conn.execute("ATTACH DATABASE ?1 AS rebuild", [scratch])?;
+        let swapped = (|| -> Result<(usize, usize)> {
+            let mut tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            // Read before the old rows go: their uploaders are kept.
+            let late: Vec<(String, Option<String>)> = tx
+                .prepare(
+                    "SELECT b.battle_id, m.uploaded_by FROM main.replay_blobs b
+                     LEFT JOIN main.matches m ON m.battle_id = b.battle_id
+                     WHERE b.battle_id NOT IN (SELECT battle_id FROM rebuild.matches)
+                       AND b.battle_id NOT IN (SELECT battle_id FROM rebuild.rebuild_failed)",
+                )?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            tx.execute("DELETE FROM main.matches", [])?;
+            for table in DERIVED_TABLES {
+                // By name: columns added with ALTER TABLE sit in a different order in an older
+                // database than in the scratch copy created fresh.
+                let columns: Vec<String> = tx
+                    .prepare("SELECT name FROM pragma_table_info(?1, 'main')")?
+                    .query_map([table], |r| r.get(0))?
+                    .collect::<rusqlite::Result<_>>()?;
+                let columns = columns
+                    .iter()
+                    .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                tx.execute(
+                    &format!(
+                        "INSERT INTO main.{table} ({columns}) SELECT {columns} FROM rebuild.{table}
+                         WHERE battle_id IN (SELECT battle_id FROM main.replay_blobs)"
+                    ),
+                    [],
+                )?;
+            }
+            let late_count = late.len();
+            for (battle_id, uploaded_by) in late {
+                let gz: Option<Vec<u8>> = tx
+                    .query_row(
+                        "SELECT xml_gz FROM main.replay_blobs WHERE battle_id = ?1",
+                        [&battle_id],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let Some((record, detail)) = gz.and_then(|gz| parse_stored(&battle_id, &gz)) else {
+                    continue;
+                };
+                let savepoint = tx.savepoint()?;
+                match contained(&battle_id, || {
+                    insert_record(
+                        &savepoint,
+                        &battle_id,
+                        &record,
+                        &detail,
+                        uploaded_by.as_deref(),
+                    )
+                }) {
+                    Ok(()) => savepoint.commit()?,
+                    Err(e) => log::warn!("reindex {battle_id}: not stored: {e:#}"),
+                }
+            }
+            let stored: i64 =
+                tx.query_row("SELECT COUNT(*) FROM main.matches", [], |r| r.get(0))?;
+            tx.commit()?;
+            Ok((stored as usize, late_count))
+        })();
+        conn.execute("DETACH DATABASE rebuild", [])?;
+        swapped
     }
 
     pub fn recent_matches(&self, limit: u32) -> Result<Vec<MatchRow>> {
@@ -2045,6 +2354,195 @@ fn insert_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixtures() -> Vec<(String, Vec<u8>)> {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mechabellum/fixtures");
+        let mut found: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|e| e == "xml" || e == "grbr"))
+            .map(|path| {
+                let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                (name, std::fs::read(path).unwrap())
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// Every fixture that stores, ingested the ordinary way.
+    fn ingest_fixtures(store: &Store) -> usize {
+        fixtures()
+            .iter()
+            .filter(|(name, bytes)| store.ingest(bytes, Path::new(name), Some("key")).is_ok())
+            .count()
+    }
+
+    /// Every derived row, columns in name order, rows sorted; `ingested_at` is the time of the
+    /// insert and is left out.
+    fn derived_rows(store: &Store) -> Vec<String> {
+        let conn = store.conn();
+        let mut rows = Vec::new();
+        for table in DERIVED_TABLES {
+            let mut columns: Vec<String> = conn
+                .prepare("SELECT name FROM pragma_table_info(?1, 'main')")
+                .unwrap()
+                .query_map([table], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .filter(|c: &String| c != "ingested_at")
+                .collect();
+            columns.sort();
+            let mut stmt = conn
+                .prepare(&format!("SELECT {} FROM {table}", columns.join(", ")))
+                .unwrap();
+            let mut found: Vec<String> = stmt
+                .query_map([], |r| {
+                    let values = (0..columns.len())
+                        .map(|i| {
+                            r.get::<_, rusqlite::types::Value>(i)
+                                .map(|v| format!("{v:?}"))
+                        })
+                        .collect::<rusqlite::Result<Vec<_>>>()?;
+                    Ok(format!("{table}|{}", values.join("|")))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            found.sort();
+            rows.extend(found);
+        }
+        rows
+    }
+
+    fn count(store: &Store, sql: &str) -> i64 {
+        store.conn().query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    /// A rebuild writes exactly what ingesting the replays wrote. The comparison can fail: rows
+    /// deleted from one table show up as a difference until the rebuild restores them.
+    #[test]
+    fn test_rebuild_reproduces_ingest() {
+        let store = Store::open_in_memory().unwrap();
+        let stored = ingest_fixtures(&store);
+        assert!(stored >= 7, "{stored} fixtures stored");
+        let ingested = derived_rows(&store);
+        assert!(ingested.len() > 1000, "{} rows", ingested.len());
+
+        store
+            .conn()
+            .execute_batch("DELETE FROM player_fights")
+            .unwrap();
+        assert_ne!(derived_rows(&store), ingested);
+
+        assert_eq!(store.reindex().unwrap(), stored);
+        assert_eq!(derived_rows(&store), ingested);
+    }
+
+    /// The desktop app rebuilds inside a small low-priority pool; a one-thread pool, where the
+    /// caller is the pool's only thread, must still finish.
+    #[test]
+    fn test_rebuild_in_a_one_thread_pool() {
+        let store = Store::open_in_memory().unwrap();
+        let stored = ingest_fixtures(&store);
+        let ingested = derived_rows(&store);
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        assert_eq!(pool.install(|| store.reindex()).unwrap(), stored);
+        assert_eq!(derived_rows(&store), ingested);
+    }
+
+    /// On disk the scratch database sits beside the real one and is gone afterwards.
+    #[test]
+    fn test_rebuild_on_disk_leaves_no_scratch() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("stats.db")).unwrap();
+        let stored = ingest_fixtures(&store);
+        let ingested = derived_rows(&store);
+        assert_eq!(store.reindex().unwrap(), stored);
+        assert_eq!(derived_rows(&store), ingested);
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains("rebuild"))
+            .collect();
+        assert!(left.is_empty(), "{left:?}");
+    }
+
+    /// Replays stored after staging are parsed at the swap, with their uploaders; ones removed
+    /// meanwhile stay removed; an unreadable stored replay is skipped, not retried.
+    #[test]
+    fn test_rebuild_keeps_changes_made_while_staging() {
+        let all = fixtures();
+        let (late_name, late_bytes) = all
+            .iter()
+            .find(|(name, _)| name == "battle_record_2340.xml")
+            .unwrap();
+        let reference = Store::open_in_memory().unwrap();
+        reference
+            .ingest(late_bytes, Path::new(late_name), Some("late"))
+            .unwrap();
+
+        let store = Store::open_in_memory().unwrap();
+        for (name, bytes) in all.iter().filter(|(name, _)| name != late_name) {
+            let _ = store.ingest(bytes, Path::new(name), Some("key"));
+        }
+        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+        gz.write_all(b"<BattleRecord>not a replay").unwrap();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO replay_blobs (battle_id, xml_gz) VALUES ('junk', ?1)",
+                [gz.finish().unwrap()],
+            )
+            .unwrap();
+        let before = count(&store, "SELECT COUNT(*) FROM matches");
+        let removed: String = store
+            .conn()
+            .query_row("SELECT battle_id FROM matches LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+
+        let scratch = Scratch::beside(None);
+        store.stage(&scratch.path).unwrap();
+        store
+            .ingest(late_bytes, Path::new(late_name), Some("late"))
+            .unwrap();
+        store
+            .conn()
+            .execute_batch(&format!(
+                "DELETE FROM matches WHERE battle_id = '{removed}';
+                 DELETE FROM replay_blobs WHERE battle_id = '{removed}';"
+            ))
+            .unwrap();
+        let (stored, late) = store.swap_in(&scratch.path).unwrap();
+        assert_eq!((stored as i64, late), (before, 1));
+
+        let late_id: String = reference
+            .conn()
+            .query_row("SELECT battle_id FROM matches", [], |r| r.get(0))
+            .unwrap();
+        let uploader: Option<String> = store
+            .conn()
+            .query_row(
+                "SELECT uploaded_by FROM matches WHERE battle_id = ?1",
+                [&late_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(uploader.as_deref(), Some("late"));
+        let gone = count(
+            &store,
+            &format!("SELECT COUNT(*) FROM players WHERE battle_id = '{removed}'"),
+        );
+        assert_eq!(gone, 0);
+        let late_rows: Vec<String> = derived_rows(&store)
+            .into_iter()
+            .filter(|row| row.contains(&late_id))
+            .collect();
+        assert_eq!(late_rows, derived_rows(&reference));
+    }
 
     #[test]
     fn test_a_parser_panic_is_one_replay_error() {
