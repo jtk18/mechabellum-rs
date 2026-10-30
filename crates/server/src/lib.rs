@@ -3,6 +3,7 @@
 
 pub mod aggregate;
 mod games;
+pub mod pseudonym;
 mod store;
 
 pub use games::{
@@ -50,12 +51,17 @@ pub enum UploadAuth {
 struct AppState {
     store: Arc<Store>,
     auth: Arc<UploadAuth>,
+    /// A community server (uploads need a key): responses carry nothing that ties one match to
+    /// another player-wise. See `public_view`.
+    public: bool,
 }
 
 pub fn router(store: Arc<Store>, auth: UploadAuth) -> Router {
+    let public = matches!(auth, UploadAuth::Required { .. });
     let state = AppState {
         store,
         auth: Arc::new(auth),
+        public,
     };
     Router::new()
         .route("/", get(website))
@@ -303,7 +309,11 @@ async fn list_replays(
 ) -> Result<Json<Vec<MatchRow>>, ApiError> {
     let limit = query.limit.unwrap_or(50).min(500);
     let store = state.store.clone();
-    Ok(Json(blocking(move || store.recent_matches(limit)).await?))
+    let mut rows = blocking(move || store.recent_matches(limit)).await?;
+    if state.public {
+        rows.iter_mut().for_each(public_view::row);
+    }
+    Ok(Json(rows))
 }
 
 /// The public landing page (crates/server/web/index.html), built into the binary.
@@ -353,6 +363,7 @@ async fn stats(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
 ) -> Result<Json<Stats>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let store = state.store.clone();
     Ok(Json(blocking(move || store.stats(&filter)).await?))
 }
@@ -369,18 +380,22 @@ async fn cards(
     Query(filter): Query<StatsFilter>,
     Query(page): Query<CardQuery>,
 ) -> Result<Json<CardPage>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let limit = page.limit.unwrap_or(24).min(50);
     let offset = page.offset.unwrap_or(0);
     let store = state.store.clone();
-    Ok(Json(
-        blocking(move || store.cards(&filter, limit, offset)).await?,
-    ))
+    let mut page = blocking(move || store.cards(&filter, limit, offset)).await?;
+    if state.public {
+        page.cards.iter_mut().for_each(public_view::card);
+    }
+    Ok(Json(page))
 }
 
 async fn game_stats(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
 ) -> Result<Json<GameStats>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let store = state.store.clone();
     Ok(Json(blocking(move || store.game_stats(&filter)).await?))
 }
@@ -389,6 +404,7 @@ async fn tech_stats(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
 ) -> Result<Json<Vec<UnitTechStats>>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let store = state.store.clone();
     Ok(Json(blocking(move || store.tech_stats(&filter)).await?))
 }
@@ -398,10 +414,13 @@ async fn match_detail(
     UrlPath(battle_id): UrlPath<String>,
 ) -> Result<Json<mechabellum::MatchDetail>, ApiError> {
     let store = state.store.clone();
-    blocking(move || store.match_detail(&battle_id))
+    let mut detail = blocking(move || store.match_detail(&battle_id))
         .await?
-        .map(Json)
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no such match".into()))
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no such match".into()))?;
+    if state.public {
+        public_view::detail(&mut detail);
+    }
+    Ok(Json(detail))
 }
 
 /// Win rates with each uploader's weight capped and a median of per-uploader rates.
@@ -409,6 +428,7 @@ async fn robust_stats(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
 ) -> Result<Json<RobustStats>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let store = state.store.clone();
     Ok(Json(blocking(move || store.robust_stats(&filter)).await?))
 }
@@ -417,8 +437,59 @@ async fn version_trends(
     State(state): State<AppState>,
     Query(filter): Query<StatsFilter>,
 ) -> Result<Json<VersionTrends>, ApiError> {
+    public_view::filter(&state, &filter)?;
     let store = state.store.clone();
     Ok(Json(blocking(move || store.version_trends(&filter)).await?))
+}
+
+/// What a community server leaves out of its responses. Names are gone and IDs are pseudonyms
+/// in its database already; this keeps anyone from linking one match to a player's others:
+/// - no stable player ID: players are numbered within each match
+/// - no per-player filters, which would turn an ID into a match history
+/// - ratings rounded to 100: exact ratings chain one match to the next (a rating after one match
+///   is the rating before the player's next)
+/// - no tech loadouts: which techs an account has unlocked is close to unique to it
+mod public_view {
+    use super::{ApiError, AppState, StatusCode};
+    use crate::pseudonym::ANONYMOUS_NAME;
+
+    pub fn filter(state: &AppState, filter: &crate::StatsFilter) -> Result<(), ApiError> {
+        if state.public && (filter.player_id.is_some() || filter.opponents_of.is_some()) {
+            return Err(ApiError(
+                StatusCode::BAD_REQUEST,
+                "player filters aren't available on this server".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn detail(detail: &mut mechabellum::MatchDetail) {
+        for (seat, player) in detail.players.iter_mut().enumerate() {
+            player.id = (seat + 1).to_string();
+            player.name = format!("{ANONYMOUS_NAME} {}", seat + 1);
+            player.loadout.clear();
+        }
+    }
+
+    pub fn card(card: &mut crate::MatchCard) {
+        for (seat, player) in card.players.iter_mut().enumerate() {
+            player.name = format!("{ANONYMOUS_NAME} {}", seat + 1);
+            player.elo = rounded(player.elo);
+        }
+    }
+
+    pub fn row(row: &mut crate::MatchRow) {
+        for name in row.winners.iter_mut().chain(row.losers.iter_mut()) {
+            *name = ANONYMOUS_NAME.to_owned();
+        }
+        for elo in row.winner_elos.iter_mut().chain(row.loser_elos.iter_mut()) {
+            *elo = rounded(*elo);
+        }
+    }
+
+    fn rounded(elo: Option<i64>) -> Option<i64> {
+        elo.map(|e| (e + 50).div_euclid(100) * 100)
+    }
 }
 
 #[cfg(test)]
@@ -1273,6 +1344,249 @@ mod tests {
         assert_eq!(store.purge_uploader("jtk18-desktop").unwrap(), 2);
         assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 0);
         assert!(store.ratings("20260924--67113734").unwrap().is_empty());
+    }
+
+    /// Every value in every table, and every stored replay decompressed, as one string to search.
+    fn everything_stored(store: &Store) -> String {
+        let tables: Vec<String> = store
+            .conn()
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let mut text = String::new();
+        for table in tables {
+            let conn = store.conn();
+            let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\"")).unwrap();
+            let columns = stmt.column_count();
+            let rows = stmt
+                .query_map([], |r| {
+                    (0..columns)
+                        .map(|i| {
+                            r.get::<_, rusqlite::types::Value>(i)
+                                .map(|v| format!("{v:?}|"))
+                        })
+                        .collect::<rusqlite::Result<String>>()
+                })
+                .unwrap();
+            for row in rows {
+                text.push_str(&row.unwrap());
+                text.push('\n');
+            }
+        }
+        for battle_id in store.battle_ids().unwrap() {
+            text.push_str(&store.replay_document(&battle_id).unwrap().unwrap());
+        }
+        text
+    }
+
+    /// The account IDs and names of the players in a fixture, read from it.
+    fn players_in(name: &str) -> Vec<(String, String)> {
+        let bytes = fixture(name);
+        let record = mechabellum::BattleRecord::from_bytes(&bytes, Path::new(name)).unwrap();
+        record
+            .player_records
+            .player_record
+            .iter()
+            .map(|p| (p.id.trim().to_owned(), p.name.trim().to_owned()))
+            .collect()
+    }
+
+    fn assert_nothing_identifies(store: &Store, players: &[(String, String)]) {
+        let stored = everything_stored(store);
+        assert!(
+            stored.len() > 10_000,
+            "the search covers the stored replays"
+        );
+        for (id, name) in players {
+            assert!(!stored.contains(id.as_str()), "an account ID is stored");
+            assert!(!stored.contains(&format!(">{name}<")), "a name is stored");
+            assert!(!stored.contains(&format!("\"{name}\"")), "a name is stored");
+        }
+    }
+
+    async fn get_json(app: &Router, uri: &str) -> (StatusCode, serde_json::Value) {
+        let resp = app
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 24)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&body).unwrap_or_default())
+    }
+
+    /// A server with pseudonyms stores no account ID or name anywhere, still corroborates the
+    /// two players' copies, and serves nothing that ties a match to a player's others.
+    #[tokio::test]
+    async fn test_pseudonymous_server() {
+        let keys = pseudonym::Pseudonyms::from_key([9; 32]);
+        let me = keys.id(JTK18);
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        store
+            .use_pseudonyms(pseudonym::Pseudonyms::from_key([9; 32]))
+            .unwrap();
+        let mine = store.create_key("first").unwrap();
+        let theirs = store.create_key("second").unwrap();
+        let app = router(store.clone(), UploadAuth::Required { admin_token: None });
+        let bearer = |k: &str| format!("Bearer {k}");
+
+        let req = upload_as(Some(&bearer(&mine)), JTK18, fixture(NEW));
+        assert_eq!(status(&app, req).await, StatusCode::CREATED);
+        let req = upload_as(Some(&bearer(&theirs)), BOLSANO, fixture(NEW));
+        assert_eq!(status(&app, req).await, StatusCode::OK);
+        let ratings = format!(
+            r#"[{{"player_id": "{JTK18}", "elo": 1344, "rank_point": 3285, "level": 352, "elo_games": 1583}}]"#
+        );
+        let req = Request::post("/api/replays/20260924--67113734/ratings")
+            .header(header::AUTHORIZATION, bearer(&mine))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(ratings))
+            .unwrap();
+        assert_eq!(status(&app, req).await, StatusCode::OK);
+
+        assert_nothing_identifies(&store, &players_in(NEW));
+        assert_eq!(
+            store.key_player("first").unwrap().as_deref(),
+            Some(me.as_str())
+        );
+        assert_eq!(
+            store.ratings("20260924--67113734").unwrap()[0].player_id,
+            me
+        );
+        assert_eq!(store.corroboration().unwrap(), (1, 0));
+
+        // A second key can't take over a player another key shares for, and a key told no
+        // pseudonym when its claim isn't in the match.
+        let third = store.create_key("third").unwrap();
+        let req = upload_as(Some(&bearer(&third)), JTK18, fixture(NEW));
+        assert_eq!(status(&app, req).await, StatusCode::CONFLICT);
+        let resp = app
+            .clone()
+            .oneshot(upload_as(Some(&bearer(&third)), "42", fixture(NEW)))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&body).contains(&keys.id("42")));
+
+        let (code, detail) = get_json(&app, "/api/replays/20260924--67113734").await;
+        assert_eq!(code, StatusCode::OK);
+        let players = detail["players"].as_array().unwrap();
+        assert_eq!(players.len(), 2);
+        for (seat, player) in players.iter().enumerate() {
+            assert_eq!(player["id"], serde_json::json!((seat + 1).to_string()));
+            assert_eq!(player["loadout"], serde_json::json!([]));
+        }
+        assert!(!detail.to_string().contains(&me));
+
+        let (code, cards) = get_json(&app, "/api/cards").await;
+        assert_eq!(code, StatusCode::OK);
+        let elos: Vec<_> = cards["cards"][0]["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| p["elo"].as_i64())
+            .collect();
+        assert_eq!(elos, [1300]);
+        let (_, rows) = get_json(&app, "/api/replays").await;
+        assert!(rows.to_string().contains("1300") && !rows.to_string().contains("1344"));
+
+        for uri in [
+            format!("/api/stats?player_id={me}"),
+            format!("/api/cards?opponents_of={me}"),
+            format!("/api/stats/games?player_id={me}"),
+            format!("/api/stats/techs?player_id={me}"),
+            format!("/api/stats/robust?player_id={me}"),
+            format!("/api/stats/versions?opponents_of={me}"),
+        ] {
+            assert_eq!(
+                get_json(&app, &uri).await.0,
+                StatusCode::BAD_REQUEST,
+                "{uri}"
+            );
+        }
+
+        // The desktop app's own server is unchanged: open, filters allowed, nothing renumbered.
+        let local = router(store.clone(), UploadAuth::Open);
+        let (code, _) = get_json(&local, &format!("/api/stats?player_id={me}")).await;
+        assert_eq!(code, StatusCode::OK);
+        let (_, detail) = get_json(&local, "/api/replays/20260924--67113734").await;
+        assert!(detail.to_string().contains(&me));
+    }
+
+    /// Turning pseudonyms on for a database that already holds replays rewrites them, the
+    /// tables that name accounts, and the copies' fingerprints, once; a different key is refused.
+    #[tokio::test]
+    async fn test_pseudonymizing_a_stored_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stats.db");
+        let keys = pseudonym::Pseudonyms::from_key([9; 32]);
+        {
+            let store = Store::open(&path).unwrap();
+            store.create_key("legacy").unwrap();
+            assert!(store
+                .ingest_shared(&fixture(NEW), "legacy", Some(JTK18))
+                .unwrap()
+                .is_ok());
+            store
+                .ingest(&fixture(OLD), Path::new(OLD), Some("admin"))
+                .unwrap();
+            let rating: Rating = serde_json::from_value(serde_json::json!({
+                "player_id": JTK18, "elo": 1344, "rank_point": null, "level": 1, "elo_games": 2
+            }))
+            .unwrap();
+            store.add_ratings("20260924--67113734", &[rating]).unwrap();
+            // The search can fail: before the rewrite it finds both an ID and a name.
+            let stored = everything_stored(&store);
+            assert!(stored.contains(JTK18));
+            assert!(players_in(NEW)
+                .iter()
+                .any(|(_, name)| stored.contains(&format!(">{name}<"))));
+        }
+
+        let store = Arc::new(Store::open(&path).unwrap());
+        store
+            .use_pseudonyms(pseudonym::Pseudonyms::from_key([9; 32]))
+            .unwrap();
+        let mut players = players_in(NEW);
+        players.extend(players_in(OLD));
+        assert_nothing_identifies(&store, &players);
+        let me = keys.id(JTK18);
+        assert_eq!(
+            store.key_player("legacy").unwrap().as_deref(),
+            Some(me.as_str())
+        );
+        assert_eq!(
+            store.ratings("20260924--67113734").unwrap()[0].player_id,
+            me
+        );
+        assert_eq!(store.stats(&StatsFilter::default()).unwrap().matches, 2);
+
+        // The opponent's copy, shared after the rewrite, agrees with the rewritten one.
+        let theirs = store.create_key("second").unwrap();
+        let app = router(store.clone(), UploadAuth::Required { admin_token: None });
+        let req = upload_as(Some(&format!("Bearer {theirs}")), BOLSANO, fixture(NEW));
+        assert_eq!(status(&app, req).await, StatusCode::OK);
+        assert_eq!(store.corroboration().unwrap(), (1, 0));
+        drop(app);
+        drop(store);
+
+        let reopened = Store::open(&path).unwrap();
+        assert!(reopened
+            .use_pseudonyms(pseudonym::Pseudonyms::from_key([8; 32]))
+            .is_err());
+        let reopened = Store::open(&path).unwrap();
+        reopened
+            .use_pseudonyms(pseudonym::Pseudonyms::from_key([9; 32]))
+            .unwrap();
+        assert_nothing_identifies(&reopened, &players);
     }
 
     async fn status(app: &Router, req: Request<Body>) -> StatusCode {

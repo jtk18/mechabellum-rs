@@ -40,7 +40,7 @@ cargo run --release -p mechabellum-server -- --db mechabellum.db serve --bind 12
 | `GET /api/replays?limit=50` | Most recent matches. |
 | `GET /api/stats` | Unit and specialist pick and win rates, taken from each player's final-round army. Filters: `min_version`, `max_version`, `match_mode` (`VS_1_1`, ...), `game_mode` (`Normal`, `AsyncBattle`, ...), `player_id`. |
 | `GET /api/stats/games` | Whole matches rather than final armies: win rates by round 1 deployment (and round 1 deployment against the opponent's, in 1v1), how often both players went asym and on which lanes, match lengths, winners' and losers' mean army size and value, levels and units sold, and every unit fielded at any point. Same filters. Plain rates, not capped per uploader. |
-| `GET /api/cards?limit=24&offset=0` | Match cards, newest first: each player's whole game (`mechabellum::PlayerGame`: army size and levels, units used and sold, every fight's result, HP, deployment and board). Same filters. Names as stored, never account IDs. |
+| `GET /api/cards?limit=24&offset=0` | Match cards, newest first: each player's whole game (`mechabellum::PlayerGame`: army size and levels, units used and sold, every fight's result, HP, deployment and board). Same filters. Names as stored, never account IDs (and on a public server, see Pseudonyms). |
 | `GET /health` | |
 
 Pages: `/` (landing), `/stats`, and `/matches` (one card per match). The last two aren't linked from the
@@ -74,6 +74,24 @@ The local instance (the desktop app) accepts uploads from anyone. A public insta
 
 The server refuses to start in auth mode if neither exists. Later, when "sign in with X" accounts arrive, keys get tied to
 accounts. The provider's own tokens only prove who someone is when they sign in on the website. They are never used to upload.
+
+### Pseudonyms
+
+A server run with `--require-auth` stores no account IDs and no names. Every replay is rewritten as it's stored: each
+player's account ID becomes an HMAC of it under a secret key (`p` and 20 hex digits), and every name becomes `Player`.
+A plain hash wouldn't do: names are public and account IDs count up from a fixed prefix, so either can be hashed and
+compared by anyone. The keyed ID is stable across renames and uploaders, so key binding, per-uploader caps and
+corroboration work as before.
+
+- The key is `pseudonym.key` beside the database (`--pseudonym-key-file` to move it), created the first time
+  `serve --require-auth` runs. **Back it up with the database.** The database records a check value; once it's
+  pseudonymized, every command needs the same key and refuses to run without it, so nothing raw is stored again.
+- Turning it on for a database that already holds replays rewrites them, the tables that name accounts (ratings, key
+  bindings, copies), and rebuilds the stats, once.
+- Responses carry nothing that ties one match to a player's others: players are numbered within each match, ratings
+  are rounded to 100, tech loadouts are left out, and per-player filters (`player_id`, `opponents_of`) are refused.
+  The desktop app's own server is unchanged.
+- Each Mechabellum account can be shared for by one uploader at a time; a second key claiming it gets 409.
 
 ### Consistency
 

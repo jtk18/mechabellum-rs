@@ -73,9 +73,12 @@ copies mark the match **corroborated**; mismatches flag both uploaders for revie
 
 ## Privacy interplay
 
-Opponents' names are stripped on the client before upload. Their account IDs, MMR, and game data
-stay, so they remain pseudonymous. That doesn't weaken any layer: corroboration hashes exclude
-names, and binding uses IDs.
+Opponents' names are stripped on the client before upload. The server then keeps no names at all,
+and replaces every account ID with a keyed HMAC of it (README, "Pseudonyms"); a plain hash would
+be reversible, since names are public and account IDs are a small, counting space. Its responses
+number players within each match, round ratings, and refuse per-player filters, so a known match
+can't be followed to a player's others. That doesn't weaken any layer: corroboration hashes use
+each player's place in the replay, not names or IDs, and binding uses the keyed IDs.
 
 ## Suggested phases
 

@@ -13,7 +13,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
+
+use crate::pseudonym::Pseudonyms;
 
 const SCHEMA: &str = "
 -- Upstream: each player's copy of a shared match, reduced to a fingerprint of what the game
@@ -176,6 +178,24 @@ CREATE TABLE IF NOT EXISTS local_player (
     only      INTEGER PRIMARY KEY CHECK (only = 0),
     player_id TEXT NOT NULL
 );
+-- Community members who signed in with Steam. The Steam ID itself isn't kept: `steam` is its
+-- pseudonym. Each sign-in adds an upload key with `account` set; uploads are recorded under the
+-- account's name, so a member's devices count as one uploader.
+CREATE TABLE IF NOT EXISTS accounts (
+    name         TEXT PRIMARY KEY,
+    steam        TEXT NOT NULL UNIQUE,
+    -- The Mechabellum account it shares games for, bound on its first upload.
+    player_id    TEXT UNIQUE,
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    signed_in_at TEXT,
+    disabled_at  TEXT
+);
+-- Settings that belong with the data: whether stored replays are pseudonymized, and a check
+-- value for the key that did it.
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 -- Files already read from a watched replay folder, so restarts skip them without parsing.
 CREATE TABLE IF NOT EXISTS ingested_files (
     path           TEXT PRIMARY KEY,
@@ -225,6 +245,9 @@ pub struct Store {
     path: Option<PathBuf>,
     /// One rebuild at a time: each one replaces every derived row.
     rebuilding: Mutex<()>,
+    /// Set on a community server: every replay is stored with pseudonymous player IDs and no
+    /// names (see `pseudonym.rs`).
+    pseudonyms: OnceLock<Pseudonyms>,
 }
 
 #[derive(Debug, Serialize)]
@@ -720,6 +743,12 @@ fn migrate(conn: &Connection) -> Result<()> {
     if !keys_bound {
         conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN player_id TEXT")?;
     }
+    let keys_have_accounts = conn
+        .prepare("SELECT 1 FROM pragma_table_info('upload_keys') WHERE name = 'account'")?
+        .exists([])?;
+    if !keys_have_accounts {
+        conn.execute_batch("ALTER TABLE upload_keys ADD COLUMN account TEXT")?;
+    }
     let techs_have_ids = conn
         .prepare("SELECT 1 FROM pragma_table_info('player_techs') WHERE name = 'tech_id'")?
         .exists([])?;
@@ -758,7 +787,8 @@ fn contained<T>(battle_id: &str, work: impl FnOnce() -> Result<T>) -> Result<T> 
 }
 
 /// What every copy of a match must agree on: each round's armies (unit, position, level, XP,
-/// rotation), HP, and results. Names, and anything only one client records, are left out.
+/// rotation), HP, and results, by each player's place in the replay. Names and account IDs,
+/// which a server with pseudonyms rewrites, and anything only one client records, are left out.
 fn fingerprint(record: &BattleRecord) -> String {
     use std::fmt::Write;
     let detail = record.match_detail();
@@ -767,7 +797,7 @@ fn fingerprint(record: &BattleRecord) -> String {
         detail.battle_id, detail.version, detail.map_id
     );
     for round in &detail.rounds {
-        for (side, player) in round.sides.iter().zip(&detail.players) {
+        for (seat, side) in round.sides.iter().enumerate() {
             let Some(side) = side else { continue };
             let mut units: Vec<_> = side
                 .units
@@ -778,7 +808,7 @@ fn fingerprint(record: &BattleRecord) -> String {
             let _ = writeln!(
                 facts,
                 "{}|{}|{}|{}|{units:?}",
-                round.round, player.id, side.hp, side.result
+                round.round, seat, side.hp, side.result
             );
         }
     }
@@ -846,12 +876,159 @@ impl Store {
             conn: Mutex::new(conn),
             path,
             rebuilding: Mutex::new(()),
+            pseudonyms: OnceLock::new(),
         };
         // A fresh database has nothing to rebuild.
         if store.match_count()? == 0 {
             store.mark_current()?;
         }
         Ok(store)
+    }
+
+    /// The check value of the pseudonym key this database's replays were rewritten with, if any.
+    /// A server must use the same key from then on.
+    pub fn pseudonym_check(&self) -> Result<Option<String>> {
+        self.meta("pseudonym_key")
+    }
+
+    /// Store every replay from now on with pseudonymous player IDs and no names, and rewrite
+    /// the ones already stored (once; it's recorded in `meta`). Refuses a key other than the one
+    /// the database was rewritten with.
+    pub fn use_pseudonyms(&self, pseudonyms: Pseudonyms) -> Result<()> {
+        let check = pseudonyms.check_value();
+        match self.pseudonym_check()? {
+            Some(stored) if stored != check => anyhow::bail!(
+                "this database's players were pseudonymized with a different key; start the \
+                 server with that key (its check value is {stored})"
+            ),
+            Some(_) => {}
+            // Recorded before rewriting, so an interrupted rewrite resumes with the same key.
+            None => self.set_meta("pseudonym_key", &check)?,
+        }
+        if self.pseudonyms.set(pseudonyms).is_err() {
+            anyhow::bail!("pseudonyms are already on");
+        }
+        if self.meta("pseudonymized")?.as_deref() != Some("1") {
+            self.pseudonymize_stored()?;
+            self.set_meta("pseudonymized", "1")?;
+        }
+        Ok(())
+    }
+
+    /// Rewrite every stored replay and every table that holds account IDs, then rebuild the
+    /// derived rows from the rewritten replays. Pseudonyms map to themselves, so running it again
+    /// after an interruption finishes the job.
+    fn pseudonymize_stored(&self) -> Result<()> {
+        let pseudonyms = self.pseudonyms.get().context("pseudonyms aren't on")?;
+        let started = std::time::Instant::now();
+        let mut after = String::new();
+        let mut rewritten = 0;
+        loop {
+            let page = self.stored_page(&after)?;
+            let Some(last) = page.last() else { break };
+            after = last.battle_id.clone();
+            let mut changed = Vec::new();
+            for replay in page {
+                let mut xml = String::new();
+                if let Err(e) = GzDecoder::new(&replay.xml_gz[..]).read_to_string(&mut xml) {
+                    log::warn!("pseudonymize {}: {e}", replay.battle_id);
+                    continue;
+                }
+                let new = pseudonyms.document(&xml);
+                if new != xml {
+                    let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+                    gz.write_all(new.as_bytes())?;
+                    changed.push((replay.battle_id, gz.finish()?));
+                }
+            }
+            let mut conn = self.conn();
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            for (battle_id, xml_gz) in &changed {
+                tx.execute(
+                    "UPDATE replay_blobs SET xml_gz = ?2 WHERE battle_id = ?1",
+                    params![battle_id, xml_gz],
+                )?;
+            }
+            tx.commit()?;
+            rewritten += changed.len();
+        }
+
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for (table, key) in [
+            ("player_ratings", "battle_id"),
+            ("match_copies", "uploaded_by"),
+            ("upload_keys", "name"),
+            ("local_player", "only"),
+        ] {
+            let rows: Vec<(rusqlite::types::Value, String)> = tx
+                .prepare(&format!(
+                    "SELECT {key}, player_id FROM {table} WHERE player_id IS NOT NULL"
+                ))?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            for (row, player) in rows {
+                let new = pseudonyms.id(&player);
+                if new != player {
+                    tx.execute(
+                        &format!(
+                            "UPDATE OR REPLACE {table} SET player_id = ?3
+                             WHERE {key} = ?1 AND player_id = ?2"
+                        ),
+                        params![row, player, new],
+                    )?;
+                }
+            }
+        }
+        tx.commit()?;
+        drop(conn);
+        let stored = self.reindex()?;
+
+        // A copy's fingerprint can be recomputed from the replay when the stored replay is
+        // that uploader's own copy; it no longer depends on account IDs either way.
+        let copies: Vec<(String, String)> = self
+            .conn()
+            .prepare(
+                "SELECT c.battle_id, c.uploaded_by FROM match_copies c
+                 JOIN matches m ON m.battle_id = c.battle_id AND m.uploaded_by = c.uploaded_by",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        for (battle_id, uploaded_by) in copies {
+            let Some(xml) = self.replay_document(&battle_id)? else {
+                continue;
+            };
+            let Ok(record) = BattleRecord::from_bytes(xml.as_bytes(), Path::new(&battle_id)) else {
+                continue;
+            };
+            let Ok(print) = contained(&battle_id, || Ok(fingerprint(&record))) else {
+                continue;
+            };
+            self.conn().execute(
+                "UPDATE match_copies SET fingerprint = ?3 WHERE battle_id = ?1 AND uploaded_by = ?2",
+                params![battle_id, uploaded_by, print],
+            )?;
+        }
+        log::info!(
+            "pseudonymized {rewritten} stored replays and rebuilt {stored} matches in {:.1?}",
+            started.elapsed()
+        );
+        Ok(())
+    }
+
+    fn meta(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
+            .optional()?)
+    }
+
+    fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        Ok(())
     }
 
     /// Whether stored stats were derived by an older version of this code and should be rebuilt
@@ -912,6 +1089,14 @@ impl Store {
             source.display(),
             document.len()
         );
+        let pseudonymized;
+        let document = match self.pseudonyms.get() {
+            Some(pseudonyms) => {
+                pseudonymized = pseudonyms.document(document);
+                pseudonymized.as_str()
+            }
+            None => document,
+        };
         let record = BattleRecord::from_bytes(document.as_bytes(), source)?;
         let detail = contained(&source.display().to_string(), || Ok(record.match_detail()))?;
         let battle_id = match record.battle_info.battle_id.trim() {
@@ -982,16 +1167,10 @@ impl Store {
             return reject(422, "The replay doesn't add up.".into(), problems);
         }
 
-        let bound: Option<String> = self
-            .conn()
-            .query_row(
-                "SELECT player_id FROM upload_keys WHERE name = ?1",
-                [key_name],
-                |r| r.get(0),
-            )
-            .optional()?
-            .flatten();
-        let Some(player) = bound.clone().or_else(|| claimed.map(str::to_owned)) else {
+        let pseudonyms = self.pseudonyms.get();
+        let as_stored = |id: &str| pseudonyms.map_or_else(|| id.trim().to_owned(), |p| p.id(id));
+        let bound = self.bound_player(key_name)?;
+        let Some(player) = bound.clone().or_else(|| claimed.map(as_stored)) else {
             return reject(
                 400,
                 "Say which player you are with the X-Mechabellum-Player header.".into(),
@@ -1002,23 +1181,31 @@ impl Store {
             .player_records
             .player_record
             .iter()
-            .find(|p| p.id.trim() == player)
+            .find(|p| as_stored(&p.id) == player)
         else {
-            return reject(
-                403,
-                format!("This key shares games for player {player}, who isn't in this match."),
-                vec![],
-            );
+            // A pseudonym isn't echoed: an unbound key could otherwise learn any account's.
+            let reason = match pseudonyms {
+                Some(_) => "This key shares games for a player who isn't in this match.".into(),
+                None => {
+                    format!("This key shares games for player {player}, who isn't in this match.")
+                }
+            };
+            return reject(403, reason, vec![]);
         };
         let own_name = own.name.clone();
-        if bound.is_none() {
-            self.conn().execute(
-                "UPDATE upload_keys SET player_id = ?2 WHERE name = ?1 AND player_id IS NULL",
-                params![key_name, player],
-            )?;
+        if bound.is_none() && !self.bind_player(key_name, &player)? {
+            return reject(
+                409,
+                "Another member already shares games for this player.".into(),
+                vec![],
+            );
         }
 
-        let shared = mechabellum::hide_other_names(document, &player);
+        // A server with pseudonyms rewrites every name and ID as it stores the replay.
+        let shared = match pseudonyms {
+            Some(_) => document.to_owned(),
+            None => mechabellum::hide_other_names(document, &player),
+        };
         let outcome = self.ingest(shared.as_bytes(), Path::new("<upload>"), Some(key_name))?;
         let battle_id = match &outcome {
             IngestOutcome::Added { battle_id } | IngestOutcome::Duplicate { battle_id } => {
@@ -1030,7 +1217,7 @@ impl Store {
              VALUES (?1, ?2, ?3, ?4)",
             params![battle_id, key_name, player, fingerprint(&record)],
         )?;
-        if let IngestOutcome::Duplicate { battle_id } = &outcome {
+        if let (IngestOutcome::Duplicate { battle_id }, None) = (&outcome, pseudonyms) {
             self.conn().execute(
                 "UPDATE players SET name = ?3 WHERE battle_id = ?1 AND player_id = ?2 AND name = ?4",
                 params![battle_id, player, own_name, mechabellum::HIDDEN_NAME],
@@ -1039,17 +1226,65 @@ impl Store {
         Ok(Ok(outcome))
     }
 
-    /// The account a key uploads for, once bound.
-    pub fn key_player(&self, key_name: &str) -> Result<Option<String>> {
+    /// The account an uploader (a hand-made key's name, or a signed-in member's account) shares
+    /// games for, once bound.
+    pub fn key_player(&self, uploader: &str) -> Result<Option<String>> {
+        self.bound_player(uploader)
+    }
+
+    fn bound_player(&self, uploader: &str) -> Result<Option<String>> {
         Ok(self
             .conn()
             .query_row(
-                "SELECT player_id FROM upload_keys WHERE name = ?1",
-                [key_name],
+                "SELECT player_id FROM accounts WHERE name = ?1
+                 UNION ALL
+                 SELECT player_id FROM upload_keys WHERE name = ?1 AND account IS NULL
+                 LIMIT 1",
+                [uploader],
                 |r| r.get(0),
             )
             .optional()?
             .flatten())
+    }
+
+    /// Bind an uploader to the account it shares games for, unless another active uploader
+    /// already shares for that account. Returns whether it's bound.
+    fn bind_player(&self, uploader: &str, player: &str) -> Result<bool> {
+        let conn = self.conn();
+        let taken: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM accounts
+                            WHERE player_id = ?2 AND name != ?1 AND disabled_at IS NULL)
+                 OR EXISTS (SELECT 1 FROM upload_keys
+                            WHERE player_id = ?2 AND name != ?1 AND account IS NULL
+                              AND revoked_at IS NULL)",
+            params![uploader, player],
+            |r| r.get(0),
+        )?;
+        if taken {
+            return Ok(false);
+        }
+        let bound = conn.execute(
+            "UPDATE accounts SET player_id = ?2 WHERE name = ?1 AND player_id IS NULL",
+            params![uploader, player],
+        );
+        match bound {
+            Ok(0) => {
+                conn.execute(
+                    "UPDATE upload_keys SET player_id = ?2
+                     WHERE name = ?1 AND account IS NULL AND player_id IS NULL",
+                    params![uploader, player],
+                )?;
+                Ok(true)
+            }
+            Ok(_) => Ok(true),
+            // Another account bound the same player first.
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                Ok(false)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Whether `player` took part in a stored match.
@@ -1080,9 +1315,13 @@ impl Store {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut stored = 0;
         for r in ratings.iter().filter(|r| r.plausible()) {
+            let player_id = match self.pseudonyms.get() {
+                Some(pseudonyms) => pseudonyms.id(&r.player_id),
+                None => r.player_id.clone(),
+            };
             let in_match = tx
                 .prepare_cached("SELECT 1 FROM players WHERE battle_id = ?1 AND player_id = ?2")?
-                .exists(params![battle_id, r.player_id])?;
+                .exists(params![battle_id, player_id])?;
             if in_match {
                 stored += tx.execute(
                     "INSERT OR REPLACE INTO player_ratings
@@ -1090,7 +1329,7 @@ impl Store {
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
                         battle_id,
-                        r.player_id,
+                        player_id,
                         r.elo,
                         r.rank_point,
                         r.level,
@@ -1401,8 +1640,9 @@ impl Store {
         Ok(key)
     }
 
-    /// Name of the active key matching `presented`, if any. Lookup is by SHA-256, so response
-    /// time doesn't depend on how much of the key matched.
+    /// The uploader an active key belongs to, if any: its signed-in member's account, or the
+    /// key's own name for a hand-made key. Lookup is by SHA-256, so response time doesn't depend
+    /// on how much of the key matched.
     pub fn verify_key(&self, presented: &str) -> Result<Option<String>> {
         if !presented.starts_with(KEY_PREFIX) {
             return Ok(None);
@@ -1411,7 +1651,9 @@ impl Store {
         Ok(self
             .conn()
             .query_row(
-                "SELECT name FROM upload_keys WHERE key_hash = ?1 AND revoked_at IS NULL",
+                "SELECT COALESCE(k.account, k.name) FROM upload_keys k
+                 LEFT JOIN accounts a ON a.name = k.account
+                 WHERE k.key_hash = ?1 AND k.revoked_at IS NULL AND a.disabled_at IS NULL",
                 [hash.as_slice()],
                 |r| r.get(0),
             )

@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use mechabellum_server::pseudonym::Pseudonyms;
 use mechabellum_server::{router, IngestOutcome, Store, UploadAuth};
 
 use rayon::prelude::*;
@@ -21,6 +22,11 @@ struct Args {
         global = true
     )]
     db: PathBuf,
+    /// The secret key for pseudonymous player IDs (64 hex digits). Default: `pseudonym.key`
+    /// beside the database. `serve --require-auth` creates one if the database has never been
+    /// pseudonymized; after that every command needs the same key. Back it up with the database.
+    #[arg(long, env = "MECHABELLUM_PSEUDONYM_KEY_FILE", global = true)]
+    pseudonym_key_file: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -75,6 +81,24 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let store = Arc::new(Store::open(&args.db)?);
     store.upgrade()?;
+
+    // A community server keeps no account IDs or names. Once a database is pseudonymized,
+    // every command must use the same key, so nothing raw is ever stored in it again.
+    let community = matches!(
+        &args.command,
+        Command::Serve { require_auth, upload_token, .. }
+            if *require_auth || upload_token.as_deref().is_some_and(|t| !t.trim().is_empty())
+    );
+    let pseudonymized = store.pseudonym_check()?.is_some();
+    if community || pseudonymized {
+        let key_file = args.pseudonym_key_file.clone().unwrap_or_else(|| {
+            args.db
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .join("pseudonym.key")
+        });
+        store.use_pseudonyms(Pseudonyms::load(&key_file, !pseudonymized)?)?;
+    }
 
     match args.command {
         Command::Serve {
