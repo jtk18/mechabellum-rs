@@ -93,6 +93,28 @@ corroboration work as before.
   The desktop app's own server is unchanged.
 - Each Mechabellum account can be shared for by one uploader at a time; a second key claiming it gets 409.
 
+### Sign in with Steam
+
+With `--require-auth` and `--public-url https://mechabellum-stats.com`, members get their own keys:
+
+- **Desktop app:** Settings, Sharing, "Sign in with Steam". The browser goes to `/auth/steam`,
+  then Steam; Steam sends it back, the server checks the answer with Steam, and the browser lands
+  on the app's own server (`127.0.0.1:8765/auth/steam/done`) with a one-time code. The app trades
+  the code and a verifier only it holds (PKCE) for a key at `POST /api/auth/redeem`, saves it and
+  turns sharing on. The key never passes through the browser.
+- **Browser only:** `/auth/steam` shows the key once, for the command line.
+- Each Steam account is one member account (`steam-` and its pseudonym; the Steam ID isn't
+  stored). Each sign-in adds a key for that device; an account keeps five, and the oldest is
+  revoked past that. Uploads are recorded under the account, so its devices count as one uploader.
+- `--steam-api-key-file` turns on checks through the Steam Web API: the Steam account's age
+  (`--steam-min-account-days`, default 30) and Mechabellum playtime
+  (`--steam-min-playtime-hours`, default 2). Both need the profile and game details public at
+  sign-in. Without a key, the Steam login is the only check.
+- `accounts list`, `accounts disable <name>` (keys stop at once; its Mechabellum account can be
+  claimed again), `accounts enable <name>`. `purge <account>` removes everything it shared.
+- The server makes outbound HTTPS calls to `steamcommunity.com` (and `api.steampowered.com` with a
+  key), so its host must allow outbound network.
+
 ### Consistency
 
 All writes go through one SQLite connection per process and run in `BEGIN IMMEDIATE` transactions, with a busy timeout.

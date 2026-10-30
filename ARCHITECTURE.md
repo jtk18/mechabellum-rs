@@ -95,7 +95,12 @@ negative y; each side's own frame mirrors the north (negate x and y).
   median of per-uploader win rates, and uploaders far from everyone else flagged
   (`docs/upload-trust.md`).
 - **`lib.rs`**: the router, upload auth (keys, admin token), size caps on bodies and gzip, the
-  pages, and the tests.
+  pages, `public_view` (what a community server leaves out of responses), and the tests.
+- **`pseudonym.rs`**: keyed pseudonyms for account IDs and Steam IDs, and the rewrite that takes
+  every account ID and name out of a replay before a community server stores it.
+- **`steam.rs`**: Sign in with Steam (OpenID 2.0, checked with Steam; optional Web API checks of
+  account age and playtime), which issues upload keys for members' accounts, handed to the desktop
+  app through a one-time code with PKCE.
 - **`web/`**: static pages with inline JS, compiled into the binary: `index.html` (landing),
   `stats.html`, `matches.html`.
 
@@ -109,6 +114,8 @@ negative y; each side's own frame mirrors the north (negate x and y).
   replays with a community server, other players' names removed first. **`steam.rs`**: Steam and
   install lookups, re-exported from the parser crate's `install.rs`. **`art.rs`**: unit art read
   from the player's own install (`unity-bundle-assets`); none of it ships or is committed.
+  **`signin.rs`**: starts a Steam sign-in in the browser, receives the one-time code on the local
+  server (`/auth/steam/done`), trades it for a key and turns sharing on.
   **`updates.rs`**: checks the GitHub releases' `latest.json` through Tauri's updater plugin,
   holds a found update for the banner, installs it after its signature checks out, and restarts.
   Builds run from a cargo target folder never check (README, "Desktop releases and updates").

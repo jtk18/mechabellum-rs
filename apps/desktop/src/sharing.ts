@@ -23,6 +23,9 @@ interface SyncRejection {
   version: number;
 }
 
+/// The community server signing in uses when no address is filled in.
+const COMMUNITY_SERVER = "https://mechabellum-stats.com";
+
 let saved: SyncSettings = { enabled: false, server: "", key: "" };
 let lastRejected = -1;
 
@@ -131,6 +134,34 @@ export async function setupSharing() {
   $("sync-now").addEventListener("click", async () => {
     await invoke("sync_now");
     note.textContent = "";
+  });
+
+  const signIn = $<HTMLButtonElement>("steam-sign-in");
+  const signInNote = $("steam-sign-in-note");
+  signIn.addEventListener("click", async () => {
+    const field = $<HTMLInputElement>("sync-server");
+    const server = field.value.trim() || COMMUNITY_SERVER;
+    if (!/^https?:\/\//i.test(server)) {
+      signInNote.textContent = "The server address needs to start with https://";
+      return;
+    }
+    field.value = server;
+    try {
+      await invoke("steam_sign_in", { server });
+      signInNote.textContent = "Finish signing in in your browser.";
+    } catch (e) {
+      signInNote.textContent = `Couldn't start signing in: ${e}`;
+    }
+  });
+  await listen<string>("steam-signed-in", async () => {
+    saved = await invoke<SyncSettings>("sync_settings");
+    fillForm(saved);
+    signInNote.textContent = "Signed in. Sharing starts now.";
+    lastRejected = -1;
+    await refreshStatus();
+  });
+  await listen<string>("steam-sign-in-failed", (event) => {
+    signInNote.textContent = `Signing in didn't finish: ${event.payload}`;
   });
 
   const autostart = $<HTMLInputElement>("autostart");

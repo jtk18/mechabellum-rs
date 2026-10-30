@@ -44,6 +44,30 @@ enum Command {
         /// --require-auth
         #[arg(long, env = "MECHABELLUM_UPLOAD_TOKEN", hide_env_values = true)]
         upload_token: Option<String>,
+        /// The server's public address (such as https://mechabellum-stats.com). With
+        /// --require-auth, it turns on Sign in with Steam at /auth/steam
+        #[arg(long, env = "MECHABELLUM_PUBLIC_URL")]
+        public_url: Option<String>,
+        /// File holding a Steam Web API key, for the account checks below. Without one, signing
+        /// in to Steam is the only check
+        #[arg(long, env = "MECHABELLUM_STEAM_API_KEY_FILE")]
+        steam_api_key_file: Option<PathBuf>,
+        /// Youngest Steam account that may sign in, in days (needs the API key; 0: no check)
+        #[arg(long, env = "MECHABELLUM_STEAM_MIN_ACCOUNT_DAYS", default_value_t = 30)]
+        steam_min_account_days: u32,
+        /// Least Mechabellum playtime that may sign in, in hours (needs the API key; 0: no check)
+        #[arg(
+            long,
+            env = "MECHABELLUM_STEAM_MIN_PLAYTIME_HOURS",
+            default_value_t = 2
+        )]
+        steam_min_playtime_hours: u32,
+        /// Steam's OpenID endpoint, replaced only to test against a stand-in
+        #[arg(long, hide = true)]
+        steam_openid_url: Option<String>,
+        /// Steam Web API base address, replaced only to test against a stand-in
+        #[arg(long, hide = true)]
+        steam_api_url: Option<String>,
     },
     /// Load every .grbr/.xml replay in a directory into the database (read-only on the directory)
     Import { dir: PathBuf },
@@ -63,6 +87,21 @@ enum Command {
         #[command(subcommand)]
         command: KeysCommand,
     },
+    /// Manage members who signed in with Steam
+    Accounts {
+        #[command(subcommand)]
+        command: AccountsCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AccountsCommand {
+    /// List accounts (names and dates; no Steam IDs are stored)
+    List,
+    /// Stop an account's uploads and sign-ins; its keys stop working at once
+    Disable { name: String },
+    /// Allow a disabled account again
+    Enable { name: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -105,6 +144,12 @@ async fn main() -> Result<()> {
             bind,
             require_auth,
             upload_token,
+            public_url,
+            steam_api_key_file,
+            steam_min_account_days,
+            steam_min_playtime_hours,
+            steam_openid_url,
+            steam_api_url,
         } => {
             let admin_token = upload_token.filter(|t| !t.trim().is_empty());
             let auth = if require_auth || admin_token.is_some() {
@@ -122,7 +167,30 @@ async fn main() -> Result<()> {
                 UploadAuth::Open => "open",
                 UploadAuth::Required { .. } => "require a key",
             };
-            let app = router(store, auth);
+            let community = matches!(auth, UploadAuth::Required { .. });
+            let mut app = router(store.clone(), auth);
+            if let Some(public_url) = public_url.filter(|_| community) {
+                let mut steam = mechabellum_server::steam::SteamConfig::new(&public_url);
+                if let Some(file) = steam_api_key_file {
+                    let key = std::fs::read_to_string(&file)
+                        .with_context(|| format!("reading {}", file.display()))?;
+                    steam.api_key = Some(key.trim().to_owned()).filter(|k| !k.is_empty());
+                }
+                steam.min_account_days = steam_min_account_days;
+                steam.min_playtime_minutes = steam_min_playtime_hours * 60;
+                if let Some(url) = steam_openid_url {
+                    steam.claimed_id_prefix = format!(
+                        "{}/id/",
+                        url.trim_end_matches('/').trim_end_matches("/login")
+                    );
+                    steam.openid_endpoint = url;
+                }
+                if let Some(url) = steam_api_url {
+                    steam.api_base = url.trim_end_matches('/').to_owned();
+                }
+                log::info!("Sign in with Steam at {}/auth/steam", steam.public_url);
+                app = app.merge(mechabellum_server::steam::routes(store, steam)?);
+            }
             // Socket activation (systemd, or a host such as uredo): serve the
             // Unix socket handed over as fd 3 instead of binding `bind`.
             if let Some(listener) = activated_unix_listener()? {
@@ -216,6 +284,35 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Command::Accounts { command } => match command {
+            AccountsCommand::List => {
+                for a in store.list_accounts()? {
+                    println!(
+                        "{}\tcreated {}\tsigned in {}\t{}\t{} active keys{}",
+                        a.name,
+                        a.created_at,
+                        a.signed_in_at.as_deref().unwrap_or("-"),
+                        if a.bound { "bound" } else { "not bound yet" },
+                        a.active_keys,
+                        a.disabled_at
+                            .map(|at| format!("\tdisabled {at}"))
+                            .unwrap_or_default()
+                    );
+                }
+            }
+            AccountsCommand::Disable { name } => {
+                if !store.set_account_disabled(&name, true)? {
+                    bail!("no account named {name:?}");
+                }
+                println!("disabled {name}");
+            }
+            AccountsCommand::Enable { name } => {
+                if !store.set_account_disabled(&name, false)? {
+                    bail!("no account named {name:?}");
+                }
+                println!("enabled {name}");
+            }
+        },
         Command::Keys { command } => match command {
             KeysCommand::Add { name } => {
                 let key = store.create_key(&name)?;

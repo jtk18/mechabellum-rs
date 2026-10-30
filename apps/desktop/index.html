@@ -249,8 +249,8 @@
         <h2 id="sharing-title">Share your matches</h2>
         <p class="sharing-intro">
           Send your replays to a community stats server. Other players' names are removed before
-          anything leaves this computer; their ratings and armies are kept. Offline games against
-          bots aren't accepted.
+          anything leaves this computer, and the community server keeps no names or account IDs
+          at all. Offline games against bots aren't accepted.
         </p>
         <form id="sharing-form" class="sharing-form">
           <label class="switch">
@@ -259,12 +259,21 @@
           </label>
           <label class="field">
             <span>Server address</span>
-            <input type="url" id="sync-server" placeholder="https://stats.example.com" autocomplete="off" spellcheck="false" />
+            <input type="url" id="sync-server" placeholder="https://mechabellum-stats.com" autocomplete="off" spellcheck="false" />
           </label>
+          <div class="field sign-in-row">
+            <div class="sharing-actions">
+              <button type="button" id="steam-sign-in">Sign in with Steam</button>
+              <span class="sharing-saved" id="steam-sign-in-note" aria-live="polite"></span>
+            </div>
+            <small>Opens your browser at the server, then Steam. Signing in gets this computer an
+              upload key and turns sharing on; the server never sees your Steam password.</small>
+          </div>
           <label class="field">
             <span>Upload key</span>
             <input type="password" id="sync-key" autocomplete="off" spellcheck="false" />
-            <small>Given to you by the server's operator. It's tied to your Mechabellum account.</small>
+            <small>Filled in when you sign in with Steam, or given to you by a server's operator.
+              It's tied to your Mechabellum account.</small>
           </label>
           <div class="sharing-actions">
             <button type="submit" id="sync-save">Save</button>

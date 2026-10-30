@@ -232,6 +232,10 @@ const SCHEMA_VERSION: i64 = 20;
 /// Failed files are retried when the parser changes.
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Active upload keys a signed-in account keeps, one per device; a new one past this revokes the
+/// oldest.
+const ACCOUNT_KEYS: i64 = 5;
+
 /// Prefix on generated upload keys, so they're recognizable in configs and logs.
 const KEY_PREFIX: &str = "mbk_";
 
@@ -248,6 +252,18 @@ pub struct Store {
     /// Set on a community server: every replay is stored with pseudonymous player IDs and no
     /// names (see `pseudonym.rs`).
     pseudonyms: OnceLock<Pseudonyms>,
+}
+
+/// A community member who signed in with Steam.
+#[derive(Debug, Serialize)]
+pub struct Account {
+    pub name: String,
+    pub created_at: String,
+    pub signed_in_at: Option<String>,
+    pub disabled_at: Option<String>,
+    /// Whether it shares games for a Mechabellum account yet.
+    pub bound: bool,
+    pub active_keys: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1623,6 +1639,111 @@ impl Store {
             |r| r.get(0),
         )?;
         Ok((corroborated, disputed))
+    }
+
+    pub fn has_pseudonyms(&self) -> bool {
+        self.pseudonyms.get().is_some()
+    }
+
+    /// The account for a Steam ID, created on its first sign-in; `Err` with a reason when it may
+    /// not share. Only the Steam ID's pseudonym is stored.
+    pub fn sign_in(&self, steam_id: &str) -> Result<std::result::Result<String, String>> {
+        let pseudonyms = self.pseudonyms.get().context("pseudonyms aren't on")?;
+        let steam = pseudonyms.steam(steam_id);
+        let name = format!("steam-{}", &steam[1..]);
+        let conn = self.conn();
+        conn.execute(
+            "INSERT OR IGNORE INTO accounts (name, steam) VALUES (?1, ?2)",
+            params![name, steam],
+        )?;
+        let disabled: Option<String> = conn.query_row(
+            "SELECT disabled_at FROM accounts WHERE name = ?1 AND steam = ?2",
+            params![name, steam],
+            |r| r.get(0),
+        )?;
+        if disabled.is_some() {
+            return Ok(Err("This account can't share games.".into()));
+        }
+        conn.execute(
+            "UPDATE accounts SET signed_in_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE name = ?1",
+            [&name],
+        )?;
+        Ok(Ok(name))
+    }
+
+    /// A new upload key for one of a signed-in account's devices. Returns the key, which is only
+    /// available now. Past `ACCOUNT_KEYS` active keys, the oldest is revoked.
+    pub fn create_account_key(&self, account: &str) -> Result<String> {
+        let mut secret = [0u8; 32];
+        getrandom::getrandom(&mut secret).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
+        let key = format!("{KEY_PREFIX}{}", hex(&secret));
+        let mut conn = self.conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let known: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM accounts WHERE name = ?1 AND disabled_at IS NULL)",
+            [account],
+            |r| r.get(0),
+        )?;
+        anyhow::ensure!(known, "no active account {account:?}");
+        tx.execute(
+            "UPDATE upload_keys SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+             WHERE rowid IN (SELECT rowid FROM upload_keys
+                             WHERE account = ?1 AND revoked_at IS NULL
+                             ORDER BY rowid DESC LIMIT -1 OFFSET ?2)",
+            params![account, ACCOUNT_KEYS - 1],
+        )?;
+        let made: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM upload_keys WHERE account = ?1",
+            [account],
+            |r| r.get(0),
+        )?;
+        tx.execute(
+            "INSERT INTO upload_keys (name, key_hash, account) VALUES (?1, ?2, ?3)",
+            params![
+                format!("{account}-{}", made + 1),
+                Sha256::digest(key.as_bytes()).as_slice(),
+                account
+            ],
+        )?;
+        tx.commit()?;
+        Ok(key)
+    }
+
+    pub fn list_accounts(&self) -> Result<Vec<Account>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT a.name, a.created_at, a.signed_in_at, a.disabled_at, a.player_id IS NOT NULL,
+                    (SELECT COUNT(*) FROM upload_keys k
+                     WHERE k.account = a.name AND k.revoked_at IS NULL)
+             FROM accounts a ORDER BY a.created_at, a.name",
+        )?;
+        let accounts = stmt
+            .query_map([], |r| {
+                Ok(Account {
+                    name: r.get(0)?,
+                    created_at: r.get(1)?,
+                    signed_in_at: r.get(2)?,
+                    disabled_at: r.get(3)?,
+                    bound: r.get(4)?,
+                    active_keys: r.get(5)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(accounts)
+    }
+
+    /// Stop or allow an account's uploads and sign-ins. A disabled account's keys stop working
+    /// at once, and the Mechabellum account it shared for may be claimed by another uploader.
+    /// Returns false if there's no such account.
+    pub fn set_account_disabled(&self, name: &str, disabled: bool) -> Result<bool> {
+        let changed = self.conn().execute(
+            "UPDATE accounts SET disabled_at =
+                 CASE WHEN ?2 THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END
+             WHERE name = ?1",
+            params![name, disabled],
+        )?;
+        Ok(changed > 0)
     }
 
     /// Create an upload key. Returns the key, which is only available now; the database keeps

@@ -4,14 +4,15 @@
 pub mod aggregate;
 mod games;
 pub mod pseudonym;
+pub mod steam;
 mod store;
 
 pub use games::{
     ArmyMeans, CardPage, CardPlayer, DeploymentStat, GameStats, MatchCard, Matchup, UnitUseStat,
 };
 pub use store::{
-    Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand, Rejection,
-    RobustStats, Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell,
+    Account, Dispute, Facets, IngestOutcome, MatchCopy, MatchRow, Period, Rating, RatingBand,
+    Rejection, RobustStats, Stats, StatsFilter, Store, SyncRejection, TechStat, Trend, TrendCell,
     UnitTechStats, UploadKey, UsageStat, VersionTotals, VersionTrends, MAX_DOCUMENT_BYTES,
 };
 

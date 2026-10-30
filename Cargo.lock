@@ -3097,6 +3097,7 @@ dependencies = [
  "anyhow",
  "axum",
  "flate2",
+ "getrandom 0.2.17",
  "image 0.25.10",
  "log",
  "mechabellum",
@@ -3119,6 +3120,7 @@ dependencies = [
  "tokio",
  "unity-bundle-assets",
  "ureq",
+ "url",
 ]
 
 [[package]]
@@ -3140,6 +3142,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "clap",
  "env_logger",
  "flate2",
@@ -3154,6 +3157,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
+ "ureq",
+ "url",
 ]
 
 [[package]]

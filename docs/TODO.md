@@ -109,8 +109,10 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
 
 ## Server and website (trust phases 2 and 3; see docs/upload-trust.md)
 
-17. **Steam sign-in** with account-age and playtime gates, replacing bare upload keys for
-    members.
+17. ~~Steam sign-in~~ Done 2026-10-29: `/auth/steam` on a public server (`--public-url`), checked
+    with Steam, optional age and playtime checks (`--steam-api-key-file`), keys per device for
+    each member's account, and "Sign in with Steam" in the desktop app's Sharing settings. Live
+    use needs outbound network for the server and a Steam Web API key (README).
 18. ~~Corroboration~~ Done on the server: each shared copy is fingerprinted from what the game
     recorded (every round's armies, HP, results; no names), `corroborated_only` in the stats
     filter, and `mechabellum-server disputes`. Not yet checked: that two real players' copies

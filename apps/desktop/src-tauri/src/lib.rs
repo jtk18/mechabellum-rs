@@ -3,6 +3,7 @@
 
 mod art;
 mod gamelog;
+mod signin;
 mod steam;
 mod sync;
 mod updates;
@@ -94,6 +95,8 @@ struct AppState {
     art_status: Arc<Mutex<Option<String>>>,
     /// Extraction progress while it runs, for the splash screen.
     art_progress: Arc<Mutex<Option<art::Progress>>>,
+    /// A Steam sign-in opened in the browser and not finished yet.
+    sign_in: Mutex<Option<signin::Pending>>,
 }
 
 #[derive(Serialize)]
@@ -341,7 +344,8 @@ fn start_http(app: &AppHandle, store: Arc<Store>, port: u16) {
             Ok(listener) => {
                 *state.http_url.lock().unwrap() = Some(format!("http://{addr}"));
                 log::info!("stats API on http://{addr}");
-                let router = mechabellum_server::router(store, UploadAuth::Open);
+                let router = mechabellum_server::router(store, UploadAuth::Open)
+                    .merge(signin::routes(app.clone()));
                 if let Err(e) = axum::serve(listener, router).await {
                     *state.last_error.lock().unwrap() = Some(format!("stats API stopped: {e}"));
                 }
@@ -479,6 +483,11 @@ fn sync_settings(state: State<'_, AppState>) -> sync::SyncSettings {
 /// Save sharing settings and sync right away if they're complete.
 #[tauri::command]
 fn set_sync_settings(state: State<'_, AppState>, sync: sync::SyncSettings) -> Result<(), String> {
+    apply_sync_settings(&state, sync)
+}
+
+/// Save sharing settings and tell the sync worker.
+fn apply_sync_settings(state: &AppState, sync: sync::SyncSettings) -> Result<(), String> {
     {
         let mut settings = state.settings.lock().unwrap();
         settings.sync = sync.clone();
@@ -765,6 +774,7 @@ pub fn run() {
                 art: Arc::new(Mutex::new(manifest.clone())),
                 art_status: Arc::new(Mutex::new(None)),
                 art_progress: Arc::new(Mutex::new(None)),
+                sign_in: Mutex::new(None),
                 syncer,
                 sync_wake: Mutex::new(sync_wake),
             });
@@ -855,6 +865,7 @@ pub fn run() {
             extract_art,
             sync_settings,
             set_sync_settings,
+            signin::steam_sign_in,
             sync_now,
             sync_status,
             sync_rejections,

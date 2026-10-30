@@ -22,8 +22,10 @@ expensive, make its effect bounded, and make it reversible.**
 
 ### 1. Identity: make accounts cost something
 
-- **Sign in with Steam** (OpenID), later replacing bare upload keys. One Steam account gets one
-  uploader identity.
+- **Sign in with Steam** (OpenID). One Steam account gets one uploader identity, its devices'
+  keys counted as one uploader. Built 2026-10-29 (README, "Sign in with Steam"); hand-made keys
+  still work. Steam can't say which Mechabellum account a Steam account plays, so binding stays
+  first come; each Mechabellum account can be bound by one active uploader.
 - Use the Steam Web API to gate new uploaders on things that are slow to fake: account age,
   Steam level, Mechabellum ownership and playtime. With the free edition (2.0), ownership alone is
   cheap, so age and playtime matter more.
