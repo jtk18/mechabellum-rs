@@ -2403,3 +2403,69 @@ h1 {
 .match-summary[hidden] {
   display: none;
 }
+
+/* Update banner, under the top bar, and the Updates panel in Settings. */
+.update-banner {
+  margin-top: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  backdrop-filter: blur(10px) saturate(1.1);
+}
+
+/* display: flex above would otherwise override the hidden attribute. */
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-text {
+  min-width: 0;
+}
+
+.update-banner h2 {
+  margin: 0;
+}
+
+.update-notes {
+  margin: 4px 0 0;
+  max-width: 80ch;
+  max-height: 7.5em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+}
+
+.update-error {
+  margin: 4px 0 0;
+  color: var(--critical);
+}
+
+.update-error::before {
+  content: "⚠ ";
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#update-install {
+  border-color: var(--accent);
+}
+
+#update-install:disabled {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-check-row {
+  margin-top: 10px;
+}

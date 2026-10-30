@@ -3,6 +3,18 @@ name: Release
 # Builds installers for every platform into a draft GitHub release. Push a tag like v0.2.0, or
 # run it by hand; review the draft, then publish it. The tests run first, and nothing is built
 # if they fail.
+#
+# Updates: installed copies ask
+# https://github.com/jtk18/mechabellum-rs/releases/latest/download/latest.json for a newer
+# version (tauri.conf.json, plugins.updater). tauri-action uploads latest.json to the release by
+# default (includeUpdaterJson), listing each bundle's updater artifact and its signature; each
+# matrix job merges its platforms into the file already on the release. For the universal macOS
+# build it writes darwin-aarch64 and darwin-x86_64 (and the -app forms), all pointing at the one
+# universal .app.tar.gz. Its notes are the release body at build time, which is empty here.
+# `releases/latest` skips drafts and prereleases, so installed copies see a release only once
+# its draft is published; manual runs make prereleases and are never offered. While the
+# repository is private that address answers 404 to everyone, which the app shows as "no
+# published release was found".
 on:
   push:
     tags: ["v*"]
@@ -19,6 +31,19 @@ jobs:
     name: Test
     runs-on: ubuntu-24.04
     steps:
+      # With createUpdaterArtifacts on, the bundler signs every updater artifact and fails
+      # without the key. Stop here instead, before any runner bundles or a draft release exists:
+      # a release without signed artifacts and latest.json could never update the copies that
+      # install it. The README has the key's custody.
+      - name: Updater signing key is set
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::Set the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD secrets (the updater key; see the README) before building a release."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       # The app reports the version in tauri.conf.json; a tag that disagrees would name the
@@ -103,6 +128,9 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts that latest.json points at.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # The Developer ID Application certificate, exported as .p12 and base64-encoded.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -123,6 +151,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}

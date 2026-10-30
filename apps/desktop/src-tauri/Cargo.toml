@@ -38,6 +38,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-clipboard-manager = "2"
 thread-priority = "1"
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
 tempfile = "3"

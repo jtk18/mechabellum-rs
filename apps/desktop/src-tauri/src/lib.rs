@@ -5,6 +5,7 @@ mod art;
 mod gamelog;
 mod steam;
 mod sync;
+mod updates;
 mod watcher;
 
 use mechabellum_server::{
@@ -52,6 +53,8 @@ struct Settings {
     port: u16,
     /// Sharing matches with a community server.
     sync: sync::SyncSettings,
+    /// Look for a new release on start and every few hours.
+    check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -60,6 +63,7 @@ impl Default for Settings {
             replay_dir: None,
             port: DEFAULT_PORT,
             sync: sync::SyncSettings::default(),
+            check_for_updates: true,
         }
     }
 }
@@ -639,6 +643,39 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn update_status(updates: State<'_, updates::Updates>) -> updates::UpdateStatus {
+    updates.status()
+}
+
+/// Check for a new release now, whether or not automatic checks are on.
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<updates::UpdateStatus, String> {
+    updates::check(&app).await;
+    Ok(app.state::<updates::Updates>().status())
+}
+
+/// Download, verify and install the update the last check found, then restart.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    updates::install(&app).await
+}
+
+#[tauri::command]
+fn set_check_for_updates(
+    state: State<'_, AppState>,
+    updates: State<'_, updates::Updates>,
+    enabled: bool,
+) -> Result<(), String> {
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.check_for_updates = enabled;
+        save_settings(&state.settings_path, &settings)?;
+    }
+    updates.set_auto_check(enabled);
+    Ok(())
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -666,12 +703,27 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        // Endpoint, public key and Windows install mode come from tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("mechabellum.db");
             let settings_path = data_dir.join("settings.json");
             let settings = load_settings(&settings_path);
+            log::info!(
+                "{} {} starting",
+                app.package_info().name,
+                app.package_info().version
+            );
+            let updates = updates::Updates::new(
+                app.package_info().version.to_string(),
+                settings.check_for_updates,
+                &data_dir,
+            );
+            let just_updated = updates.status().updated_from.is_some();
+            app.manage(updates);
+            updates::start_timer(app.handle().clone())?;
             let store = Arc::new(Store::open(&db_path)?);
             let art_dir = data_dir.join("art");
             let manifest = art::ArtManifest::load(&art_dir);
@@ -775,7 +827,9 @@ pub fn run() {
 
             // The window starts hidden (see tauri.conf.json) so a start with the computer can
             // stay in the tray.
-            if !std::env::args().any(|a| a == STARTED_HIDDEN) {
+            // A restart after an update keeps the arguments it started with, so open the window
+            // anyway: the user just asked for the update from it.
+            if just_updated || !std::env::args().any(|a| a == STARTED_HIDDEN) {
                 show_main_window(app.handle());
             }
             Ok(())
@@ -810,7 +864,11 @@ pub fn run() {
             board_code,
             copy_text,
             loadout,
-            set_replay_dir
+            set_replay_dir,
+            update_status,
+            check_for_update,
+            install_update,
+            set_check_for_updates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

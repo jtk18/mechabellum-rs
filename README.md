@@ -109,3 +109,54 @@ docker compose up -d
 ```
 
 The container listens on `127.0.0.1:8080`. Put the reverse proxy (Pingora) in front of it for TLS.
+
+## Desktop releases and updates
+
+`.github/workflows/release.yml` builds the installers. Push a tag matching the version in
+`apps/desktop/src-tauri/tauri.conf.json` (`v0.2.0` for `0.2.0`) and it makes a draft release
+with the Windows, macOS (universal) and Linux bundles, each updater artifact's signature, and a
+`latest.json` that lists them.
+
+Installed copies update themselves from that file:
+
+- The app asks `https://github.com/jtk18/mechabellum-rs/releases/latest/download/latest.json`
+  shortly after it starts and every four hours, unless "Check for updates automatically" is off
+  in Settings; "Check now" there checks at any time. A newer version shows a banner with its
+  version and notes and an "Install and restart" button.
+- Installing downloads the bundle, checks its signature against the public key in
+  `tauri.conf.json` (`plugins.updater.pubkey`), and refuses anything else. macOS replaces the
+  `.app` and restarts; Windows runs the installer in passive mode, which restarts the app.
+- `releases/latest` skips drafts and prereleases: nothing is offered until the draft is
+  published, and manual workflow runs (prereleases) never are. While the repository is private
+  the address answers 404, and Settings says no published release was found. Failures are
+  logged and shown in Settings, never as a dialog.
+- A build run from a cargo target folder (`target/debug/...`) never checks: installing over it
+  would replace the build folder. Only installed copies update.
+- Before publishing a draft, open its `latest.json` and check it lists `darwin-aarch64`,
+  `darwin-x86_64`, `windows-x86_64` and `linux-x86_64`. Each bundle job adds its platforms to the
+  file on the release, so two jobs finishing together can drop one; re-run that job if so. Its
+  `notes` are the release body at build time (empty unless the workflow sets `releaseBody`), not
+  what the draft says when it's published.
+
+### The updater key
+
+Every update is signed with one key pair. The public half is committed in `tauri.conf.json`;
+the private half and its password live outside the repository:
+
+- `~/.config/mechabellum-stats/updater.key` and `updater.key.password` (mode 600) on the
+  maintainer's Mac;
+- the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets,
+  which the release workflow passes to the build. It fails at its first step if either is missing.
+
+**Back the key and password up somewhere other than this Mac.** Installed copies only accept
+updates signed by this key. If it's lost, no installed copy can ever update again: a new key
+means a new public key in the app, and every player has to download and install that version by
+hand. Anyone holding the key can sign builds those copies will install, so keep it private.
+
+A local bundled build (`npx --no-install tauri build` without `--no-bundle`) signs the updater
+artifacts too and needs the key in the environment:
+
+```sh
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.config/mechabellum-stats/updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.config/mechabellum-stats/updater.key.password)"
+```

@@ -35,6 +35,18 @@
       <div class="status" id="status" aria-live="polite"></div>
     </header>
 
+    <section class="update-banner" id="update-banner" aria-labelledby="update-title" hidden>
+      <div class="update-text">
+        <h2 id="update-title"></h2>
+        <p class="update-notes" id="update-notes" hidden></p>
+        <p class="update-error" id="update-error" aria-live="polite" hidden></p>
+      </div>
+      <div class="update-actions">
+        <button type="button" id="update-install">Install and restart</button>
+        <button type="button" id="update-later" class="quiet">Later</button>
+      </div>
+    </section>
+
     <section class="source">
       <div class="source-line">
         <span class="label">Replays</span>
@@ -295,6 +307,18 @@
             <span style="--swatch: var(--them)">Opponent, losses</span>
           </span>
         </label>
+      </div>
+
+      <div class="panel sharing-panel">
+        <h2>Updates <small id="update-version"></small></h2>
+        <label class="switch">
+          <input type="checkbox" id="update-auto" />
+          <span>Check for updates automatically</span>
+        </label>
+        <div class="sharing-actions update-check-row">
+          <button type="button" id="update-check" class="quiet">Check now</button>
+        </div>
+        <p class="panel-note" id="update-line" aria-live="polite"></p>
       </div>
       </div>
     </section>

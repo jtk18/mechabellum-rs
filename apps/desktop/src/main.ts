@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { art, artImage, loadArt, type ArtProgress } from "./art";
 import { openMatch, redrawMatch } from "./match";
 import { setupSharing } from "./sharing";
+import { setupUpdates } from "./updates";
 import { renderLoadout } from "./loadout";
 import { bandLegend, DEPLOYMENTS, deploymentPill, MEETING_TIP, renderTale } from "./deploy";
 import { $, el, iso, modeLabel, pct, type Tip } from "./util";
@@ -1058,6 +1059,8 @@ function setupPalette() {
 window.addEventListener("DOMContentLoaded", async () => {
   setupPalette();
   setupTooltip();
+  // Not awaited, and first: the update banner shouldn't wait on the stats, or fail with them.
+  setupUpdates().catch((e) => console.warn("updates:", e));
   for (const tab of document.querySelectorAll<HTMLElement>(".tab")) {
     tab.addEventListener("click", () => showView(tab.dataset.view as View));
   }

@@ -42,6 +42,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "Stats from your Mechabellum replays"
+    "shortDescription": "Stats from your Mechabellum replays",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0MUQ5ODNDRDc0QkFCMzMKUldRenEwdlhQSmdkcE92eU9OZW1iV1BBbUtWd2lUN0V3OC9ucHhTcVJEeEFkSGVxUjJHSWNwYjkK",
+      "endpoints": [
+        "https://github.com/jtk18/mechabellum-rs/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

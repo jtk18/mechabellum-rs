@@ -109,9 +109,13 @@ negative y; each side's own frame mirrors the north (negate x and y).
   replays with a community server, other players' names removed first. **`steam.rs`**: Steam and
   install lookups, re-exported from the parser crate's `install.rs`. **`art.rs`**: unit art read
   from the player's own install (`unity-bundle-assets`); none of it ships or is committed.
+  **`updates.rs`**: checks the GitHub releases' `latest.json` through Tauri's updater plugin,
+  holds a found update for the banner, installs it after its signature checks out, and restarts.
+  Builds run from a cargo target folder never check (README, "Desktop releases and updates").
 - **Frontend**: `main.ts` (Stats view, match list, filters), `match.ts` (the board view with the
   fight tape and tale of the tape), `deploy.ts` (deployment classes, legends, the tale),
-  `loadout.ts`, `sharing.ts`, `art.ts`, `util.ts`, `styles.css`.
+  `loadout.ts`, `sharing.ts`, `updates.ts` (the update banner and Settings panel), `art.ts`,
+  `util.ts`, `styles.css`.
 
 The website and the desktop UI draw the same API data separately. Constants they share with the
 parser (band edges, class labels, rule text) are duplicated in `deploy.ts`, `match.ts`,
