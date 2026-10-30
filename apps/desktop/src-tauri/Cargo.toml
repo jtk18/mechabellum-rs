@@ -37,6 +37,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-clipboard-manager = "2"
+thread-priority = "1"
 
 [dev-dependencies]
 tempfile = "3"

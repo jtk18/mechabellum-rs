@@ -19,9 +19,30 @@ use watcher::{EventSink, ReplayWatcher, WatchEvent};
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const DEFAULT_PORT: u16 = 8765;
+
+/// The pool that stats rebuilds and the replay backfill parse on: half the cores, at the lowest
+/// thread priority, so the window and the game stay responsive while they run.
+fn background_pool() -> &'static rayon::ThreadPool {
+    static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(cores.div_ceil(2))
+            .thread_name(|i| format!("background-{i}"))
+            .start_handler(|_| {
+                if let Err(e) = thread_priority::set_current_thread_priority(
+                    thread_priority::ThreadPriority::Min,
+                ) {
+                    log::debug!("background thread priority: {e:?}");
+                }
+            })
+            .build()
+            .expect("building the background thread pool")
+    })
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -329,18 +350,31 @@ fn start_http(app: &AppHandle, store: Arc<Store>, port: u16) {
     });
 }
 
+// Async, like every command that reads the store: a sync command runs on the main thread, and
+// the store's connection is held for seconds while a rebuild writes, which froze the window.
 #[tauri::command]
-fn status(state: State<'_, AppState>) -> Result<Status, String> {
+async fn status(state: State<'_, AppState>) -> Result<Status, String> {
     let configured = state.settings.lock().unwrap().replay_dir.is_some();
     let replay_dir = state.watching.lock().unwrap().clone();
+    let store = state.store.clone();
+    let (upgrading, matches, unfinished) = tauri::async_runtime::spawn_blocking(move || {
+        anyhow::Ok((
+            store.needs_upgrade().unwrap_or(false),
+            store.match_count()?,
+            store.unfinished_count()?,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
     Ok(Status {
-        upgrading: state.store.needs_upgrade().unwrap_or(false),
+        upgrading,
         replay_dir_detected: replay_dir.is_some() && !configured,
         replay_dir,
         db_path: state.db_path.clone(),
         http_url: state.http_url.lock().unwrap().clone(),
-        matches: state.store.match_count().map_err(|e| e.to_string())?,
-        unfinished: state.store.unfinished_count().map_err(|e| e.to_string())?,
+        matches,
+        unfinished,
         backfill: state.backfill.lock().unwrap().clone(),
         last_error: state.last_error.lock().unwrap().clone(),
     })
@@ -452,14 +486,15 @@ fn set_sync_settings(state: State<'_, AppState>, sync: sync::SyncSettings) -> Re
 }
 
 #[tauri::command]
-fn sync_now(state: State<'_, AppState>) -> Result<(), String> {
+async fn sync_now(state: State<'_, AppState>) -> Result<(), String> {
     // A manual run also retries matches the server refused before; an update may have fixed
     // the reason.
     let server = sync::base(&state.settings.lock().unwrap().sync.server);
     if !server.is_empty() {
-        state
-            .store
-            .clear_sync_rejections(&server)
+        let store = state.store.clone();
+        tauri::async_runtime::spawn_blocking(move || store.clear_sync_rejections(&server))
+            .await
+            .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
     }
     let _ = state.sync_wake.lock().unwrap().send(());
@@ -686,7 +721,7 @@ pub fn run() {
                 let (store, app) = (store.clone(), app.handle().clone());
                 std::thread::spawn(move || {
                     let _ = app.emit("stats-upgrade", "running");
-                    match store.upgrade() {
+                    match background_pool().install(|| store.upgrade()) {
                         Ok(_) => {
                             let _ = app.emit("stats-upgrade", "done");
                         }

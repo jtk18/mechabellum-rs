@@ -159,22 +159,25 @@ impl ReplayWatcher {
                     })
                     .unwrap_or_default();
                 existing.sort();
-                // Parse on every core; Store::ingest only serializes the database write.
+                // Parse in parallel on the low-priority background pool; Store::ingest only
+                // serializes the database write.
                 let total = existing.len();
                 let started = Instant::now();
                 let done = AtomicUsize::new(0);
-                existing.par_iter().for_each(|path| {
-                    if stopped.load(Ordering::Relaxed) {
-                        return;
-                    }
-                    process_file(&store, path, &sink, true);
-                    let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
-                    if finished.is_multiple_of(25) || finished == total {
-                        sink(WatchEvent::BackfillProgress {
-                            done: finished,
-                            total,
-                        });
-                    }
+                crate::background_pool().install(|| {
+                    existing.par_iter().for_each(|path| {
+                        if stopped.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        process_file(&store, path, &sink, true);
+                        let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
+                        if finished.is_multiple_of(25) || finished == total {
+                            sink(WatchEvent::BackfillProgress {
+                                done: finished,
+                                total,
+                            });
+                        }
+                    })
                 });
                 if stopped.load(Ordering::Relaxed) {
                     return;

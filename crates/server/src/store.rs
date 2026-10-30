@@ -9,7 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -1549,12 +1549,6 @@ impl Store {
     /// Replays are decompressed and parsed on every core without holding the database; only
     /// the final rewrite is one locked transaction, so readers wait briefly if at all.
     pub fn reindex(&self) -> Result<usize> {
-        let blobs: Vec<(String, Vec<u8>)> = self
-            .conn()
-            .prepare("SELECT battle_id, xml_gz FROM replay_blobs")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-
         let parse = |battle_id: &str, gz: &[u8]| -> Option<(BattleRecord, MatchDetail)> {
             let parsed = (|| -> Result<BattleRecord> {
                 let mut xml = String::new();
@@ -1576,17 +1570,49 @@ impl Store {
                 }
             }
         };
-        let mut records: BTreeMap<String, (BattleRecord, MatchDetail)> = blobs
-            .into_par_iter()
-            .filter_map(|(battle_id, gz)| Some((battle_id.clone(), parse(&battle_id, &gz)?)))
-            .collect();
+        // Replays stored while a round parses (uploads, the desktop app's backfill) are picked
+        // up by the next round, still in parallel and unlocked. Each round is shorter than the
+        // last; the few rounds are a bound in case uploads never stop.
+        let started = std::time::Instant::now();
+        let mut records: BTreeMap<String, (BattleRecord, MatchDetail)> = BTreeMap::new();
+        let mut attempted: BTreeSet<String> = BTreeSet::new();
+        for _ in 0..4 {
+            let blobs: Vec<(String, Vec<u8>)> = {
+                let conn = self.conn();
+                let ids: Vec<String> = conn
+                    .prepare("SELECT battle_id FROM replay_blobs")?
+                    .query_map([], |r| r.get(0))?
+                    .collect::<rusqlite::Result<_>>()?;
+                let mut stmt =
+                    conn.prepare("SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1")?;
+                ids.into_iter()
+                    .filter(|battle_id| !attempted.contains(battle_id))
+                    .filter_map(|battle_id| {
+                        let gz: Vec<u8> = stmt.query_row([&battle_id], |r| r.get(0)).ok()?;
+                        Some((battle_id, gz))
+                    })
+                    .collect()
+            };
+            if blobs.is_empty() {
+                break;
+            }
+            attempted.extend(blobs.iter().map(|(battle_id, _)| battle_id.clone()));
+            records.par_extend(blobs.into_par_iter().filter_map(|(battle_id, gz)| {
+                let parsed = parse(&battle_id, &gz)?;
+                Some((battle_id, parsed))
+            }));
+        }
+        log::info!(
+            "reindex: parsed {} replays in {:.1?}",
+            records.len(),
+            started.elapsed()
+        );
 
+        let started = std::time::Instant::now();
         let mut conn = self.conn();
         let mut tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // The replays stored now, with their uploaders. Uploads and the desktop app's replay
-        // watcher keep storing while the others are parsed above (the app upgrades in the
-        // background): ones stored meanwhile are parsed here, under the lock, and ones removed
-        // meanwhile aren't brought back.
+        // The replays stored now, with their uploaders. Any stored after the last round above
+        // are parsed here, under the lock, and ones removed meanwhile aren't brought back.
         let stored: BTreeMap<String, Option<String>> = tx
             .prepare(
                 "SELECT b.battle_id, m.uploaded_by FROM replay_blobs b
@@ -1599,13 +1625,14 @@ impl Store {
             let mut stmt = tx.prepare("SELECT xml_gz FROM replay_blobs WHERE battle_id = ?1")?;
             stored
                 .keys()
-                .filter(|battle_id| !records.contains_key(*battle_id))
+                .filter(|battle_id| !attempted.contains(*battle_id))
                 .filter_map(|battle_id| {
                     let gz: Vec<u8> = stmt.query_row([battle_id], |r| r.get(0)).ok()?;
                     Some((battle_id.clone(), gz))
                 })
                 .collect()
         };
+        let late_count = late.len();
         for (battle_id, gz) in late {
             if let Some(parsed) = parse(&battle_id, &gz) {
                 records.insert(battle_id, parsed);
@@ -1636,6 +1663,10 @@ impl Store {
             }
         }
         tx.commit()?;
+        log::info!(
+            "reindex: wrote {inserted} matches in {:.1?} ({late_count} parsed under the lock)",
+            started.elapsed()
+        );
         Ok(inserted)
     }
 
