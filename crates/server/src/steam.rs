@@ -46,6 +46,8 @@ const LOGIN_TTL: Duration = Duration::from_secs(600);
 const CODE_TTL: Duration = Duration::from_secs(300);
 /// Sign-ins in progress at once. Starting one costs nothing, so this bounds what a flood holds.
 const MAX_PENDING: usize = 2000;
+/// One-time codes waiting to be traded. Each needs a sign-in Steam vouched for.
+const MAX_CODES: usize = 1000;
 /// Fields Steam signs that the server relies on; an assertion signing fewer is refused.
 const SIGNED: [&str; 6] = [
     "op_endpoint",
@@ -271,6 +273,15 @@ async fn finish(
             let code = random_token();
             let mut codes = steam.codes.lock().unwrap_or_else(PoisonError::into_inner);
             codes.retain(|_, c| c.issued.elapsed() < CODE_TTL);
+            if codes.len() >= MAX_CODES {
+                let oldest = codes
+                    .iter()
+                    .min_by_key(|(_, c)| c.issued)
+                    .map(|(k, _)| k.clone());
+                if let Some(oldest) = oldest {
+                    codes.remove(&oldest);
+                }
+            }
             codes.insert(
                 sha256_hex(&code),
                 Code {

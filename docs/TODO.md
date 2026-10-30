@@ -113,6 +113,13 @@ purge), MMR capture from `Player.log`, and the desktop sync worker (`sync.rs`, o
     with Steam, optional age and playtime checks (`--steam-api-key-file`), keys per device for
     each member's account, and "Sign in with Steam" in the desktop app's Sharing settings. Live
     use needs outbound network for the server and a Steam Web API key (README).
+    Open from the sign-in red team (2026-10-29), needed before a community server takes
+    sign-ins: (a) about 2,000 anonymous `GET /auth/steam` fill the pending-login cap and refuse
+    every new sign-in for 10 minutes; carry the login in a signed, expiring token (return
+    address and cookie) instead of a server-side map, one attempt per token. (b) Junk assertions
+    each cost a `check_authentication` call to Steam, holding one of four slots; add a global
+    budget and a per-source one keyed by a header the operator trusts (`X-Real-IP` behind uredo,
+    whose proxy overwrites it).
 18. ~~Corroboration~~ Done on the server: each shared copy is fingerprinted from what the game
     recorded (every round's armies, HP, results; no names), `corroborated_only` in the stats
     filter, and `mechabellum-server disputes`. Not yet checked: that two real players' copies

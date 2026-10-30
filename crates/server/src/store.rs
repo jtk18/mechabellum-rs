@@ -1327,10 +1327,11 @@ impl Store {
     }
 
     /// Record ratings a member's client captured for a match that member shared. Ratings for
-    /// any other match are ignored, so the answer can't say who played in a match. The first
-    /// first-hand report of a player's rating (from the uploader bound to that player) is never
-    /// replaced: binding is only a claim, so a later claimant can't overwrite it, and the real
-    /// player's client reports as each match ends. Returns how many were stored.
+    /// any other match are ignored, so the answer can't say who played in a match. A stored
+    /// rating is replaced only by a first-hand report (from the uploader bound to that player)
+    /// of one that wasn't first-hand: an opponent's report never overwrites anything, and the
+    /// first first-hand report is never replaced (binding is only a claim, and the real player's
+    /// client reports as each match ends). Returns how many were stored.
     pub fn add_shared_ratings(
         &self,
         battle_id: &str,
@@ -1383,7 +1384,7 @@ impl Store {
                          elo = excluded.elo, rank_point = excluded.rank_point,
                          level = excluded.level, elo_games = excluded.elo_games,
                          self_reported = excluded.self_reported
-                     WHERE player_ratings.self_reported = 0",
+                     WHERE player_ratings.self_reported = 0 AND excluded.self_reported = 1",
                     params![
                         battle_id,
                         player_id,
@@ -1791,6 +1792,12 @@ impl Store {
     /// Create an upload key. Returns the key, which is only available now; the database keeps
     /// its hash.
     pub fn create_key(&self, name: &str) -> Result<String> {
+        // Signed-in accounts upload as `steam-...`; a hand-made key with such a name would share
+        // their uploader bucket.
+        anyhow::ensure!(
+            !name.starts_with("steam-"),
+            "key names starting with steam- are kept for signed-in accounts"
+        );
         let mut secret = [0u8; 32];
         getrandom::getrandom(&mut secret).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
         let key = format!("{KEY_PREFIX}{}", hex(&secret));

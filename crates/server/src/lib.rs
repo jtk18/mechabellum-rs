@@ -1180,6 +1180,10 @@ mod tests {
         let key = store.create_key("desktop-jason").unwrap();
         assert!(key.starts_with("mbk_") && key.len() == 4 + 64);
         assert!(
+            store.create_key("steam-p0123").is_err(),
+            "kept for accounts"
+        );
+        assert!(
             store.create_key("desktop-jason").is_err(),
             "names are unique"
         );
@@ -1522,13 +1526,22 @@ mod tests {
         }
         assert!(store.ratings(&old_id).unwrap().is_empty());
         // In a match it did share, its report of the claimed player doesn't replace that
-        // player's own.
+        // player's own, and an opponent's report doesn't replace an opponent's report.
+        let theirs_rating = format!(
+            r#"[{{"player_id": "{BOLSANO}", "elo": 1500, "rank_point": null, "level": 1, "elo_games": 1}}]"#
+        );
+        let lie = theirs_rating.replace("1500", "99999");
+        for body in [theirs_rating, lie] {
+            json_of(&app, rate(&mine, "20260924--67113734", body)).await;
+        }
+        let stored = store.ratings("20260924--67113734").unwrap();
+        let theirs_now = stored.iter().find(|r| r.player_id != me).unwrap();
+        assert_eq!(theirs_now.elo, Some(1500));
         let (code, answer) = json_of(&app, rate(&third, "20260924--67113734", forged)).await;
         assert_eq!((code, answer["stored"].clone()), (StatusCode::OK, 0.into()));
-        assert_eq!(
-            store.ratings("20260924--67113734").unwrap()[0].elo,
-            Some(1344)
-        );
+        let mine_now = store.ratings("20260924--67113734").unwrap();
+        let mine_now = mine_now.iter().find(|r| r.player_id == me).unwrap();
+        assert_eq!(mine_now.elo, Some(1344));
         // An unbound key whose claim isn't in the match is told no pseudonym.
         let fourth = store.create_key("fourth").unwrap();
         let resp = app
@@ -1560,7 +1573,7 @@ mod tests {
             .iter()
             .filter_map(|p| p["elo"].as_i64())
             .collect();
-        assert_eq!(elos, [1300]);
+        assert_eq!(elos, [1500, 1300], "1344 shows as 1300");
         let (_, rows) = get_json(&app, "/api/replays").await;
         assert!(rows.to_string().contains("1300") && !rows.to_string().contains("1344"));
 
