@@ -1,17 +1,25 @@
 #![allow(clippy::needless_range_loop)] // Gaussian elimination reads clearer with indices.
 
 //! Setting up a board in Mechabellum's Testing Grounds. The pure parts live here: where things
-//! are on screen, and how board squares map to screen pixels. The Windows driver is in `win`.
+//! are on screen, and how board squares map to screen pixels. The game drivers are in `win`
+//! (Windows) and `mac` (macOS); `driver` is the one for this platform.
 //! See docs/testing-grounds.md.
 
 pub mod calibration;
 pub mod compare;
 pub mod equipment;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub mod flow;
+#[cfg(target_os = "macos")]
+pub mod mac;
 pub mod screen;
 #[cfg(windows)]
 pub mod win;
+
+#[cfg(target_os = "macos")]
+pub use mac as driver;
+#[cfg(windows)]
+pub use win as driver;
 
 /// A point in physical pixels of the game window's client area.
 pub type Px = (f64, f64);

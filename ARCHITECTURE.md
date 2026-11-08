@@ -12,7 +12,7 @@ app embeds that same server, watches the game's replay folder and shows the stat
 | `crates/mechabellum` | `mechabellum` | The replay parser and game data: the XML model, the match model, deployment classes, validation, names, board geometry. Also the `replay-parse` CLI. |
 | `crates/server` | `mechabellum-server` | axum + SQLite (rusqlite, bundled). Ingest, schema and rebuilds, every stats query, the HTTP API, and the website pages in `web/`. CLI: `serve`, `import`, `reindex`, `purge`, `disputes`, `outliers`, `keys`. |
 | `apps/desktop` | `mechabellum-desktop` | Tauri 2 app. Rust side in `src-tauri/`, TypeScript frontend in `src/` (built with Vite into `dist/`, which the binary embeds). |
-| `crates/grounds` | `mechabellum-grounds` | Sets up a board in the game's Testing Grounds from a board code (Windows; drives the game). |
+| `crates/grounds` | `mechabellum-grounds` | Sets up a board in the game's Testing Grounds from a board code (Windows and macOS; drives the game). |
 | `crates/tester` | `mechabellum-tester` | Windows UI automation for the game (OCR, template matching). Has its own `CLAUDE.md`. |
 
 The `Dockerfile` builds the server alone for hosting.

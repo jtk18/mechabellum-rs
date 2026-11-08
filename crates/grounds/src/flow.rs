@@ -2,9 +2,9 @@
 //! running a round, and saving its replay. Every step checks the screen it expects first, and
 //! nothing here goes near Multiplayer or matchmaking.
 
+use crate::driver::Game;
 use crate::screen::{classify, Screen};
 use crate::ui;
-use crate::win::Game;
 use crate::Px;
 
 use anyhow::{bail, Result};

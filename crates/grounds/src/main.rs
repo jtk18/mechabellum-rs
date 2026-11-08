@@ -271,7 +271,7 @@ fn main() -> Result<()> {
                 println!("{c:?} x{n}");
             }
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::ClickMap {
             map,
             north,
@@ -343,9 +343,9 @@ fn main() -> Result<()> {
                 println!("{x:.0},{y:.0} weight {weight}");
             }
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Drop { unit, points } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             for (x, y) in points {
                 let target = (f64::from(x), f64::from(y));
                 let ok = spawn_and_place(&mut game, &unit, &[target], None)?;
@@ -359,38 +359,38 @@ fn main() -> Result<()> {
                 );
             }
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Enter { fresh } => {
-            let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+            let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
             mechabellum_grounds::flow::enter(&mut game, fresh)?;
             println!("in Testing Grounds");
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Calibrate { map, keep, replace } => calibrate(&map, keep, replace)?,
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Tidy => {
             println!(
                 "removed {} practice replays",
                 mechabellum_grounds::flow::tidy_replays()
             );
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Lobby => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             mechabellum_grounds::flow::leave_to_lobby(&mut game)?;
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Go { map } => {
-            let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+            let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
             mechabellum_grounds::flow::enter_map(&mut game, &map)?;
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Replay { file, round } => replay(&file, round)?,
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::BuildingsCheck => buildings_check()?,
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Fight => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             let file = mechabellum_grounds::flow::run_round_and_save(&mut game, &replay_dir())?;
             let detail = mechabellum::BattleRecord::new_from_file(&file, false)
                 .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?
@@ -399,25 +399,25 @@ fn main() -> Result<()> {
             let board = Board::from_round(&detail, last).context("no board")?;
             println!("{board}");
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Grant { id } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             grant(&mut game, id)?;
             println!("granted {id}; it's in your inventory, top left");
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::ItemsCheck {
             from,
             count,
             unit,
             unconfirmed,
         } => items_check(from, count, &unit, unconfirmed)?,
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Clear => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             mechabellum_grounds::flow::clear_both(&mut game)?;
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Verify { code, fresh } => {
             let board = load(&code)?;
             let (south, north) = projections(&board)?;
@@ -439,47 +439,47 @@ fn main() -> Result<()> {
                 std::process::exit(2);
             }
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Zoom { steps } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             game.wheel(steps);
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Key { letter, ms } => {
             if !"QERFqerf".contains(letter) {
                 bail!("only the camera keys Q, E, R and F");
             }
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             game.hold_key(letter, ms);
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Switch { times } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             for _ in 0..times {
                 game.right_click(mechabellum_grounds::ui::NEUTRAL, 400);
                 game.click(mechabellum_grounds::ui::SWITCH_SIDES, 2500);
             }
             game.wheel(-60);
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Turn { from, to } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             let px = |(x, y): (u32, u32)| (f64::from(x), f64::from(y));
             game.middle_drag(px(from), px(to), 1500);
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Pan { from, to } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             let px = |(x, y): (u32, u32)| (f64::from(x), f64::from(y));
             game.right_drag(px(from), px(to), 1500);
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Shot { out } => {
-            let mut game = mechabellum_grounds::win::Game::find()?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
             game.screenshot()?.save(&out)?;
             println!("saved {}", out.display());
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         Command::Place {
             code,
             limit,
@@ -490,7 +490,7 @@ fn main() -> Result<()> {
             let (south, north) = projections(&board)?;
             place(&board, &south, &north, limit, None)?
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         Command::Shot { .. }
         | Command::Zoom { .. }
         | Command::Pan { .. }
@@ -512,7 +512,7 @@ fn main() -> Result<()> {
         | Command::Calibrate { .. }
         | Command::ClickMap { .. }
         | Command::Verify { .. } => {
-            bail!("driving the game needs Windows")
+            bail!("driving the game needs Windows or macOS")
         }
     }
     Ok(())
@@ -544,7 +544,7 @@ fn replay_dir() -> PathBuf {
 
 /// Set up `board` on a clean Testing Grounds board, fight the round, and compare the saved
 /// replay with the code. Returns the differences.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn verify(
     board: &Board,
     south: &Projection,
@@ -552,7 +552,7 @@ fn verify(
     fresh: bool,
 ) -> Result<Vec<String>> {
     use mechabellum_grounds::flow;
-    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
     // A code for a named map starts a fresh session on that map; otherwise use what's open.
     if board.map.is_some() {
         flow::enter_map(&mut game, board_map(board))?;
@@ -590,7 +590,7 @@ fn verify(
     // other's exactly, and which one changed with the switching). place() lines each half up
     // with its view from just after clearing, when placements land exactly.
     place(board, south, north, None, Some(&reference))?;
-    let mut game = mechabellum_grounds::win::Game::find()?;
+    let mut game = mechabellum_grounds::driver::Game::find()?;
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
     println!("saved {}", file.display());
     let record = mechabellum::BattleRecord::new_from_file(&file, false)
@@ -653,9 +653,9 @@ const CALIBRATION_TARGETS: [(f64, f64); 14] = [
 
 /// Pick a tile from the Squad tab's Building section (row and column from 0) and put it at a
 /// screen point, then close the tools.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn put_building(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     row: usize,
     col: usize,
     at: mechabellum_grounds::Px,
@@ -690,9 +690,9 @@ fn put_building(
 
 /// Pick a device from the Squad tab's Devices row (column from 0) and put it at a screen point,
 /// then close the tools.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn put_device(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     col: usize,
     at: mechabellum_grounds::Px,
 ) -> Result<()> {
@@ -719,7 +719,7 @@ fn put_device(
 
 /// Place each of the Building section's 9 tiles on your half, fight, and print which building
 /// the replay recorded at each spot.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn buildings_check() -> Result<()> {
     use mechabellum_grounds::flow;
     let map = "Railway Town";
@@ -733,7 +733,7 @@ fn buildings_check() -> Result<()> {
         .copied()
         .filter(|&t| t != (-4.0, -3.0) && t != (9.0, -4.0))
         .collect();
-    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
     let mut tried = Vec::new();
@@ -781,8 +781,8 @@ fn buildings_check() -> Result<()> {
 }
 
 /// Empty the item inventory of the side being edited (equipped items stay on their units).
-#[cfg(windows)]
-fn clear_inventory(game: &mut mechabellum_grounds::win::Game) {
+#[cfg(any(windows, target_os = "macos"))]
+fn clear_inventory(game: &mut mechabellum_grounds::driver::Game) {
     use mechabellum_grounds::ui;
     game.right_click(ui::NEUTRAL, 400);
     game.click(ui::TOOLS, 1200);
@@ -792,8 +792,8 @@ fn clear_inventory(game: &mut mechabellum_grounds::win::Game) {
 }
 
 /// Put an item in your inventory from the tools' Equipment tab, and close the tools.
-#[cfg(windows)]
-fn grant(game: &mut mechabellum_grounds::win::Game, id: u32) -> Result<()> {
+#[cfg(any(windows, target_os = "macos"))]
+fn grant(game: &mut mechabellum_grounds::driver::Game, id: u32) -> Result<()> {
     use mechabellum_grounds::ui;
     let cell = mechabellum_grounds::equipment::cell(id)
         .with_context(|| format!("item {id} isn't in the Equipment tab"))?;
@@ -823,7 +823,7 @@ fn grant(game: &mut mechabellum_grounds::win::Game, id: u32) -> Result<()> {
 
 /// Equip catalog cells `from..from + count` on units across your half, fight, and compare
 /// each unit's item in the replay with the cell's ID.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Result<()> {
     use mechabellum_grounds::{equipment, flow, ui};
 
@@ -850,7 +850,7 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
     .projections(map)
     .context("Railway Town isn't calibrated")?;
 
-    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
     // Start with an empty inventory: a leftover item would be picked up instead of the new one.
@@ -958,7 +958,7 @@ fn worst_error(points: &mechabellum_grounds::calibration::Points) -> Option<f64>
 
 /// See `Command::ClickMap`. Each probe: pick the unit up from the pad, click the spot, read the
 /// screen, right-click (a placed unit goes back to the pad, a carried one is let go).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn click_map(
     map: &str,
     north: bool,
@@ -981,7 +981,7 @@ fn click_map(
     };
     // A point in the side's own frame (x right, y forward) to the screen.
     let screen = |x: f64, y: f64| projection.to_screen(x * flip, y * flip);
-    let mut game = mechabellum_grounds::win::Game::find()?;
+    let mut game = mechabellum_grounds::driver::Game::find()?;
     // The unit is moved from spot to spot: picked up where it stands, dropped and confirmed at
     // the next spot. Where it ends up (its green tint) says whether the spot took it.
     let (mut at, _, _) = spawn_unit(&mut game, unit)?;
@@ -1041,14 +1041,14 @@ fn click_map(
 
 /// Drop Crawlers across both halves of `map`, fight a round, read where the replay recorded
 /// them, and save a fitted calibration for the map.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
     use mechabellum_grounds::calibration::{
         default_path, match_by_guess, match_points, Calibrations, MapCalibration,
     };
     use mechabellum_grounds::{flow, ui};
 
-    let mut game = mechabellum_grounds::win::Game::find_or_launch()?;
+    let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
     // First guesses at screen positions: the map's own calibration if it has one, else Railway
@@ -1223,7 +1223,7 @@ fn outcome(detail: &mechabellum::MatchDetail, index: usize) -> Vec<(Half, String
 }
 
 /// Set up a round of a real match and fight it again; report how the outcome compares.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
     let record = mechabellum::BattleRecord::new_from_file(file, false)
         .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
@@ -1359,9 +1359,9 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
 }
 
 /// Which side the game currently lets you edit: the name in the top-left box.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn switch_to(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     half: Half,
     current: &mut Half,
 ) -> Result<()> {
@@ -1376,7 +1376,7 @@ fn switch_to(
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn place(
     board: &Board,
     south: &Projection,
@@ -1385,7 +1385,7 @@ fn place(
     reference: Option<&(image::RgbImage, image::RgbImage)>,
 ) -> Result<()> {
     use mechabellum_grounds::ui;
-    use mechabellum_grounds::win::Game;
+    use mechabellum_grounds::driver::Game;
 
     if board.sides.is_empty() {
         bail!("the code has no sides");
@@ -1735,9 +1735,9 @@ const NUDGES: [(f64, f64); 6] = [
 
 /// Spawn a unit from the Squad list and move it to the first of `targets` the game accepts.
 /// Returns the index of the target it landed on, if a unit was seen there afterwards.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn spawn_and_place(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     name: &str,
     targets: &[mechabellum_grounds::Px],
     turn_at: Option<mechabellum_grounds::Px>,
@@ -1758,9 +1758,9 @@ fn blob_weight(blobs: &[(mechabellum_grounds::Px, usize)], at: mechabellum_groun
 
 /// Spawn a unit from the Squad list. Returns where it showed up on the pad, how much green
 /// shows there with it, and how much showed there before it (a unit left on the pad earlier).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn spawn_unit(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     name: &str,
 ) -> Result<(mechabellum_grounds::Px, usize, usize)> {
     use mechabellum_grounds::{green_blobs, ui, Px};
@@ -1843,9 +1843,9 @@ fn spawn_unit(
 /// Move the unit standing at `spawn` (with `grown` green showing there) to the first of
 /// `targets` the game accepts. Returns the index of the target it landed on, if a unit was
 /// seen there afterwards; a refused unit is left where it was.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn move_unit(
-    game: &mut mechabellum_grounds::win::Game,
+    game: &mut mechabellum_grounds::driver::Game,
     name: &str,
     spawn: mechabellum_grounds::Px,
     grown: usize,

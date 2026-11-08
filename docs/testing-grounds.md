@@ -246,6 +246,92 @@ units beside the towers. The opponent's half packs units edge to edge in front o
 so a few get nudged, and the outcome flipped. A setup that close still isn't the same fight:
 Testing Grounds HP is 50000 per side, so only the winner is compared, not the damage.
 
+## On macOS
+
+`grounds` drives the native macOS build of the game too (`crates/grounds/src/mac.rs`, the same
+`Game` interface as `win.rs`; `driver` names whichever one the platform has). First set up on
+2026-11-08 on a 16-inch MacBook Pro (3456x2234 display, macOS 26, game 2.0.0.5.2340).
+
+What it needs:
+
+- **Permissions.** The terminal that runs `grounds` needs Accessibility (to send mouse and key
+  events) and Screen Recording (to capture the window), under System Settings, Privacy &
+  Security. Without Accessibility macOS drops the events without an error, so `Game::find`
+  refuses to start. Accessibility lets anything run in that terminal control the Mac; turn it
+  off when you're done if you like.
+- **Increase max camera height** (Settings, Control) must be on, with its slider at the right
+  end. Off, the camera stops zooming out about 1.6 times closer (towers about 46 px a square
+  apart in reference pixels instead of 28.5), the zone doesn't fit on screen, and the PC's
+  calibrations don't apply. With it on, the towers sit within a square of where the Railway Town
+  calibration puts them, straight after entering.
+- **A 16:10 picture.** Screen positions are measured on 2560x1600. Fullscreen at 1920x1200
+  (the game's setting) fills the 1728x1080 points below the notch; the game's window is
+  1728x1084 there and the picture is letterboxed by 2 points above and below (4 black pixel
+  rows at each edge of a capture). The driver splits small surpluses like that evenly, and takes
+  a larger one (28 points or so) as a title bar, for a windowed game at 16:10.
+- **A release build** for real runs (`cargo build --release -p mechabellum-grounds`). The first
+  `verify`, in a debug build with an earlier capture that resized in Rust, took 18 minutes,
+  most of it CPU. In release, `place` sets up a 7-unit, two-sided board in about 4 minutes,
+  nearly all of it the tool's own waits.
+
+How it differs from Windows:
+
+- Input is CoreGraphics events posted to the HID tap, in points; the game turns them into its
+  own pixels. Moves made while a button is down are sent as drags, and double clicks carry a
+  click count of 2. Camera keys use macOS key codes.
+- Screenshots come from `CGWindowListCreateImage` on the game's window (deprecated, but present
+  and working on macOS 26), cropped to the picture and scaled to 2560x1600 by CoreGraphics while
+  drawing, in sRGB.
+- One wheel step is one line of scroll. 60 steps out reach the zoom limit, as on Windows, and the
+  Squad list's 6 steps a row hold: a Fire Badger (row 4) spawned from it, checked on its card.
+- A right-button pan moves the map about 40% of the drag (once measured), so `grounds pan` needs
+  a longer drag than the distance wanted.
+- A fullscreen game lives in its own Space; `find` brings it forward with `open -b` when another
+  window is in front.
+- The screen reader (`screen::classify`) needed no changes: it read the main menu, the menu, and
+  the sandbox correctly from the first captures.
+
+Checked on 2026-11-08: `enter` from the main menu and `enter --fresh` from the sandbox; `verify`
+on Railway Town with 3 units on the south half and 2 on the north ("OK: the replay matches the
+code", every unit within the half-square snap, using the Windows calibration unchanged); `place`
+on five more two-sided boards, including researching Ignite on Fangs (the card shows it bought,
+and supplies dropped by its price); `shot`, `which`, `zoom` and `pan`. Not run on the Mac yet:
+`calibrate`, `replay`, `items-check`, `buildings-check`, `grant`, `click-map`, the tilted view, and
+any map other than Railway Town. The Windows build wasn't compiled for this change (no Windows
+target here); on Windows only the `driver` alias is new.
+
+## Research Center blueprints
+
+Clicking your Research Center (about 1642,962 in the straight-down view on Railway Town) opens its
+panel at the bottom left: an upgrade, and five blueprints at y 1512, x 282 (Sticky Oil Bomb, 150
+supplies), 394 (Field Recovery), 508 (Mobile Beacon), 622 and 736 (the two enhancements). A bought
+blueprint's skill appears at the top left (64,360, where granted items also wait). Sticky Oil Bomb
+aims with two clicks: where the line starts, then which way it runs; it's about 16 squares long
+and fires a few seconds into the fight. The skill can be cancelled until the round starts.
+
+## Mechanics checked
+
+**Does a Fang's Ignite set off Sticky Oil? No** (2026-11-08, game 2.0.0.5.2340, Railway Town,
+round 1, one Testing Grounds session per trial). Four Fang squads stood behind a Sticky Oil Bomb
+line laid along their front edge, and the Bot's units charged through the oil into them.
+
+| Trial | Your side | Bot | The oil |
+|---|---|---|---|
+| Test | Fangs with Ignite | 3 Crawler squads | intact through the fight and into round 2 |
+| Test, again | Fangs with Ignite | 2 Rhinos, 1 Crawler squad | intact through the fight and into round 2 |
+| Control: no fire | Fangs, no techs | 3 Crawler squads | intact through the fight and into round 2 |
+| Control: no fire | Fangs, no techs | 2 Rhinos, 1 Crawler squad | intact through the fight and into round 2 |
+| Control: fire | 2 Fire Badger squads | 3 Crawler squads | burned off within a few seconds of the flames reaching it, leaving embers; gone in round 2 |
+
+The fire control shows burning oil is easy to see in these captures (the game's loading tip says
+the oil "can be ignited with fire"). That Ignite really burned units standing in the oil comes
+from the Rhino pair: with Ignite, the Rhinos carried orange flames on their hulls and both died
+about 25 capture frames sooner than without it (frames 38 and 40 against 62 and about 66, at
+0.51 s a frame: some 12 to 13 seconds), in the same setup, while standing in the oil the whole
+time. The oil landed at the same frame in both runs. So Ignite's burn on a unit in the oil doesn't light it; a
+flamethrower's fire does. One sample per condition (two for Ignite); untested: other units'
+Ignite techs, Incendiary Bomb, and units ignited elsewhere that then walk into the oil.
+
 ## Plan
 
 1. **Driving:** a small Windows driver (the tester crate already has window lookup, clicks,
