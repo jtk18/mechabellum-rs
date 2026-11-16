@@ -1,6 +1,7 @@
 //! Per-map calibrations: board squares to screen pixels for each half, in the fully zoomed-out
-//! Testing Grounds view. Built in for Railway Town; `grounds calibrate` measures the rest and
-//! saves them in a JSON file next to the program's data.
+//! Testing Grounds view. Every Testing Grounds map's measurements are compiled in (from
+//! `data/`); `grounds calibrate` measures a map again and saves it in a JSON file, whose maps
+//! take precedence over the compiled-in ones.
 
 use crate::{Projection, TOP_DOWN_NORTH, TOP_DOWN_SOUTH};
 
@@ -58,11 +59,28 @@ pub fn default_path() -> PathBuf {
 }
 
 impl Calibrations {
+    /// The measurements compiled into the program, for the current view. A copy of the program
+    /// without its data folder (the desktop app, a moved binary) still knows every map.
+    pub fn bundled() -> Calibrations {
+        let text = if crate::tilted_view() {
+            include_str!("../data/tilted.json")
+        } else {
+            include_str!("../data/top-down.json")
+        };
+        serde_json::from_str(text).unwrap_or_default()
+    }
+
+    /// The compiled-in measurements, with the maps in the file at `path` (if any) in place of
+    /// theirs.
     pub fn load(path: &Path) -> Calibrations {
-        std::fs::read_to_string(path)
+        let mut all = Calibrations::bundled();
+        let saved: Option<Calibrations> = std::fs::read_to_string(path)
             .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+            .and_then(|t| serde_json::from_str(&t).ok());
+        if let Some(saved) = saved {
+            all.maps.extend(saved.maps);
+        }
+        all
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
@@ -310,6 +328,26 @@ mod tests {
         let (pts, err) = match_by_guess(&screen, &recorded, &guess).unwrap();
         assert_eq!(pts.len(), 13);
         assert!(err < 1.0, "{err}");
+    }
+
+    #[test]
+    fn test_bundled_calibrations_cover_every_map() {
+        // The compiled-in file must parse and fit both halves of every Testing Grounds map; a
+        // file that failed to parse would come back empty and fail this.
+        let all = Calibrations::bundled();
+        for map in [
+            "Railway Town",
+            "Forest Eye",
+            "Training Base",
+            "Railway Town - Dusk",
+            "Railway Town - Night",
+        ] {
+            assert!(all.projections(map).is_some(), "{map}");
+        }
+        assert!(all.maps.contains_key("Forest Eye"));
+        // A file with no such map leaves the compiled-in one in place.
+        let missing = Calibrations::load(Path::new("/nonexistent/top-down.json"));
+        assert!(missing.projections("Forest Eye").is_some());
     }
 
     #[test]

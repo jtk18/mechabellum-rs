@@ -4,6 +4,10 @@
 //! `grounds place board.txt`. Runs on Windows and macOS. See docs/testing-grounds.md.
 
 use mechabellum::board::{Board, Half};
+use mechabellum_grounds::calibration::{default_path, Calibrations};
+use mechabellum_grounds::setup::{
+    self, board_map, half_name, projections, replay_dir, Options, Print,
+};
 use mechabellum_grounds::{plan, Projection, TOP_DOWN_NORTH, TOP_DOWN_SOUTH};
 
 use anyhow::{bail, Context, Result};
@@ -208,12 +212,17 @@ fn load(path: &PathBuf) -> Result<Board> {
     Ok(Board::parse(&text)?)
 }
 
+/// The compiled-in calibrations, with any saved by `grounds calibrate` in their place.
+fn calibrations() -> Calibrations {
+    Calibrations::load(&default_path())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Plan { code } => {
             let board = load(&code)?;
-            let (south, north) = projections(&board)?;
+            let (south, north) = projections(&calibrations(), board_map(&board))?;
             let projection_for = |half: Option<Half>| {
                 if half == Some(Half::North) {
                     north
@@ -347,7 +356,7 @@ fn main() -> Result<()> {
             let mut game = mechabellum_grounds::driver::Game::find()?;
             for (x, y) in points {
                 let target = (f64::from(x), f64::from(y));
-                let ok = spawn_and_place(&mut game, &unit, &[target], None)?;
+                let ok = setup::spawn_and_place(&mut game, &unit, &[target], None)?;
                 println!(
                     "{unit} to {x},{y}: {}",
                     if ok.is_some() {
@@ -401,7 +410,7 @@ fn main() -> Result<()> {
         #[cfg(any(windows, target_os = "macos"))]
         Command::Grant { id } => {
             let mut game = mechabellum_grounds::driver::Game::find()?;
-            grant(&mut game, id)?;
+            setup::grant(&mut game, id)?;
             println!("granted {id}; it's in your inventory, top left");
         }
         #[cfg(any(windows, target_os = "macos"))]
@@ -419,20 +428,19 @@ fn main() -> Result<()> {
         #[cfg(any(windows, target_os = "macos"))]
         Command::Verify { code, fresh } => {
             let board = load(&code)?;
-            let (south, north) = projections(&board)?;
-            let mut problems = verify(&board, &south, &north, fresh)?;
+            let options = Options {
+                fresh,
+                leave_out: false,
+            };
+            let checked = setup::verify(&board, &calibrations(), &replay_dir(), options, &Print)?;
             mechabellum_grounds::flow::tidy_replays();
-            problems.retain(|p| {
-                let note = p.starts_with(mechabellum_grounds::compare::NOTE);
-                if note {
-                    println!("{p}");
-                }
-                !note
-            });
-            if problems.is_empty() {
+            for note in &checked.notes {
+                println!("{note}");
+            }
+            if checked.differences.is_empty() {
                 println!("OK: the replay matches the code");
             } else {
-                for p in &problems {
+                for p in &checked.differences {
                     println!("MISMATCH {p}");
                 }
                 std::process::exit(2);
@@ -486,8 +494,18 @@ fn main() -> Result<()> {
         } => {
             let _ = unlocked;
             let board = load(&code)?;
-            let (south, north) = projections(&board)?;
-            place(&board, &south, &north, limit, None)?
+            let (south, north) = projections(&calibrations(), board_map(&board))?;
+            let mut game = mechabellum_grounds::driver::Game::find()?;
+            setup::place(
+                &mut game,
+                &board,
+                &south,
+                &north,
+                limit,
+                None,
+                &replay_dir(),
+                &Print,
+            )?
         }
         #[cfg(not(any(windows, target_os = "macos")))]
         Command::Shot { .. }
@@ -517,117 +535,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// The map a board code names; Railway Town (Testing Grounds' default) when it names none.
-fn board_map(board: &Board) -> &str {
-    board.map.as_deref().unwrap_or("Railway Town")
-}
-
-/// Screen projections (south, north) for the board's map.
-fn projections(board: &Board) -> Result<(Projection, Projection)> {
-    use mechabellum_grounds::calibration::{default_path, Calibrations};
-    let map = board_map(board);
-    Calibrations::load(&default_path())
-        .projections(map)
-        .with_context(|| {
-            format!("{map} isn't calibrated yet; run: grounds calibrate --map \"{map}\"")
-        })
-}
-
-fn replay_dir() -> PathBuf {
-    mechabellum::install::find_replay_dir().unwrap_or_else(|| {
-        mechabellum::install::default_game_dir()
-            .join("ProjectDatas")
-            .join("Replay")
-    })
-}
-
-/// Set up `board` on a clean Testing Grounds board, fight the round, and compare the saved
-/// replay with the code. Returns the differences.
-#[cfg(any(windows, target_os = "macos"))]
-fn verify(
-    board: &Board,
-    south: &Projection,
-    north: &Projection,
-    fresh: bool,
-) -> Result<Vec<String>> {
-    use mechabellum_grounds::flow;
-    let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
-    // A code for a named map starts a fresh session on that map; otherwise use what's open.
-    if board.map.is_some() {
-        flow::enter_map(&mut game, board_map(board))?;
-    } else {
-        flow::enter(&mut game, fresh)?;
-    }
-    // Clearing also switches sides and back, which settles your own side's camera where
-    // calibration measured it: straight after entering, it sits about a square off.
-    let reference = flow::clear_both(&mut game)?;
-    // Researching techs needs each side's loadout, which only a Testing Grounds replay records.
-    // Without one, fight an empty round to make one.
-    let wants_techs = board
-        .sides
-        .iter()
-        .flat_map(|s| &s.units)
-        .any(|u| !u.techs.is_empty());
-    let mut fought = false;
-    if wants_techs && mechabellum_grounds::loadouts(&replay_dir()).is_err() {
-        println!("no Testing Grounds replay yet; running an empty round to record the loadouts");
-        flow::run_round_and_save(&mut game, &replay_dir())?;
-        fought = true;
-    }
-    // The deployment zone grows with the round: in round 1 its front stops about 5 squares
-    // from the middle, and flank columns open in round 3. Fight empty rounds up to the code's.
-    let round = board.round.unwrap_or(1).clamp(1, 12);
-    let now_round = if fought { 2 } else { 1 };
-    if round > now_round {
-        println!("advancing Testing Grounds to round {round}");
-        for _ in now_round..round {
-            flow::run_round(&mut game)?;
-        }
-    }
-    // Fights and side switches move the camera by about a square (measured 2026-09-29 on
-    // Railway Town: after fights one half's units landed a square toward the middle, the
-    // other's exactly, and which one changed with the switching). place() lines each half up
-    // with its view from just after clearing, when placements land exactly.
-    place(board, south, north, None, Some(&reference))?;
-    let mut game = mechabellum_grounds::driver::Game::find()?;
-    let file = flow::run_round_and_save(&mut game, &replay_dir())?;
-    println!("saved {}", file.display());
-    let record = mechabellum::BattleRecord::new_from_file(&file, false)
-        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
-    let detail = record.match_detail();
-    let last = detail
-        .rounds
-        .len()
-        .checked_sub(1)
-        .context("the replay has no rounds")?;
-    let recorded = Board::from_round(&detail, last).context("no board in the last round")?;
-    println!(
-        "recorded:
-{recorded}"
-    );
-    // Compare with where the units were meant to go here: moved back behind the front edge.
-    let mut meant = board.clone();
-    let mut notes = Vec::new();
-    for side in &mut meant.sides {
-        let moves = mechabellum_grounds::behind_front(&side.units);
-        for (u, ((x, y), moved)) in side.units.iter_mut().zip(moves) {
-            if moved > 0.0 {
-                notes.push(format!(
-                    "{}{} at {:.1},{:.1} was moved {moved:.1} squares, to clear Testing Grounds' edges (2 from the middle, 29 across) or a unit moved in its way",
-                    mechabellum_grounds::compare::NOTE,
-                    u.name,
-                    f64::from(u.x) / 10.0,
-                    f64::from(u.y) / 10.0
-                ));
-                u.x = (x * 10.0).round() as i32;
-                u.y = (y * 10.0).round() as i32;
-            }
-        }
-    }
-    notes.extend(mechabellum_grounds::compare::differences(&meant, &recorded));
-    Ok(notes)
-}
-
 /// Board squares to drop calibration units at, in a side's own frame (x right, y toward the
 /// middle; the south half's coordinates). Spread over the zone, and deliberately not symmetric,
 /// so a fit can't match them rotated. They keep clear of the towers (±14,-17) and the
@@ -650,72 +557,6 @@ const CALIBRATION_TARGETS: [(f64, f64); 14] = [
     (15.0, -27.0),
 ];
 
-/// Pick a tile from the Squad tab's Building section (row and column from 0) and put it at a
-/// screen point, then close the tools.
-#[cfg(any(windows, target_os = "macos"))]
-fn put_building(
-    game: &mut mechabellum_grounds::driver::Game,
-    row: usize,
-    col: usize,
-    at: mechabellum_grounds::Px,
-) -> Result<()> {
-    use mechabellum_grounds::ui;
-    game.right_click(ui::NEUTRAL, 400);
-    let mut opened = false;
-    for _ in 0..3 {
-        if mechabellum_grounds::tools_open(&game.screenshot()?) {
-            opened = true;
-            break;
-        }
-        game.click(ui::TOOLS, 1200);
-    }
-    if !opened {
-        bail!("couldn't open Testing Grounds Tools");
-    }
-    game.click(ui::TOOLS_SQUAD_TAB, 800);
-    game.wheel_at(ui::BUILDING_SCROLL, 30);
-    if row > 0 {
-        game.wheel_at(
-            ui::BUILDING_SCROLL,
-            -ui::BUILDING_STEPS_PER_ROW * row as i32,
-        );
-    }
-    game.click((ui::BUILDING_COLUMNS[col], ui::BUILDING_ROW_Y), 900);
-    game.click(at, 900);
-    game.click(ui::TOOLS_CLOSE_LEFT, 500);
-    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-    Ok(())
-}
-
-/// Pick a device from the Squad tab's Devices row (column from 0) and put it at a screen point,
-/// then close the tools.
-#[cfg(any(windows, target_os = "macos"))]
-fn put_device(
-    game: &mut mechabellum_grounds::driver::Game,
-    col: usize,
-    at: mechabellum_grounds::Px,
-) -> Result<()> {
-    use mechabellum_grounds::ui;
-    game.right_click(ui::NEUTRAL, 400);
-    let mut opened = false;
-    for _ in 0..3 {
-        if mechabellum_grounds::tools_open(&game.screenshot()?) {
-            opened = true;
-            break;
-        }
-        game.click(ui::TOOLS, 1200);
-    }
-    if !opened {
-        bail!("couldn't open Testing Grounds Tools");
-    }
-    game.click(ui::TOOLS_SQUAD_TAB, 800);
-    game.click((ui::BUILDING_COLUMNS[col], ui::DEVICE_ROW_Y), 900);
-    game.click(at, 900);
-    game.click(ui::TOOLS_CLOSE_LEFT, 500);
-    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-    Ok(())
-}
-
 /// Place each of the Building section's 9 tiles on your half, fight, and print which building
 /// the replay recorded at each spot.
 #[cfg(any(windows, target_os = "macos"))]
@@ -737,12 +578,12 @@ fn buildings_check() -> Result<()> {
     flow::clear_both(&mut game)?;
     let mut tried = Vec::new();
     for (i, &(x, y)) in spots.iter().take(9).enumerate() {
-        put_building(&mut game, i / 3, i % 3, south.to_screen(x, y))?;
+        setup::put_building(&mut game, i / 3, i % 3, south.to_screen(x, y))?;
         tried.push((i / 3, i % 3, (x, y)));
     }
     // A round with no units isn't recorded; add one out of the way.
     let (ux, uy) = spots[9];
-    spawn_and_place(&mut game, "Crawler", &[south.to_screen(ux, uy)], None)?;
+    setup::spawn_and_place(&mut game, "Crawler", &[south.to_screen(ux, uy)], None)?;
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
     let detail = mechabellum::BattleRecord::new_from_file(&file, false)
         .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?
@@ -779,47 +620,6 @@ fn buildings_check() -> Result<()> {
     Ok(())
 }
 
-/// Empty the item inventory of the side being edited (equipped items stay on their units).
-#[cfg(any(windows, target_os = "macos"))]
-fn clear_inventory(game: &mut mechabellum_grounds::driver::Game) {
-    use mechabellum_grounds::ui;
-    game.right_click(ui::NEUTRAL, 400);
-    game.click(ui::TOOLS, 1200);
-    game.click(ui::TOOLS_CLEAR_EQUIPMENT, 800);
-    game.click(ui::TOOLS_CLOSE_LEFT, 500);
-    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-}
-
-/// Put an item in your inventory from the tools' Equipment tab, and close the tools.
-#[cfg(any(windows, target_os = "macos"))]
-fn grant(game: &mut mechabellum_grounds::driver::Game, id: u32) -> Result<()> {
-    use mechabellum_grounds::ui;
-    let cell = mechabellum_grounds::equipment::cell(id)
-        .with_context(|| format!("item {id} isn't in the Equipment tab"))?;
-    game.right_click(ui::NEUTRAL, 400);
-    let mut opened = false;
-    for _ in 0..3 {
-        if mechabellum_grounds::tools_open(&game.screenshot()?) {
-            opened = true;
-            break;
-        }
-        game.click(ui::TOOLS, 1200);
-    }
-    if !opened {
-        bail!("couldn't open Testing Grounds Tools");
-    }
-    game.click(ui::TOOLS_EQUIPMENT_TAB, 800);
-    // To the top, then down to the cell's row. Only scroll with the list under the cursor.
-    game.wheel_at(ui::PALETTE_SCROLL, 150);
-    if cell.scroll_down_steps > 0 {
-        game.wheel_at(ui::PALETTE_SCROLL, -cell.scroll_down_steps);
-    }
-    game.click(cell.at, 900);
-    game.click(ui::TOOLS_CLOSE_LEFT, 500);
-    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-    Ok(())
-}
-
 /// Equip catalog cells `from..from + count` on units across your half, fight, and compare
 /// each unit's item in the replay with the cell's ID.
 #[cfg(any(windows, target_os = "macos"))]
@@ -853,12 +653,12 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
     flow::enter_map(&mut game, map)?;
     flow::clear_both(&mut game)?;
     // Start with an empty inventory: a leftover item would be picked up instead of the new one.
-    clear_inventory(&mut game);
+    setup::clear_inventory(&mut game);
     let mut placed = Vec::new();
     let mut refused = Vec::new();
     for (cell, &(x, y)) in cells.iter().zip(&targets) {
         let at = south.to_screen(x, y);
-        match spawn_and_place(&mut game, unit, &[at], None) {
+        match setup::spawn_and_place(&mut game, unit, &[at], None) {
             Ok(Some(_)) => {}
             Ok(None) => {
                 println!("  {unit} at {x},{y} wasn't placed; skipping {}", cell.name);
@@ -870,7 +670,7 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
                 continue;
             }
         }
-        grant(&mut game, cell.id)?;
+        setup::grant(&mut game, cell.id)?;
         game.click(ui::INVENTORY_ITEM, 700);
         game.click(at, 900);
         game.right_click(ui::NEUTRAL, 600);
@@ -878,7 +678,7 @@ fn items_check(from: usize, count: usize, unit: &str, unconfirmed: bool) -> Resu
         // up again next time; clear it.
         if mechabellum_grounds::inventory_has_item(&game.screenshot()?) {
             refused.push(*cell);
-            clear_inventory(&mut game);
+            setup::clear_inventory(&mut game);
             continue;
         }
         placed.push((cell, (x, y)));
@@ -967,8 +767,8 @@ fn click_map(
     out: Option<&std::path::Path>,
     unit: &str,
 ) -> Result<()> {
-    use mechabellum_grounds::calibration::{default_path, Calibrations};
-    let (s, n) = Calibrations::load(&default_path())
+    use mechabellum_grounds::setup::TOWER;
+    let (s, n) = calibrations()
         .projections(map)
         .with_context(|| format!("{map} isn't calibrated"))?;
     let projection = if north { n } else { s };
@@ -983,7 +783,7 @@ fn click_map(
     let mut game = mechabellum_grounds::driver::Game::find()?;
     // The unit is moved from spot to spot: picked up where it stands, dropped and confirmed at
     // the next spot. Where it ends up (its green tint) says whether the spot took it.
-    let (mut at, _, _) = spawn_unit(&mut game, unit)?;
+    let (mut at, _, _) = setup::spawn_unit(&mut game, unit)?;
     let near = |a: (f64, f64), b: (f64, f64), d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
     println!(
         "{unit} centered at each spot near the {tower} (own {tx},{}): G it stood there, . it didn't",
@@ -1042,9 +842,7 @@ fn click_map(
 /// them, and save a fitted calibration for the map.
 #[cfg(any(windows, target_os = "macos"))]
 fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
-    use mechabellum_grounds::calibration::{
-        default_path, match_by_guess, match_points, Calibrations, MapCalibration,
-    };
+    use mechabellum_grounds::calibration::{match_by_guess, match_points, MapCalibration};
     use mechabellum_grounds::{flow, ui};
 
     let mut game = mechabellum_grounds::driver::Game::find_or_launch()?;
@@ -1066,7 +864,7 @@ fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
     let mut dropped = [Vec::new(), Vec::new()];
     let mut current = Half::South;
     for (i, half) in [Half::South, Half::North].into_iter().enumerate() {
-        switch_to(&mut game, half, &mut current)?;
+        setup::switch_to(&mut game, half, &mut current);
         let guess = if half == Half::North {
             &guess_north
         } else {
@@ -1082,7 +880,7 @@ fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
             if !mechabellum_grounds::clickable(target) {
                 continue;
             }
-            match spawn_and_place(&mut game, "Crawler", &[target], None) {
+            match setup::spawn_and_place(&mut game, "Crawler", &[target], None) {
                 Ok(Some(_)) => {
                     // Looking straight down, the unit's green tile lies flat on the ground
                     // around its center: measure that, not the click, which the game rounds to
@@ -1108,7 +906,7 @@ fn calibrate(map: &str, keep: bool, replace: bool) -> Result<()> {
         }
         println!("{half:?}: {} units placed", dropped[i].len());
     }
-    switch_to(&mut game, Half::South, &mut current)?;
+    setup::switch_to(&mut game, Half::South, &mut current);
     let file = flow::run_round_and_save(&mut game, &replay_dir())?;
     let record = mechabellum::BattleRecord::new_from_file(&file, false)
         .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", file.display()))?;
@@ -1235,111 +1033,20 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
             .checked_sub(1)
             .context("the replay has no rounds")?,
     };
-    let mut board = Board::from_round(&detail, index).context("that round isn't in the replay")?;
-    let (south, north) = projections(&board)?;
-
-    // Keep what Testing Grounds can reproduce, and say what was left out.
-    let (mine, theirs) = mechabellum_grounds::loadouts(&replay_dir()).unwrap_or_default();
-    let mut dropped = Vec::new();
-    for side in &mut board.sides {
-        let north_half = side.half == Some(Half::North);
-        let projection = if north_half { north } else { south };
-        let loadout = if north_half { &theirs } else { &mine };
-        side.units.retain(|u| {
-            let screen = projection.to_screen(f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
-            let ok = mechabellum_grounds::clickable(screen)
-                && mechabellum_grounds::ui::palette(&u.name).is_some();
-            if !ok {
-                dropped.push(format!(
-                    "{} at {:.1},{:.1} (can't be placed)",
-                    u.name,
-                    f64::from(u.x) / 10.0,
-                    f64::from(u.y) / 10.0
-                ));
-            }
-            ok
-        });
-        for u in &mut side.units {
-            let equipped = loadout.get(&u.unit_id).map(Vec::as_slice).unwrap_or(&[]);
-            let before = u.techs.len();
-            u.techs.retain(|t| {
-                mechabellum_grounds::tech_buttons(&u.name, std::slice::from_ref(t), equipped)
-                    .is_ok()
-            });
-            if u.techs.len() < before {
-                dropped.push(format!(
-                    "some techs on {} (not in the Testing Grounds loadout)",
-                    u.name
-                ));
-            }
-            let before = u.items.len();
-            u.items.retain(|i| {
-                mechabellum::board::resolve_item(i)
-                    .is_ok_and(|id| mechabellum_grounds::equipment::cell(id).is_some())
-            });
-            if u.items.len() < before {
-                dropped.push(format!(
-                    "some items on {} (not in the Equipment tab)",
-                    u.name
-                ));
-            }
-        }
-        side.buildings.retain(|b| {
-            let screen = projection.to_screen(f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
-            let ok = mechabellum_grounds::clickable(screen)
-                && mechabellum_grounds::ui::building_tile(b.building_id).is_some();
-            if !ok {
-                dropped.push(format!(
-                    "{} at {},{} (can't be placed)",
-                    b.name,
-                    f64::from(b.x) / 10.0,
-                    f64::from(b.y) / 10.0
-                ));
-            }
-            ok
-        });
-        side.devices.retain(|d| {
-            let screen = projection.to_screen(f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
-            let ok = mechabellum_grounds::clickable(screen)
-                && mechabellum_grounds::ui::device_tile(d.building_id).is_some();
-            if !ok {
-                dropped.push(format!(
-                    "{} at {},{} (can't be placed)",
-                    d.name,
-                    f64::from(d.x) / 10.0,
-                    f64::from(d.y) / 10.0
-                ));
-            }
-            ok
-        });
-    }
-    println!(
-        "round {} of {}:
-{board}",
-        index + 1,
-        file.display()
-    );
-    dropped.sort();
-    dropped.dedup();
-    for d in &dropped {
-        println!("left out: {d}");
-    }
-
-    let started_problems = verify(&board, &south, &north, true)?;
-    for p in &started_problems {
+    let board = Board::from_round(&detail, index).context("that round isn't in the replay")?;
+    println!("round {} of {}:\n{board}", index + 1, file.display());
+    // Testing Grounds can't reproduce everything; set_up says what it left out.
+    let options = Options {
+        fresh: true,
+        leave_out: true,
+    };
+    let checked = setup::verify(&board, &calibrations(), &replay_dir(), options, &Print)?;
+    for p in checked.notes.iter().chain(&checked.differences) {
         println!("setup differs: {p}");
     }
     mechabellum_grounds::flow::tidy_replays();
-
-    // The fight just saved is the newest practice replay.
-    let newest = std::fs::read_dir(replay_dir())?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| mechabellum_grounds::is_testing_grounds_replay(p))
-        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-        .context("no practice replay saved")?;
-    let again = mechabellum::BattleRecord::new_from_file(&newest, false)
-        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", newest.display()))?
+    let again = mechabellum::BattleRecord::new_from_file(&checked.replay, false)
+        .map_err(|e| anyhow::anyhow!("reading {}: {e:?}", checked.replay.display()))?
         .match_detail();
     let real = outcome(&detail, index);
     let redo = outcome(&again, again.rounds.len() - 1);
@@ -1355,566 +1062,4 @@ fn replay(file: &std::path::Path, round: Option<usize>) -> Result<()> {
         println!("{:<8} {:>18} {:>18}", half_name(half), show(r), show(t));
     }
     Ok(())
-}
-
-/// Which side the game currently lets you edit: the name in the top-left box.
-#[cfg(any(windows, target_os = "macos"))]
-fn switch_to(
-    game: &mut mechabellum_grounds::driver::Game,
-    half: Half,
-    current: &mut Half,
-) -> Result<()> {
-    use mechabellum_grounds::ui;
-    if *current != half {
-        game.right_click(ui::NEUTRAL, 400);
-        game.click(ui::SWITCH_SIDES, 2500);
-        *current = half;
-    }
-    // Zoom all the way out: a fixed view, whatever the zoom was.
-    game.wheel(-60);
-    Ok(())
-}
-
-#[cfg(any(windows, target_os = "macos"))]
-fn place(
-    board: &Board,
-    south: &Projection,
-    north: &Projection,
-    limit: Option<usize>,
-    reference: Option<&(image::RgbImage, image::RgbImage)>,
-) -> Result<()> {
-    use mechabellum_grounds::ui;
-    use mechabellum_grounds::driver::Game;
-
-    if board.sides.is_empty() {
-        bail!("the code has no sides");
-    }
-    // Units spawn on a pad in the middle of the zone, and one standing there hides the next
-    // spawn and blocks it. So place the units farthest from the pad first.
-    let mut board = board.clone();
-    for side in &mut board.sides {
-        let projection = if side.half == Some(Half::North) {
-            north
-        } else {
-            south
-        };
-        let from_pad = |u: &mechabellum::board::BoardUnit| {
-            let (x, y) = projection.to_screen(f64::from(u.x) / 10.0, f64::from(u.y) / 10.0);
-            (x - ui::SPAWN_PAD.0).hypot(y - ui::SPAWN_PAD.1)
-        };
-        side.units
-            .sort_by(|a, b| from_pad(b).total_cmp(&from_pad(a)));
-    }
-    let board = &board;
-    // Check every side fits before touching the game.
-    for side in &board.sides {
-        if side.half.is_none() && board.sides.len() > 1 {
-            bail!("with two sides, give each one a half (half=south or half=north)");
-        }
-        let projection = if side.half == Some(Half::North) {
-            north
-        } else {
-            south
-        };
-        if let Some(bad) = plan(side, projection).iter().find(|s| !s.clickable) {
-            bail!(
-                "{} at {},{} is outside the calibrated view",
-                bad.name,
-                bad.board.0,
-                bad.board.1
-            );
-        }
-        for b in &side.buildings {
-            let (x, y) = (f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
-            if !mechabellum_grounds::clickable(projection.to_screen(x, y)) {
-                bail!("{} at {x},{y} is outside the calibrated view", b.name);
-            }
-            if ui::building_tile(b.building_id).is_none() {
-                bail!("{} ({}) isn't in the Building tiles", b.name, b.building_id);
-            }
-        }
-        for d in &side.devices {
-            let (x, y) = (f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
-            if !mechabellum_grounds::clickable(projection.to_screen(x, y)) {
-                bail!("{} at {x},{y} is outside the calibrated view", d.name);
-            }
-            if ui::device_tile(d.building_id).is_none() {
-                bail!("{} ({}) isn't in the Devices row", d.name, d.building_id);
-            }
-        }
-    }
-
-    // Techs are clicked by position on each unit's card, in loadout order.
-    let replays = replay_dir();
-    let replays = replays.as_path();
-    let wants_techs = board
-        .sides
-        .iter()
-        .flat_map(|s| &s.units)
-        .any(|u| !u.techs.is_empty());
-    let (mine, theirs) = if wants_techs {
-        mechabellum_grounds::loadouts(replays)?
-    } else {
-        Default::default()
-    };
-    let mut buttons: Vec<Vec<usize>> = Vec::new();
-    for (side, unit) in board
-        .sides
-        .iter()
-        .flat_map(|s| s.units.iter().map(move |u| (s, u)))
-    {
-        let loadout = if side.half == Some(Half::North) {
-            &theirs
-        } else {
-            &mine
-        };
-        let equipped = loadout.get(&unit.unit_id).map(Vec::as_slice).unwrap_or(&[]);
-        buttons.push(
-            mechabellum_grounds::tech_buttons(&unit.name, &unit.techs, equipped)
-                .map_err(|e| anyhow::anyhow!(e))?,
-        );
-    }
-    let mut buttons = buttons.into_iter();
-    // Items by ID, each from a cell of the Equipment tab; check them all before starting.
-    let mut items: Vec<Vec<u32>> = Vec::new();
-    for unit in board.sides.iter().flat_map(|s| &s.units) {
-        let mut ids = Vec::new();
-        for entry in &unit.items {
-            let id = mechabellum::board::resolve_item(entry)
-                .map_err(|e| anyhow::anyhow!("{} at {}: {e}", unit.name, entry))?;
-            if mechabellum_grounds::equipment::cell(id).is_none() {
-                bail!("{entry} on {} isn't in the Equipment tab", unit.name);
-            }
-            ids.push(id);
-        }
-        items.push(ids);
-    }
-    let mut items = items.into_iter();
-
-    let mut game = Game::find()?;
-    // Testing Grounds starts on your own (south) side.
-    let mut current = Half::South;
-    let mut placed = 0;
-    for side in &board.sides {
-        let half = side.half.unwrap_or(Half::South);
-        switch_to(&mut game, half, &mut current)?;
-        let projection = if half == Half::North { north } else { south };
-        // Where the camera sits drifts by a square or so with fights and side switches. Line
-        // up the towers and the spawn pad with this half's reference view (where placements
-        // land exactly), and aim that much off.
-        let corrected;
-        let projection = match reference {
-            Some((ref_south, ref_north)) => {
-                let reference = if half == Half::North {
-                    ref_north
-                } else {
-                    ref_south
-                };
-                let flip = if half == Half::North { -1.0 } else { 1.0 };
-                let landmarks = [
-                    projection.to_screen(-TOWER.0, TOWER.1 * flip),
-                    projection.to_screen(TOWER.0, TOWER.1 * flip),
-                    ui::SPAWN_PAD,
-                ];
-                std::thread::sleep(std::time::Duration::from_millis(800));
-                let ((dx, dy), fit) =
-                    mechabellum_grounds::camera_shift(reference, &game.screenshot()?, &landmarks);
-                if dx.hypot(dy) > 80.0 {
-                    println!("  (camera seems {dx},{dy} px off, too far to trust; not correcting)");
-                    projection
-                } else {
-                    if dx != 0.0 || dy != 0.0 {
-                        println!(
-                            "  (camera {dx},{dy} px off its reference, match {fit:.1}; correcting)"
-                        );
-                    }
-                    corrected = projection.translated(dx, dy);
-                    &corrected
-                }
-            }
-            None => projection,
-        };
-        // Research costs supplies, and each side has its own; add plenty.
-        if side.units.iter().any(|u| !u.techs.is_empty()) {
-            game.click(ui::TOOLS, 1200);
-            for _ in 0..5 {
-                game.click(ui::TOOLS_SUPPLIES_1000, 300);
-            }
-            game.click(ui::TOOLS_CLOSE_LEFT, 500);
-            game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-        }
-        // Items wait in an inventory before they're equipped; start this side with it empty,
-        // or a leftover would be equipped instead.
-        if side.units.iter().any(|u| !u.items.is_empty()) {
-            clear_inventory(&mut game);
-        }
-        println!("{}:", side.name.as_deref().unwrap_or(half_name(half)));
-        let steps = plan(side, projection);
-        let side_buttons: Vec<Vec<usize>> = buttons.by_ref().take(side.units.len()).collect();
-        let side_items: Vec<Vec<u32>> = items.by_ref().take(side.units.len()).collect();
-        let order = mechabellum_grounds::placement_order(&side.units);
-        for i in order {
-            let (step, unit) = (&steps[i], &side.units[i]);
-            if limit.is_some_and(|l| placed >= l) {
-                break;
-            }
-            placed += 1;
-            // The north half's own frame is the board turned half a turn.
-            let flip = if half == Half::North { -1.0 } else { 1.0 };
-            // Where each try should land, and where to click for it.
-            let mut tries: Vec<((f64, f64), (f64, f64))> = vec![(step.board, step.board)];
-            // Beside a tower the click itself can land on the tower (the Command Center takes
-            // clicks about 2.4 squares out from its center), though the ground is free. A drop
-            // snaps to the grid, so a click up to half a square off lands on the same spot: aim
-            // farther from the tower, on the axes facing it.
-            let (ox, oy) = (step.board.0 * flip, step.board.1 * flip);
-            let tower = [(-TOWER.0, TOWER.1), (TOWER.0, TOWER.1)]
-                .into_iter()
-                .find(|t| (ox - t.0).abs() <= 4.0 && (oy - t.1).abs() <= 4.0);
-            if let Some(t) = tower {
-                let away = |d: f64| if d.abs() < 1.0 { 0.0 } else { d.signum() };
-                let (sx, sy) = (away(ox - t.0), away(oy - t.1));
-                // One axis at a time (shifting both at a corner overshot a square), forward or
-                // back first.
-                for k in [0.25, 0.4] {
-                    for (ax, ay) in [(0.0, sy), (sx, 0.0), (sx, sy)] {
-                        if ax != 0.0 || ay != 0.0 {
-                            let aim = ((ox + ax * k) * flip, (oy + ay * k) * flip);
-                            tries.push((step.board, aim));
-                        }
-                    }
-                }
-                tries.dedup();
-            }
-            tries.extend(NUDGES.iter().skip(1).map(|(dx, dy)| {
-                let p = (step.board.0 + dx * flip, step.board.1 + dy * flip);
-                (p, p)
-            }));
-            tries.retain(|&(_, (x, y))| {
-                // Stay in the side's zone and in view.
-                (x * flip).abs() <= 30.0
-                    && (-40.0..=-1.0).contains(&(y * flip))
-                    && mechabellum_grounds::clickable(projection.to_screen(x, y))
-            });
-            let spots: Vec<(f64, f64)> = tries.iter().map(|t| t.0).collect();
-            let screens: Vec<_> = tries
-                .iter()
-                .map(|&(_, (x, y))| projection.to_screen(x, y))
-                .collect();
-            // Turn a unit 4 squares behind its spot (toward its own edge), where the unturned
-            // footprint fits even when the spot is on the front line.
-            let turn_at = unit
-                .rotated
-                .then(|| projection.to_screen(step.board.0, step.board.1 - 4.0 * flip));
-            // One unit that won't spawn shouldn't sink the rest of the board; the comparison
-            // afterwards reports it missing.
-            let landed = match spawn_and_place(&mut game, &step.name, &screens, turn_at) {
-                Ok(landed) => landed,
-                Err(e) => {
-                    println!(
-                        "  {:<14} at {:>5.1},{:>5.1}: NOT placed ({e:#})",
-                        step.name, step.board.0, step.board.1
-                    );
-                    game.right_click(ui::NEUTRAL, 600);
-                    continue;
-                }
-            };
-            let at = landed.map_or(step.screen, |i| screens[i]);
-            // Techs: select it (a click picks it up), click its card's buttons, then put it back.
-            let techs = side_buttons[i].clone();
-            if !techs.is_empty() {
-                game.click(at, 900);
-                for b in &techs {
-                    game.click(ui::CARD_TECHS[*b], 900);
-                }
-                game.right_click(ui::NEUTRAL, 700);
-            }
-            // Level: select it, then Upgrade in the tools, once per level.
-            if unit.level > 1 {
-                game.click(at, 700);
-                game.click(ui::TOOLS, 1200);
-                for _ in 1..unit.level {
-                    game.click(ui::TOOLS_UPGRADE, 500);
-                }
-                game.click(ui::TOOLS_CLOSE_LEFT, 500);
-                game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-                game.right_click(ui::NEUTRAL, 500);
-            }
-            // Items: grant each into the inventory, then click it and the unit. One the unit
-            // can't wear stays in the inventory; clear it.
-            let mut refused_items = Vec::new();
-            for &id in &side_items[i] {
-                grant(&mut game, id)?;
-                game.click(ui::INVENTORY_ITEM, 700);
-                game.click(at, 900);
-                game.right_click(ui::NEUTRAL, 600);
-                if mechabellum_grounds::inventory_has_item(&game.screenshot()?) {
-                    clear_inventory(&mut game);
-                    refused_items.push(id);
-                }
-            }
-            println!(
-                "  {:<14} at {:>5.1},{:>5.1} level {}: {}{}",
-                step.name,
-                step.board.0,
-                step.board.1,
-                unit.level,
-                match landed.map(|i| spots[i]) {
-                    Some((x, y)) if (x, y) == step.board && step.moved_back > 0.0 => format!(
-                        "moved {:.1} squares, to {x:.1},{y:.1} (Testing Grounds' zone is a square smaller at the front and sides)",
-                        step.moved_back
-                    ),
-                    Some((x, y)) if (x, y) == step.board
-                        && landed.is_some_and(|i| tries[i].1 != step.board) =>
-                    {
-                        // Only a click aimed off the spot took; from here the calibration's
-                        // error can snap it a square out (2026-10-02, x = +-12 by the towers on
-                        // Railway Town landed at +-11). The verify step has the last word.
-                        "placed by aiming off the tower (may be a square out)".to_owned()
-                    }
-                    Some((x, y)) if (x, y) == step.board => "placed".to_owned(),
-                    Some((x, y)) => format!("refused there; placed at {x:.1},{y:.1}"),
-                    None => "NOT confirmed (check the screen)".to_owned(),
-                },
-                if refused_items.is_empty() {
-                    String::new()
-                } else {
-                    format!("; it can't wear item {refused_items:?}")
-                }
-            );
-        }
-        // Buildings last: one on the spawn pad would block the units' spawns.
-        for b in &side.buildings {
-            let (row, col) = ui::building_tile(b.building_id)
-                .with_context(|| format!("{} isn't in the Building tiles", b.name))?;
-            let (x, y) = (f64::from(b.x) / 10.0, f64::from(b.y) / 10.0);
-            put_building(&mut game, row, col, projection.to_screen(x, y))?;
-            game.wheel(-60);
-            println!("  {:<14} at {x:>5.1},{y:>5.1}: built", b.name);
-        }
-        for d in &side.devices {
-            let col = ui::device_tile(d.building_id)
-                .with_context(|| format!("{} isn't in the Devices row", d.name))?;
-            let (x, y) = (f64::from(d.x) / 10.0, f64::from(d.y) / 10.0);
-            put_device(&mut game, col, projection.to_screen(x, y))?;
-            game.wheel(-60);
-            println!("  {:<14} at {x:>5.1},{y:>5.1}: set up", d.name);
-        }
-    }
-    // Leave the game on your own side.
-    switch_to(&mut game, Half::South, &mut current)?;
-    Ok(())
-}
-
-fn half_name(half: Half) -> &'static str {
-    match half {
-        Half::South => "south",
-        Half::North => "north",
-    }
-}
-
-/// Command Center and Research Center on the south half, in squares (the same on every 2.0 map;
-/// mirrored for the north). They look the same every round, so they anchor camera matching.
-const TOWER: (f64, f64) = (14.0, -17.0);
-
-/// Board offsets (squares, in the side's own frame: +y toward the middle) to try when the game
-/// refuses a drop. From this camera the Research Center's model covers the ground about 2 to 3
-/// squares in front of it on screen, and a click there hits the tower, so the game refuses it
-/// (the ground itself is free; panning or zooming doesn't change the camera's angle, so neither
-/// uncovers it). One square farther forward is usually clear. A refused unit would sit on the
-/// spawn pad and block the next spawn, so a nearby spot beats none.
-const NUDGES: [(f64, f64); 6] = [
-    (0.0, 0.0),
-    (0.0, 1.0),
-    (0.0, 2.0),
-    (-3.0, 0.0),
-    (3.0, 0.0),
-    (0.0, 4.0),
-];
-
-/// Spawn a unit from the Squad list and move it to the first of `targets` the game accepts.
-/// Returns the index of the target it landed on, if a unit was seen there afterwards.
-#[cfg(any(windows, target_os = "macos"))]
-fn spawn_and_place(
-    game: &mut mechabellum_grounds::driver::Game,
-    name: &str,
-    targets: &[mechabellum_grounds::Px],
-    turn_at: Option<mechabellum_grounds::Px>,
-) -> Result<Option<usize>> {
-    let (spawn, grown, pad_before) = spawn_unit(game, name)?;
-    move_unit(game, name, spawn, grown, pad_before, targets, turn_at)
-}
-
-/// How much green shows within 60 pixels of `at` (the biggest blob there).
-fn blob_weight(blobs: &[(mechabellum_grounds::Px, usize)], at: mechabellum_grounds::Px) -> usize {
-    blobs
-        .iter()
-        .filter(|(p, _)| (p.0 - at.0).hypot(p.1 - at.1) < 60.0)
-        .map(|(_, w)| *w)
-        .max()
-        .unwrap_or(0)
-}
-
-/// Spawn a unit from the Squad list. Returns where it showed up on the pad, how much green
-/// shows there with it, and how much showed there before it (a unit left on the pad earlier).
-#[cfg(any(windows, target_os = "macos"))]
-fn spawn_unit(
-    game: &mut mechabellum_grounds::driver::Game,
-    name: &str,
-) -> Result<(mechabellum_grounds::Px, usize, usize)> {
-    use mechabellum_grounds::{green_blobs, ui, Px};
-
-    let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
-    let cell = ui::palette(name).with_context(|| format!("{name} isn't in the Squad list"))?;
-
-    // Keep the known camera view: zooming all the way out is harmless if it already is.
-    game.wheel(-60);
-    // Spawn it, and find it: the only new green blob.
-    let before = green_blobs(&game.screenshot()?);
-    // Open the tools (the button toggles), and never scroll unless the list is under the cursor:
-    // over the map the wheel zooms the camera instead.
-    let mut opened = false;
-    for _ in 0..3 {
-        if mechabellum_grounds::tools_open(&game.screenshot()?) {
-            opened = true;
-            break;
-        }
-        game.click(ui::TOOLS, 1200);
-    }
-    if !opened {
-        bail!("couldn't open Testing Grounds Tools");
-    }
-    game.click(ui::TOOLS_SQUAD_TAB, 800);
-    game.wheel_at(ui::PALETTE_SCROLL, 80);
-    if cell.scroll_down_steps > 0 {
-        game.wheel_at(ui::PALETTE_SCROLL, -cell.scroll_down_steps);
-    }
-    game.click(cell.at, 1000);
-    game.click(ui::TOOLS_CLOSE_LEFT, 500);
-    game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-    if mechabellum_grounds::tools_open(&game.screenshot()?) {
-        game.click(ui::TOOLS_CLOSE_RIGHT, 700);
-    }
-    // The new unit is the blob that appeared, or the one that grew most (a spawn on top of an
-    // earlier unit merges with it).
-    let mut after = green_blobs(&game.screenshot()?);
-    let growth = |(p, w): &(Px, usize)| {
-        let old = before
-            .iter()
-            .filter(|(q, _)| near(*p, *q, 60.0))
-            .map(|(_, w)| *w)
-            .max()
-            .unwrap_or(0);
-        *w as i64 - old as i64
-    };
-    // A big unit's model hides much of its tile, splitting it into small pieces, so add up the
-    // growth over the whole pad and take its weighted center.
-    let pad_growth = |after: &[(Px, usize)]| -> Option<Px> {
-        let grown: Vec<(Px, f64)> = after
-            .iter()
-            .filter(|b| near(b.0, ui::SPAWN_PAD, 170.0))
-            .map(|b| (b.0, growth(b).max(0) as f64))
-            .filter(|(_, g)| *g > 0.0)
-            .collect();
-        let total: f64 = grown.iter().map(|(_, g)| g).sum();
-        (total > 100.0).then(|| {
-            let x = grown.iter().map(|(p, g)| p.0 * g).sum::<f64>() / total;
-            let y = grown.iter().map(|(p, g)| p.1 * g).sum::<f64>() / total;
-            (x, y)
-        })
-    };
-    // Units can take a moment to appear.
-    let mut found = None;
-    for _ in 0..4 {
-        found = pad_growth(&after);
-        if found.is_some() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(700));
-        after = green_blobs(&game.screenshot()?);
-    }
-    let Some(spawn) = found else {
-        bail!("nothing appeared after spawning {name}");
-    };
-    Ok((spawn, blob_weight(&after, spawn), blob_weight(&before, spawn)))
-}
-
-/// Move the unit standing at `spawn` (with `grown` green showing there) to the first of
-/// `targets` the game accepts. Returns the index of the target it landed on, if a unit was
-/// seen there afterwards; a refused unit is left where it was.
-#[cfg(any(windows, target_os = "macos"))]
-fn move_unit(
-    game: &mut mechabellum_grounds::driver::Game,
-    name: &str,
-    spawn: mechabellum_grounds::Px,
-    grown: usize,
-    pad_before: usize,
-    targets: &[mechabellum_grounds::Px],
-    turn_at: Option<mechabellum_grounds::Px>,
-) -> Result<Option<usize>> {
-    use mechabellum_grounds::{green_blobs, ui, Px};
-
-    let near = |a: Px, b: Px, d: f64| (a.0 - b.0).hypot(a.1 - b.1) < d;
-    // Pick it up, drop it, confirm, deselect. It has moved when the blob that grew at the spawn
-    // point has shrunk back and a blob sits at the target. A refused drop leaves the unit carried,
-    // so cancel with a right-click and try again.
-    // A middle click on the ground while carrying turns the unit 90 degrees. Turning is a
-    // toggle and a refused drop keeps the turn, so turn only once. It's done at `turn_at`, a spot
-    // where the unturned footprint fits: at the target itself, one that only fits turned (a
-    // Sledgehammer on the front line) is refused before the turn applies.
-    let mut turned = false;
-    // Each target gets two tries; the first gets three, as a drop sometimes just doesn't take.
-    let attempts = targets
-        .iter()
-        .enumerate()
-        .flat_map(|(i, t)| std::iter::repeat_n((i, *t), if i == 0 { 3 } else { 2 }));
-    for (i, target) in attempts {
-        game.click(spawn, 700);
-        if let (Some(spot), false) = (turn_at, turned) {
-            game.click(spot, 700);
-            game.middle_click(spot, 700);
-            turned = true;
-        }
-        game.click(target, 700);
-        if let Ok(dir) = std::env::var("GROUNDS_DEBUG") {
-            // Still carried if the drop was refused: the game draws the footprint it tried.
-            let n = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
-            if let Ok(shot) = game.screenshot_here() {
-                let _ = shot.save(format!("{dir}/carry{n:03}.png"));
-            }
-        }
-        game.double_click(target, 700);
-        game.right_click(target, 900);
-        let shot = game.screenshot()?;
-        let now = green_blobs(&shot);
-        if let Ok(dir) = std::env::var("GROUNDS_DEBUG") {
-            let n = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
-            let _ = shot.save(format!("{dir}/drop{n:03}.png"));
-            eprintln!(
-                "  debug drop{n:03}: {name} target {:.0},{:.0} spawn {:.0},{:.0} weight {} of {}; blobs {:?}",
-                target.0,
-                target.1,
-                spawn.0,
-                spawn.1,
-                blob_weight(&now, spawn),
-                grown,
-                now.iter()
-                    .map(|(p, w)| (p.0 as i32, p.1 as i32, *w))
-                    .collect::<Vec<_>>()
-            );
-        }
-        // A target on the pad itself (it covers a few squares) can't show the unit leaving it.
-        // Otherwise the pad must be back to how it was: after a real move it reads 0, after a refused drop
-        // 51 to 354 (2026-10-02). Relative tests (under 80%, then 30% of the green measured at
-        // spawn) let refused drops beside other units read as placed: green is always near the
-        // target there, and the spawn measure itself swung from 78 to 355.
-        // A unit left on the pad earlier stays there, so compare with the pad before the spawn.
-        let left_spawn = near(target, spawn, 120.0) || blob_weight(&now, spawn) < pad_before + 20;
-        let at_target = now.iter().any(|(p, _)| near(*p, target, 80.0));
-        if left_spawn && at_target {
-            return Ok(Some(i));
-        }
-        game.right_click(ui::NEUTRAL, 600);
-    }
-    Ok(None)
 }

@@ -300,6 +300,25 @@ and supplies dropped by its price); `shot`, `which`, `zoom` and `pan`. Not run o
 any map other than Railway Town. The Windows build wasn't compiled for this change (no Windows
 target here); on Windows only the `driver` alias is new.
 
+## In the desktop app, and stopping a run (2026-11-16)
+
+The whole-board runs moved from the program into the library (`crates/grounds/src/setup.rs`) so
+the desktop app can run them: "Set up in Testing Grounds" on a match's board sets up the round
+shown, and can fight it and compare. A real match's round goes through `Options::leave_out`,
+which sets up what Testing Grounds can reproduce and lists the rest (a ranked map becomes
+Railway Town; techs not equipped and items not in the Equipment tab are dropped), as `grounds
+replay` always did. That filter now runs after an empty round has recorded the loadouts, so a
+first run no longer drops every tech.
+
+A run can't be interrupted from the keyboard while it owns the mouse, so the drivers stop
+themselves: before each input they compare the cursor with where they last put it (6 points or
+pixels of slack, read twice 60 ms apart, since posted moves land late), and if it moved they
+send nothing more and fail the next screenshot with `stop::Stopped`. A held button is let go
+first. The app's Stop button sets the same flag. Calibrations are compiled in, so the app and
+a moved binary need no data folder.
+
+Not yet run against the game: the stop, the app panel, and the Windows build of any of it.
+
 ## Research Center blueprints
 
 Clicking your Research Center (about 1642,962 in the straight-down view on Railway Town) opens its

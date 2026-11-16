@@ -2,7 +2,8 @@
 
 //! Setting up a board in Mechabellum's Testing Grounds. The pure parts live here: where things
 //! are on screen, and how board squares map to screen pixels. The game drivers are in `win`
-//! (Windows) and `mac` (macOS); `driver` is the one for this platform.
+//! (Windows) and `mac` (macOS); `driver` is the one for this platform. `setup` sets up and
+//! checks whole boards, for the `grounds` program and the desktop app alike.
 //! See docs/testing-grounds.md.
 
 pub mod calibration;
@@ -13,6 +14,7 @@ pub mod flow;
 #[cfg(target_os = "macos")]
 pub mod mac;
 pub mod screen;
+pub mod setup;
 #[cfg(windows)]
 pub mod win;
 
@@ -21,8 +23,91 @@ pub use mac as driver;
 #[cfg(windows)]
 pub use win as driver;
 
+/// Stopping a run. A run takes over the mouse for minutes, so the drivers stop sending input
+/// as soon as the user moves the mouse or something calls [`stop::request`]. Once stopped, input
+/// is dropped and the next screenshot fails with [`stop::Stopped`], which unwinds whatever is
+/// running. The flag stays set until [`stop::reset`], so a stopped run can't carry on with a
+/// fresh driver either.
+pub mod stop {
+    use std::sync::atomic::{AtomicU8, Ordering};
+
+    static STATE: AtomicU8 = AtomicU8::new(RUNNING);
+    const RUNNING: u8 = 0;
+    const MOUSE: u8 = 1;
+    const ASKED: u8 = 2;
+
+    /// Why a run stopped.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Reason {
+        /// The cursor wasn't where the driver last put it: someone moved the mouse.
+        MouseMoved,
+        /// [`request`] was called (the desktop app's Stop button).
+        Asked,
+    }
+
+    /// The error a driver returns once stopped.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Stopped(pub Reason);
+
+    impl std::fmt::Display for Stopped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self.0 {
+                Reason::MouseMoved => f.write_str("stopped: the mouse moved"),
+                Reason::Asked => f.write_str("stopped"),
+            }
+        }
+    }
+
+    impl std::error::Error for Stopped {}
+
+    /// Stop the run in progress, if any.
+    pub fn request() {
+        let _ = STATE.compare_exchange(RUNNING, ASKED, Ordering::SeqCst, Ordering::SeqCst);
+    }
+
+    /// Record that the user took the mouse back.
+    pub(crate) fn mouse_moved() {
+        let _ = STATE.compare_exchange(RUNNING, MOUSE, Ordering::SeqCst, Ordering::SeqCst);
+    }
+
+    /// Allow input again, before a new run.
+    pub fn reset() {
+        STATE.store(RUNNING, Ordering::SeqCst);
+    }
+
+    /// Why the run stopped, or `None` while it may go on.
+    pub fn reason() -> Option<Reason> {
+        match STATE.load(Ordering::SeqCst) {
+            MOUSE => Some(Reason::MouseMoved),
+            ASKED => Some(Reason::Asked),
+            _ => None,
+        }
+    }
+
+    /// `Err(Stopped)` once stopped.
+    pub fn check() -> Result<(), Stopped> {
+        reason().map_or(Ok(()), |r| Err(Stopped(r)))
+    }
+
+    /// Whether an error (anywhere in its chain) is a stop rather than a failure.
+    pub fn is_stop(e: &anyhow::Error) -> Option<Reason> {
+        e.chain()
+            .find_map(|c| c.downcast_ref::<Stopped>())
+            .map(|s| s.0)
+    }
+}
+
 /// A point in physical pixels of the game window's client area.
 pub type Px = (f64, f64);
+
+/// The maps Testing Grounds offers, in the presets' dropdown order.
+pub const MAPS: [&str; 5] = [
+    "Railway Town",
+    "Forest Eye",
+    "Training Base",
+    "Railway Town - Dusk",
+    "Railway Town - Night",
+];
 
 /// Screen positions are measured on a 2560x1600 client area and scaled to the actual one.
 pub const REFERENCE_SIZE: (f64, f64) = (2560.0, 1600.0);

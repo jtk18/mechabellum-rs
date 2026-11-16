@@ -6,7 +6,7 @@ Replay parsing, stats, and automated testing for [Mechabellum](https://store.ste
 |---|---|
 | `crates/mechabellum` | Replay parser library (`mechabellum`) and CLI (`replay-parse`). Parses every replay version from 1425 onward and resolves unit/tech/specialist/skill/item IDs to names. |
 | `crates/server` | Replay ingestion and stats API (axum + SQLite). Runs standalone or embedded in the desktop app. |
-| `crates/grounds` | `grounds`: sets up a board in the game's Testing Grounds from a board code by driving the game, and checks the result against the replay it saves. Windows and macOS. See [Testing Grounds](#testing-grounds). |
+| `crates/grounds` | Sets up a board in the game's Testing Grounds from a board code by driving the game, and checks the result against the replay it saves. Windows and macOS; the desktop app's "Set up in Testing Grounds" uses it, and so does the `grounds` program. See [Testing Grounds](#testing-grounds). |
 | `crates/tester` | Game UI automation: launches the game, OCR, and a YAML test DSL. See its `CLAUDE.md`. Windows only. |
 | `apps/desktop` | Tauri app that will sit in the background, watch the replay folder, and show stats. Builds with its own `npm run tauri` tooling. |
 
@@ -164,45 +164,17 @@ The container listens on `127.0.0.1:8080`. Put the reverse proxy (Pingora) in fr
 
 ## Testing Grounds
 
-`grounds` takes a board code (`docs/board-code.md`; the desktop app's match board has "Copy board
-code") and sets that board up in the game's Testing Grounds: it finds the game window, clicks
-through the menus, and places both sides' units. It runs on Windows and macOS, against the game
-as it's running, so leave the mouse and keyboard alone while it works.
+`grounds` sets up a board code in the game's Testing Grounds by driving the game, and can then
+fight the round and check the saved replay against the code. It runs on Windows and macOS. In
+the desktop app it's the **Set up in Testing Grounds** button on a match's board, for any round;
+there's also a command-line program, built from this repository or downloaded as a zip from a
+release.
 
-Each [release](https://github.com/jtk18/mechabellum-rs/releases) has it as a zip for Windows
-(`grounds-<version>-windows-x86_64.zip`) and macOS (`grounds-<version>-macos-universal.zip`, Apple
-silicon and Intel). Unzip it and keep the `.json` files in the same folder as the program: they're
-its calibrations for the maps other than Railway Town. Neither build is signed. On a Mac, clear the
-download quarantine once, or macOS refuses to open it:
-
-```sh
-xattr -dr com.apple.quarantine grounds-<version>-macos-universal
-```
-
-Or build it from this repository:
-
-```sh
-cargo build --release -p mechabellum-grounds
-./target/release/grounds enter              # from the main menu or the lobby into the sandbox
-./target/release/grounds place board.txt    # set up the board
-./target/release/grounds verify board.txt   # set it up, fight the round, compare the saved replay
-```
-
-`grounds --help` lists the other commands.
-
-On macOS:
-
-- The terminal that runs it needs **Accessibility** and **Screen Recording** (System Settings,
-  Privacy & Security). Without Accessibility macOS drops the clicks silently, so `grounds`
-  refuses to start.
-- Turn on **Increase max camera height** in the game's Settings, Control, with the slider at the
-  right end. Without it the camera stops zooming out short of the zone, and the calibrations don't
-  apply.
-- Play fullscreen, or windowed at 16:10.
-
-On the Mac, `enter`, `place` and `verify` are checked on Railway Town. `calibrate`, `replay` and
-the other maps haven't been run there yet. [docs/testing-grounds.md](docs/testing-grounds.md) has
-the details for both platforms.
+It uses your mouse and keyboard while it works, and **moving the mouse stops it**. Before a run,
+the game needs "Increase max camera height" on and a 16:10 picture, and on macOS the app running
+it needs Accessibility and Screen Recording.
+[crates/grounds/README.md](crates/grounds/README.md) covers all of that, what it can and can't set
+up, and how it works.
 
 ## Desktop releases and updates
 

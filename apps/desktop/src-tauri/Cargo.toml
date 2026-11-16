@@ -18,6 +18,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 mechabellum = { path = "../../../crates/mechabellum" }
 mechabellum-server = { path = "../../../crates/server" }
+# Sets up a match's round in the game's Testing Grounds (Windows and macOS).
+mechabellum-grounds = { path = "../../../crates/grounds", default-features = false }
 unity-bundle-assets = "0.1.0"
 anyhow = "1.0"
 axum = "0.8"

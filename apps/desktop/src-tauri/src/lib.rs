@@ -3,6 +3,7 @@
 
 mod art;
 mod gamelog;
+mod grounds;
 mod signin;
 mod steam;
 mod sync;
@@ -732,6 +733,7 @@ pub fn run() {
             );
             let just_updated = updates.status().updated_from.is_some();
             app.manage(updates);
+            app.manage(grounds::Grounds::default());
             updates::start_timer(app.handle().clone())?;
             let store = Arc::new(Store::open(&db_path)?);
             let art_dir = data_dir.join("art");
@@ -879,7 +881,12 @@ pub fn run() {
             update_status,
             check_for_update,
             install_update,
-            set_check_for_updates
+            set_check_for_updates,
+            grounds::grounds_info,
+            grounds::grounds_request_access,
+            grounds::grounds_start,
+            grounds::grounds_stop,
+            grounds::grounds_restart
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

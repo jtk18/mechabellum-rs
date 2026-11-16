@@ -22,13 +22,7 @@ const SOLO_TESTING_GROUNDS: Px = (2176.0, 768.0);
 const ENTER_TESTING_GROUNDS: Px = (2284.0, 1475.0);
 /// Presets: the map dropdown, and its entries top to bottom.
 const MAP_DROPDOWN: Px = (2260.0, 1172.0);
-pub const MAPS: [&str; 5] = [
-    "Railway Town",
-    "Forest Eye",
-    "Training Base",
-    "Railway Town - Dusk",
-    "Railway Town - Night",
-];
+pub use crate::MAPS;
 const MAP_ENTRY_X: f64 = 2211.0;
 const MAP_ENTRY_FIRST_Y: f64 = 1224.0;
 const MAP_ENTRY_STEP: f64 = 49.9;

@@ -12,7 +12,7 @@ app embeds that same server, watches the game's replay folder and shows the stat
 | `crates/mechabellum` | `mechabellum` | The replay parser and game data: the XML model, the match model, deployment classes, validation, names, board geometry. Also the `replay-parse` CLI. |
 | `crates/server` | `mechabellum-server` | axum + SQLite (rusqlite, bundled). Ingest, schema and rebuilds, every stats query, the HTTP API, and the website pages in `web/`. CLI: `serve`, `import`, `reindex`, `purge`, `disputes`, `outliers`, `keys`. |
 | `apps/desktop` | `mechabellum-desktop` | Tauri 2 app. Rust side in `src-tauri/`, TypeScript frontend in `src/` (built with Vite into `dist/`, which the binary embeds). |
-| `crates/grounds` | `mechabellum-grounds` | Sets up a board in the game's Testing Grounds from a board code (Windows and macOS; drives the game). |
+| `crates/grounds` | `mechabellum-grounds` | Sets up a board in the game's Testing Grounds from a board code (Windows and macOS; drives the game). A library (`setup` runs whole boards; the desktop app uses it) and the `grounds` program (feature `cli`). Has its own `README.md`. |
 | `crates/tester` | `mechabellum-tester` | Windows UI automation for the game (OCR, template matching). Has its own `CLAUDE.md`. |
 
 The `Dockerfile` builds the server alone for hosting.
@@ -119,10 +119,13 @@ negative y; each side's own frame mirrors the north (negate x and y).
   **`updates.rs`**: checks the GitHub releases' `latest.json` through Tauri's updater plugin,
   holds a found update for the banner, installs it after its signature checks out, and restarts.
   Builds run from a cargo target folder never check (README, "Desktop releases and updates").
+  **`grounds.rs`**: "Set up in Testing Grounds": runs `mechabellum_grounds::setup` on its own
+  thread for a stored match's round, with progress as events, and asks macOS for Accessibility
+  and Screen Recording.
 - **Frontend**: `main.ts` (Stats view, match list, filters), `match.ts` (the board view with the
   fight tape and tale of the tape), `deploy.ts` (deployment classes, legends, the tale),
-  `loadout.ts`, `sharing.ts`, `updates.ts` (the update banner and Settings panel), `art.ts`,
-  `util.ts`, `styles.css`.
+  `loadout.ts`, `sharing.ts`, `updates.ts` (the update banner and Settings panel), `grounds.ts`
+  (the Testing Grounds panel), `art.ts`, `util.ts`, `styles.css`.
 
 The website and the desktop UI draw the same API data separately. Constants they share with the
 parser (band edges, class labels, rule text) are duplicated in `deploy.ts`, `match.ts`,

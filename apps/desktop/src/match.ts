@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { art, artImage } from "./art";
 import { $, el, iso, modeLabel, type Tip } from "./util";
+import { groundsPanelOpen, groundsSupported, openGrounds } from "./grounds";
 import { BANDS, bandColor, deploymentPill, labelBand, meetingTag, renderTale, shareBar, type FightSummary, type PlayerGame } from "./deploy";
 
 interface TechRef {
@@ -720,12 +721,19 @@ function wire(onBack: () => void) {
     }
     window.setTimeout(() => (copy.textContent = "Copy board code"), 2000);
   });
+  const grounds = $<HTMLButtonElement>("grounds-open");
+  groundsSupported().then((ok) => (grounds.hidden = !ok));
+  grounds.addEventListener("click", () => {
+    if (!detail || detail.rounds.length === 0) return;
+    const map = detail.map_name ?? `map ${detail.map_id}`;
+    openGrounds(detail.battle_id, roundIndex, `Round ${roundIndex + 1} of ${$("match-title").textContent}, on ${map}.`);
+  });
   $<HTMLInputElement>("round-input").addEventListener("input", (e) => {
     roundIndex = Number((e.target as HTMLInputElement).value);
     render();
   });
   document.addEventListener("keydown", (e) => {
-    if ($("view-match").hidden || (e.target as HTMLElement).tagName === "INPUT") return;
+    if ($("view-match").hidden || groundsPanelOpen() || (e.target as HTMLElement).tagName === "INPUT") return;
     if (e.key === "ArrowLeft") step(-1);
     if (e.key === "ArrowRight") step(1);
     if (e.key === "Escape") onBack();

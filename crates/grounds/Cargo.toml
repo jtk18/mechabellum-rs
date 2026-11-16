@@ -7,13 +7,19 @@ description = "Sets up boards in Mechabellum's Testing Grounds from board code"
 [[bin]]
 name = "grounds"
 path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+# The command-line program. The desktop app uses the library without it.
+cli = ["dep:clap"]
 
 [dependencies]
 mechabellum = { path = "../mechabellum" }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive"], optional = true }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]

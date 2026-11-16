@@ -1079,6 +1079,93 @@ h1 {
   text-overflow: ellipsis;
 }
 
+/* The Testing Grounds panel: a splash card with room for permissions, a log and the result. */
+.grounds-card {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.grounds-needs,
+.grounds-access ul,
+.grounds-result ul {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+.grounds-needs li + li,
+.grounds-result li + li {
+  margin-top: 4px;
+}
+.grounds-needs strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.grounds-access {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.grounds-access p {
+  margin: 0 0 8px;
+}
+.grounds-access ul {
+  padding-left: 0;
+  list-style: none;
+}
+.grounds-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.grounds-fight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+}
+.grounds-status {
+  margin: 8px 0 6px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.grounds-log {
+  max-height: 180px;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+.grounds-log:empty {
+  display: none;
+}
+.grounds-result h3 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.grounds-message {
+  margin: 0 0 8px;
+}
+.grounds-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.grounds-access .grounds-actions {
+  justify-content: flex-start;
+}
+.grounds-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Small art beside names */
 .name {
   display: flex;

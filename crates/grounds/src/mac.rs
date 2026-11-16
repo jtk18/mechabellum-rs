@@ -3,10 +3,14 @@
 //! content area, so the game must run at a 16:10 size (fullscreen below a 16:10 notch, or
 //! windowed at 16:10).
 //!
-//! The process that runs this (in practice the terminal) needs two permissions in System
+//! The process that runs this (the terminal, or the desktop app) needs two permissions in System
 //! Settings, Privacy & Security: Screen Recording, to capture the window, and Accessibility, to
 //! send mouse and key events. Without Accessibility, macOS drops posted events without an error,
-//! so `find` checks for it before doing anything.
+//! so `find` checks for it before doing anything. [`access`] reports both and [`request_access`]
+//! asks for them.
+//!
+//! Every input first checks that the cursor is where the last one left it; if not, the user has
+//! moved the mouse, and the run stops (see [`crate::stop`]).
 
 use crate::{Px, REFERENCE_SIZE};
 
@@ -102,13 +106,97 @@ extern "C" {
     fn CGEventCreateKeyboardEvent(source: *const c_void, key: u16, down: bool) -> CGEventRef;
     fn CGEventSetIntegerValueField(event: CGEventRef, field: u32, value: i64);
     fn CGEventPost(tap: u32, event: CGEventRef);
+    fn CGEventCreate(source: *const c_void) -> CGEventRef;
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
     fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    static kCFBooleanTrue: CFTypeRef;
+    static kCFTypeDictionaryKeyCallBacks: c_void;
+    static kCFTypeDictionaryValueCallBacks: c_void;
+    fn CFDictionaryCreate(
+        allocator: *const c_void,
+        keys: *const CFTypeRef,
+        values: *const CFTypeRef,
+        count: isize,
+        key_callbacks: *const c_void,
+        value_callbacks: *const c_void,
+    ) -> CFTypeRef;
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
+    static kAXTrustedCheckOptionPrompt: CFTypeRef;
     fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> bool;
 }
+
+/// Whether this process may drive the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Access {
+    /// Accessibility: sending mouse and key events.
+    pub accessibility: bool,
+    /// Screen Recording: capturing the game's window.
+    pub screen_recording: bool,
+}
+
+/// What macOS currently allows this process.
+pub fn access() -> Access {
+    unsafe {
+        Access {
+            accessibility: AXIsProcessTrusted(),
+            screen_recording: CGPreflightScreenCaptureAccess(),
+        }
+    }
+}
+
+/// Ask macOS for whichever permission is missing. Each request shows the system's prompt the
+/// first time and adds this program to the list in System Settings, switched off; the user
+/// switches it on there. Screen Recording takes effect after the program restarts.
+pub fn request_access() -> Access {
+    unsafe {
+        if !AXIsProcessTrusted() {
+            let keys = [kAXTrustedCheckOptionPrompt];
+            let values = [kCFBooleanTrue];
+            let options = CFDictionaryCreate(
+                std::ptr::null(),
+                keys.as_ptr(),
+                values.as_ptr(),
+                1,
+                &kCFTypeDictionaryKeyCallBacks,
+                &kCFTypeDictionaryValueCallBacks,
+            );
+            AXIsProcessTrustedWithOptions(options);
+            if !options.is_null() {
+                CFRelease(options);
+            }
+        }
+        if !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess();
+        }
+    }
+    access()
+}
+
+/// Where the cursor is now, in global points.
+fn cursor_location() -> Option<CGPoint> {
+    unsafe {
+        let event = CGEventCreate(std::ptr::null());
+        if event.is_null() {
+            return None;
+        }
+        let at = CGEventGetLocation(event);
+        CFRelease(event as CFTypeRef);
+        Some(at)
+    }
+}
+
+/// How far the cursor may sit from where it was put before that counts as the user moving it,
+/// in points. Posted moves land a few milliseconds late and are rounded.
+const MOVED_BY_USER: f64 = 6.0;
 
 const UTF8: u32 = 0x0800_0100;
 const NUMBER_SINT64: isize = 4;
@@ -314,19 +402,21 @@ fn post(event: CGEventRef) {
 impl Game {
     /// Find the game window (it must be open and on screen) and bring it forward.
     pub fn find() -> Result<Game> {
-        unsafe {
-            if !AXIsProcessTrusted() {
-                bail!(
-                    "this terminal can't send mouse or key events: add it under System Settings, \
-                     Privacy & Security, Accessibility (macOS drops the events silently otherwise)"
-                );
-            }
-            if !CGPreflightScreenCaptureAccess() {
-                bail!(
-                    "this terminal can't capture the screen: add it under System Settings, \
-                     Privacy & Security, Screen & System Audio Recording"
-                );
-            }
+        crate::stop::check()?;
+        let allowed = access();
+        if !allowed.accessibility {
+            bail!(
+                "macOS doesn't let this program send mouse or key events: switch on the app that \
+                 runs it (your terminal, or Mechabellum Stats) under System Settings, Privacy & \
+                 Security, Accessibility (macOS drops the events silently otherwise)"
+            );
+        }
+        if !allowed.screen_recording {
+            bail!(
+                "macOS doesn't let this program capture the screen: switch on the app that runs \
+                 it (your terminal, or Mechabellum Stats) under System Settings, Privacy & \
+                 Security, Screen & System Audio Recording, then restart that app"
+            );
         }
         let mut info = game_window();
         // A fullscreen game in another Space isn't on screen until it's brought forward. Only
@@ -354,15 +444,48 @@ impl Game {
             );
         }
         ms(300);
+        let origin = (info.bounds.origin.x, info.bounds.origin.y + inset_top);
+        // Start from wherever the cursor is, so the first check doesn't take the user's resting
+        // cursor for a move.
+        let cursor = cursor_location().map_or((size.0 / 2.0, size.1 / 2.0), |at| {
+            (at.x - origin.0, at.y - origin.1)
+        });
         Ok(Game {
             window: info.id,
-            origin: (info.bounds.origin.x, info.bounds.origin.y + inset_top),
+            origin,
             size,
             inset_top,
             window_height: info.bounds.size.height,
-            cursor: (size.0 / 2.0, size.1 / 2.0),
+            cursor,
             held: None,
         })
+    }
+
+    /// Whether input may still be sent. False once a stop was asked for, or once the cursor
+    /// isn't where the last input put it (the user moved the mouse: that stops the run). On the
+    /// way out it lets go of a held button.
+    fn live(&mut self) -> bool {
+        if crate::stop::reason().is_none() && self.moved_by_user() {
+            crate::stop::mouse_moved();
+        }
+        if crate::stop::reason().is_none() {
+            return true;
+        }
+        if let Some(button) = self.held {
+            self.press(button, false, 1);
+        }
+        false
+    }
+
+    fn moved_by_user(&self) -> bool {
+        let expected = self.global(self.cursor);
+        let off = |at: CGPoint| (at.x - expected.x).hypot(at.y - expected.y) > MOVED_BY_USER;
+        // Read twice, a moment apart: the last posted move may not have landed yet.
+        if !cursor_location().is_some_and(off) {
+            return false;
+        }
+        ms(60);
+        cursor_location().is_some_and(off)
     }
 
     /// Find the game window, starting the game through Steam if it isn't running (it can
@@ -419,7 +542,8 @@ impl Game {
     /// Bring the game forward if another window is in front of it, as a click would otherwise
     /// land in that window.
     fn front(&self) {
-        if game_window().is_some_and(|w| !w.front) {
+        // Once stopped, leave whatever the user switched to in front.
+        if crate::stop::reason().is_none() && game_window().is_some_and(|w| !w.front) {
             activate();
             ms(1000);
         }
@@ -427,6 +551,9 @@ impl Game {
 
     /// Move the cursor to a content point, as a drag when a button is held.
     fn set_cursor(&mut self, c: (f64, f64)) {
+        if !self.live() {
+            return;
+        }
         let kind = match self.held {
             None => MOVED,
             Some(b) => b.events().2,
@@ -457,6 +584,10 @@ impl Game {
     }
 
     fn press(&mut self, button: Button, down: bool, clicks: i64) {
+        // Letting go is always allowed: a stop mustn't leave a button held.
+        if down && !self.live() {
+            return;
+        }
         let (down_kind, up_kind, _) = button.events();
         let kind = if down { down_kind } else { up_kind };
         unsafe {
@@ -549,6 +680,9 @@ impl Game {
     /// Hold a letter key (a camera control: Q, E, R, F) for `ms_held`. Only those letters:
     /// never Enter, which opens the chat.
     pub fn hold_key(&mut self, letter: char, ms_held: u64) {
+        if !self.live() {
+            return;
+        }
         // macOS virtual key codes (ANSI layout).
         let key: u16 = match letter.to_ascii_uppercase() {
             'Q' => 0x0C,
@@ -566,8 +700,11 @@ impl Game {
         ms(600);
     }
 
-    fn scroll(&self, steps: i32, gap_ms: u64) {
+    fn scroll(&mut self, steps: i32, gap_ms: u64) {
         for _ in 0..steps.unsigned_abs() {
+            if !self.live() {
+                return;
+            }
             unsafe {
                 post(CGEventCreateScrollWheelEvent2(
                     std::ptr::null(),
@@ -610,8 +747,11 @@ impl Game {
         self.screenshot_here()
     }
 
-    /// The content area without moving the cursor first, e.g. while it carries a unit.
+    /// The content area without moving the cursor first, e.g. while it carries a unit. Fails
+    /// once the run has stopped, so whatever is running unwinds.
     pub fn screenshot_here(&mut self) -> Result<image::RgbImage> {
+        self.live();
+        crate::stop::check()?;
         capture_window(
             self.window,
             self.inset_top / self.window_height,

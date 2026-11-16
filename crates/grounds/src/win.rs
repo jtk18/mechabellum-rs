@@ -1,5 +1,8 @@
 //! Driving the game window on Windows: finding it, moving and clicking the mouse, the wheel, and
 //! screenshots. Positions are in reference pixels (2560x1600) and scaled to the real client area.
+//!
+//! Every input first checks that the cursor is where the last one left it; if not, the user has
+//! moved the mouse, and the run stops (see [`crate::stop`]).
 
 use crate::{Px, REFERENCE_SIZE};
 
@@ -18,7 +21,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSE_EVENT_FLAGS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetClientRect, IsIconic, SetCursorPos, SetForegroundWindow, SetProcessDPIAware,
+    FindWindowW, GetClientRect, GetCursorPos, IsIconic, SetCursorPos, SetForegroundWindow,
+    SetProcessDPIAware,
 };
 
 use std::thread::sleep;
@@ -33,15 +37,28 @@ pub struct Game {
     size: (i32, i32),
     /// Where the cursor is, in client pixels, for gliding.
     cursor: (i32, i32),
+    /// The event that lets go of the button held down, if any.
+    held: Option<MOUSE_EVENT_FLAGS>,
 }
 
 fn ms(n: u64) {
     sleep(Duration::from_millis(n));
 }
 
+/// Where the cursor is now, in screen pixels.
+fn cursor_location() -> Option<(i32, i32)> {
+    let mut at = POINT::default();
+    unsafe { GetCursorPos(&mut at) }.ok().map(|_| (at.x, at.y))
+}
+
+/// How far the cursor may sit from where it was put before that counts as the user moving it,
+/// in pixels.
+const MOVED_BY_USER: i32 = 6;
+
 impl Game {
     /// Find the game window (it must be open and not minimized) and bring it forward.
     pub fn find() -> Result<Game> {
+        crate::stop::check()?;
         unsafe {
             let _ = SetProcessDPIAware();
             let hwnd = FindWindowW(None, w!("Mechabellum"))
@@ -56,13 +73,56 @@ impl Game {
             let _ = SetForegroundWindow(hwnd);
             ms(300);
             let size = (rect.right - rect.left, rect.bottom - rect.top);
+            // Start from wherever the cursor is, so the first check doesn't take the user's
+            // resting cursor for a move.
+            let cursor = cursor_location().map_or((size.0 / 2, size.1 / 2), |(x, y)| {
+                (x - origin.x, y - origin.y)
+            });
             Ok(Game {
                 hwnd,
                 origin: (origin.x, origin.y),
                 size,
-                cursor: (size.0 / 2, size.1 / 2),
+                cursor,
+                held: None,
             })
         }
+    }
+
+    /// Whether input may still be sent. False once a stop was asked for, or once the cursor
+    /// isn't where the last input put it (the user moved the mouse: that stops the run). On the
+    /// way out it lets go of a held button.
+    fn live(&mut self) -> bool {
+        if crate::stop::reason().is_none() && self.moved_by_user() {
+            crate::stop::mouse_moved();
+        }
+        if crate::stop::reason().is_none() {
+            return true;
+        }
+        if let Some(up) = self.held.take() {
+            unsafe { mouse_event(up, 0, 0, 0, 0) };
+        }
+        false
+    }
+
+    fn moved_by_user(&self) -> bool {
+        let expected = (self.origin.0 + self.cursor.0, self.origin.1 + self.cursor.1);
+        let off = |(x, y): (i32, i32)| {
+            (x - expected.0).abs() > MOVED_BY_USER || (y - expected.1).abs() > MOVED_BY_USER
+        };
+        if !cursor_location().is_some_and(off) {
+            return false;
+        }
+        ms(60);
+        cursor_location().is_some_and(off)
+    }
+
+    /// Put the cursor somewhere without checking first (after relative moves, whose end point
+    /// isn't known).
+    fn warp(&mut self, c: (i32, i32)) {
+        unsafe {
+            let _ = SetCursorPos(self.origin.0 + c.0, self.origin.1 + c.1);
+        }
+        self.cursor = c;
     }
 
     /// Find the game window, starting the game through Steam if it isn't running (it can
@@ -105,10 +165,9 @@ impl Game {
     }
 
     fn set_cursor(&mut self, c: (i32, i32)) {
-        unsafe {
-            let _ = SetCursorPos(self.origin.0 + c.0, self.origin.1 + c.1);
+        if self.live() {
+            self.warp(c);
         }
-        self.cursor = c;
     }
 
     /// Move the cursor there in small steps: the game tracks carried units by mouse moves.
@@ -122,7 +181,10 @@ impl Game {
         ms(250);
     }
 
-    fn button(&self, down: MOUSE_EVENT_FLAGS, up: MOUSE_EVENT_FLAGS) {
+    fn button(&mut self, down: MOUSE_EVENT_FLAGS, up: MOUSE_EVENT_FLAGS) {
+        if !self.live() {
+            return;
+        }
         unsafe {
             mouse_event(down, 0, 0, 0, 0);
             ms(50);
@@ -132,7 +194,10 @@ impl Game {
     }
 
     pub fn click(&mut self, p: Px, wait_ms: u64) {
-        let _ = unsafe { SetForegroundWindow(self.hwnd) };
+        // Once stopped, leave whatever the user switched to in front.
+        if self.live() {
+            let _ = unsafe { SetForegroundWindow(self.hwnd) };
+        }
         self.glide(p);
         self.button(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
         ms(wait_ms);
@@ -160,22 +225,32 @@ impl Game {
 
     /// Press or release the left button where the cursor is (for drags made of glides).
     pub fn left_button(&mut self, down: bool) {
+        if down && !self.live() {
+            return;
+        }
         let flag = if down {
             MOUSEEVENTF_LEFTDOWN
         } else {
             MOUSEEVENTF_LEFTUP
         };
         unsafe { mouse_event(flag, 0, 0, 0, 0) };
+        self.held = down.then_some(MOUSEEVENTF_LEFTUP);
         ms(150);
     }
 
     /// Hold the right button and move from `from` to `to`: this pans the camera.
     pub fn right_drag(&mut self, from: Px, to: Px, wait_ms: u64) {
         self.glide(from);
+        if !self.live() {
+            return;
+        }
         unsafe { mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0) };
+        self.held = Some(MOUSEEVENTF_RIGHTUP);
         ms(120);
         self.glide(to);
-        unsafe { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0) };
+        if self.held.take().is_some() {
+            unsafe { mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0) };
+        }
         ms(wait_ms);
     }
 
@@ -188,11 +263,19 @@ impl Game {
         self.glide(from);
         let a = self.to_client(from);
         let b = self.to_client(to);
+        if !self.live() {
+            return;
+        }
         unsafe { mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0) };
         ms(120);
         let (dx, dy) = (b.0 - a.0, b.1 - a.1);
         const STEPS: i32 = 40;
+        // Relative moves leave the cursor somewhere unknown, so only a stop request (not the
+        // cursor check) can end this early.
         for i in 0..STEPS {
+            if crate::stop::reason().is_some() {
+                break;
+            }
             let step = |d: i32| d * (i + 1) / STEPS - d * i / STEPS;
             unsafe { mouse_event(MOUSEEVENTF_MOVE, step(dx), step(dy), 0, 0) };
             ms(20);
@@ -200,7 +283,7 @@ impl Game {
         ms(120);
         unsafe { mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0) };
         // Where the cursor ended up isn't known; put it back where it's tracked.
-        self.set_cursor(a);
+        self.warp(a);
         ms(wait_ms);
     }
 
@@ -214,6 +297,9 @@ impl Game {
         else {
             return;
         };
+        if !self.live() {
+            return;
+        }
         let _ = unsafe { SetForegroundWindow(self.hwnd) };
         unsafe {
             keybd_event(vk, 0, KEYBD_EVENT_FLAGS(0), 0);
@@ -227,6 +313,9 @@ impl Game {
     pub fn wheel(&mut self, steps: i32) {
         self.glide((REFERENCE_SIZE.0 / 2.0, REFERENCE_SIZE.1 / 2.0));
         for _ in 0..steps.unsigned_abs() {
+            if !self.live() {
+                return;
+            }
             unsafe { mouse_event(MOUSEEVENTF_WHEEL, 0, 0, 120 * steps.signum(), 0) };
             ms(60);
         }
@@ -237,6 +326,9 @@ impl Game {
     pub fn wheel_at(&mut self, p: Px, steps: i32) {
         self.glide(p);
         for _ in 0..steps.unsigned_abs() {
+            if !self.live() {
+                return;
+            }
             unsafe { mouse_event(MOUSEEVENTF_WHEEL, 0, 0, 120 * steps.signum(), 0) };
             ms(40);
         }
@@ -257,8 +349,11 @@ impl Game {
         self.screenshot_here()
     }
 
-    /// The client area without moving the cursor first, e.g. while it carries a unit.
+    /// The client area without moving the cursor first, e.g. while it carries a unit. Fails
+    /// once the run has stopped, so whatever is running unwinds.
     pub fn screenshot_here(&mut self) -> Result<image::RgbImage> {
+        self.live();
+        crate::stop::check()?;
         let (w, h) = self.size;
         unsafe {
             let screen = GetDC(HWND::default());

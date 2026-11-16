@@ -3101,6 +3101,7 @@ dependencies = [
  "image 0.25.10",
  "log",
  "mechabellum",
+ "mechabellum-grounds",
  "mechabellum-server",
  "notify",
  "rayon",

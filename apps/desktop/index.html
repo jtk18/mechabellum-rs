@@ -24,6 +24,45 @@
       </div>
     </div>
 
+    <div class="splash" id="grounds-panel" role="dialog" aria-modal="true" aria-labelledby="grounds-title" hidden>
+      <div class="splash-card grounds-card">
+        <h2 id="grounds-title">Set up in Testing Grounds</h2>
+        <p class="splash-lede" id="grounds-what"></p>
+        <ul class="grounds-needs">
+          <li><strong>It drives the game with your mouse and keyboard for a few minutes. Move the mouse to stop it.</strong></li>
+          <li>It starts the game if it isn't running, and only uses Solo, Testing Grounds.</li>
+          <li>In the game's Settings, Control, turn on <em>Increase max camera height</em>, with its slider at the right end.</li>
+          <li>The game's picture must be 16:10: fullscreen at 1920&times;1200 or 2560&times;1600, or a 16:10 window.</li>
+        </ul>
+        <div class="grounds-access" id="grounds-access" hidden>
+          <p>macOS has to allow Mechabellum Stats to do this, under System Settings, Privacy &amp; Security:</p>
+          <ul>
+            <li id="grounds-accessibility"></li>
+            <li id="grounds-screen"></li>
+          </ul>
+          <p class="grounds-hint">Ask macOS, then switch Mechabellum Stats on in each list. Screen Recording takes effect after the app restarts.</p>
+          <div class="grounds-actions">
+            <button type="button" id="grounds-ask">Ask macOS</button>
+            <button type="button" id="grounds-restart" class="quiet">Restart the app</button>
+          </div>
+        </div>
+        <label class="grounds-fight"><input type="checkbox" id="grounds-fight" /> Then fight the round, and check the saved replay against the board</label>
+        <div class="grounds-run" id="grounds-run" hidden>
+          <div class="splash-bar" id="grounds-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="splash-fill" id="grounds-fill"></div>
+          </div>
+          <p class="grounds-status" id="grounds-status" aria-live="polite"></p>
+          <pre class="grounds-log" id="grounds-log"></pre>
+        </div>
+        <div class="grounds-result" id="grounds-result" hidden></div>
+        <div class="grounds-actions">
+          <button type="button" id="grounds-start">Start</button>
+          <button type="button" id="grounds-stop" hidden>Stop</button>
+          <button type="button" id="grounds-close" class="quiet">Close</button>
+        </div>
+      </div>
+    </div>
+
     <header class="topbar">
       <h1>Mechabellum Stats</h1>
       <nav class="tabs" aria-label="Views">
@@ -193,6 +232,7 @@
         <button type="button" id="round-next" aria-label="Next round">›</button>
         <div class="round-results" id="round-results"></div>
         <button type="button" id="copy-board" class="quiet" title="Copy this round as board code, for sharing or Testing Grounds">Copy board code</button>
+        <button type="button" id="grounds-open" class="quiet" title="Set this round up in the game's Testing Grounds" hidden>Set up in Testing Grounds</button>
       </div>
 
       <!-- Above the board, so picking a fight changes the board in view. -->
