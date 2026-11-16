@@ -1,8 +1,8 @@
 name: Release
 
-# Builds installers for every platform into a draft GitHub release. Push a tag like v0.2.0, or
-# run it by hand; review the draft, then publish it. The tests run first, and nothing is built
-# if they fail.
+# Builds installers for every platform into a draft GitHub release, and attaches grounds (the
+# Testing Grounds tool) for Windows and macOS. Push a tag like v0.2.0, or run it by hand; review
+# the draft, then publish it. The tests run first, and nothing is built if they fail.
 #
 # Updates: installed copies ask
 # https://github.com/jtk18/mechabellum-rs/releases/latest/download/latest.json for a newer
@@ -160,3 +160,76 @@ jobs:
           releaseDraft: true
           prerelease: ${{ github.ref_type != 'tag' }}
           args: ${{ matrix.args }}
+
+  # grounds, the command-line tool that sets up a board code in Testing Grounds, goes on the same
+  # draft as one zip per platform: the program, its calibrations (it reads them from the folder
+  # it's in) and a README pointing at the instructions. Windows and macOS only, the platforms it
+  # can drive the game on. The tester crate needs Windows and a Tesseract install and isn't
+  # shipped. This waits for the bundles so the draft exists to attach to, and still runs if one
+  # bundle job failed, since the others will have made the draft.
+  grounds:
+    name: grounds (${{ matrix.platform }})
+    needs: [test, bundle]
+    if: ${{ !cancelled() && needs.test.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x86_64
+          - os: macos-latest
+            platform: macos-universal
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('build-{0}', github.run_number) }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+
+      # The Mac build is one universal binary for Apple silicon and Intel. It isn't signed, so
+      # the README tells Mac users to clear the download quarantine before the first run.
+      - name: Build
+        shell: bash
+        run: |
+          out="grounds-$TAG-$PLATFORM"
+          mkdir -p "$out"
+          if [ "$RUNNER_OS" = macOS ]; then
+            cargo build --release --locked -p mechabellum-grounds --target aarch64-apple-darwin
+            cargo build --release --locked -p mechabellum-grounds --target x86_64-apple-darwin
+            lipo -create -output "$out/grounds" \
+              target/aarch64-apple-darwin/release/grounds \
+              target/x86_64-apple-darwin/release/grounds
+            lipo -info "$out/grounds"
+          else
+            cargo build --release --locked -p mechabellum-grounds
+            cp target/release/grounds.exe "$out/"
+          fi
+          cp crates/grounds/data/*.json "$out/"
+          {
+            echo "grounds $TAG sets up a Mechabellum board code in the game's Testing Grounds."
+            echo "Keep the .json files in this folder next to the program: they are its calibrations."
+            echo "How to run it, and what macOS needs first:"
+            echo "https://github.com/$GITHUB_REPOSITORY#testing-grounds"
+          } > "$out/README.txt"
+          echo "OUT=$out" >> "$GITHUB_ENV"
+
+      - name: Zip (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --norsrc --noextattr --noacl --keepParent "$OUT" "$OUT.zip"
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path $env:OUT -DestinationPath "$env:OUT.zip"
+
+      # gh finds a draft by the tag it will get when published.
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" "$OUT.zip" --clobber --repo "$GITHUB_REPOSITORY"

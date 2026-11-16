@@ -169,6 +169,18 @@ code") and sets that board up in the game's Testing Grounds: it finds the game w
 through the menus, and places both sides' units. It runs on Windows and macOS, against the game
 as it's running, so leave the mouse and keyboard alone while it works.
 
+Each [release](https://github.com/jtk18/mechabellum-rs/releases) has it as a zip for Windows
+(`grounds-<version>-windows-x86_64.zip`) and macOS (`grounds-<version>-macos-universal.zip`, Apple
+silicon and Intel). Unzip it and keep the `.json` files in the same folder as the program: they're
+its calibrations for the maps other than Railway Town. Neither build is signed. On a Mac, clear the
+download quarantine once, or macOS refuses to open it:
+
+```sh
+xattr -dr com.apple.quarantine grounds-<version>-macos-universal
+```
+
+Or build it from this repository:
+
 ```sh
 cargo build --release -p mechabellum-grounds
 ./target/release/grounds enter              # from the main menu or the lobby into the sandbox
@@ -197,7 +209,8 @@ the details for both platforms.
 `.github/workflows/release.yml` builds the installers. Push a tag matching the version in
 `apps/desktop/src-tauri/tauri.conf.json` (`v0.2.0` for `0.2.0`) and it makes a draft release
 with the Windows, macOS (universal) and Linux bundles, each updater artifact's signature, and a
-`latest.json` that lists them.
+`latest.json` that lists them. Once the bundles are done it attaches the `grounds` zips for Windows
+and macOS ([Testing Grounds](#testing-grounds)); the updater doesn't touch those.
 
 Installed copies update themselves from that file:
 
