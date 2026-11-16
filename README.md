@@ -6,6 +6,7 @@ Replay parsing, stats, and automated testing for [Mechabellum](https://store.ste
 |---|---|
 | `crates/mechabellum` | Replay parser library (`mechabellum`) and CLI (`replay-parse`). Parses every replay version from 1425 onward and resolves unit/tech/specialist/skill/item IDs to names. |
 | `crates/server` | Replay ingestion and stats API (axum + SQLite). Runs standalone or embedded in the desktop app. |
+| `crates/grounds` | `grounds`: sets up a board in the game's Testing Grounds from a board code by driving the game, and checks the result against the replay it saves. Windows and macOS. See [Testing Grounds](#testing-grounds). |
 | `crates/tester` | Game UI automation: launches the game, OCR, and a YAML test DSL. See its `CLAUDE.md`. Windows only. |
 | `apps/desktop` | Tauri app that will sit in the background, watch the replay folder, and show stats. Builds with its own `npm run tauri` tooling. |
 
@@ -160,6 +161,36 @@ docker compose up -d
 ```
 
 The container listens on `127.0.0.1:8080`. Put the reverse proxy (Pingora) in front of it for TLS.
+
+## Testing Grounds
+
+`grounds` takes a board code (`docs/board-code.md`; the desktop app's match board has "Copy board
+code") and sets that board up in the game's Testing Grounds: it finds the game window, clicks
+through the menus, and places both sides' units. It runs on Windows and macOS, against the game
+as it's running, so leave the mouse and keyboard alone while it works.
+
+```sh
+cargo build --release -p mechabellum-grounds
+./target/release/grounds enter              # from the main menu or the lobby into the sandbox
+./target/release/grounds place board.txt    # set up the board
+./target/release/grounds verify board.txt   # set it up, fight the round, compare the saved replay
+```
+
+`grounds --help` lists the other commands.
+
+On macOS:
+
+- The terminal that runs it needs **Accessibility** and **Screen Recording** (System Settings,
+  Privacy & Security). Without Accessibility macOS drops the clicks silently, so `grounds`
+  refuses to start.
+- Turn on **Increase max camera height** in the game's Settings, Control, with the slider at the
+  right end. Without it the camera stops zooming out short of the zone, and the calibrations don't
+  apply.
+- Play fullscreen, or windowed at 16:10.
+
+On the Mac, `enter`, `place` and `verify` are checked on Railway Town. `calibrate`, `replay` and
+the other maps haven't been run there yet. [docs/testing-grounds.md](docs/testing-grounds.md) has
+the details for both platforms.
 
 ## Desktop releases and updates
 

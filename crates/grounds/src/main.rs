@@ -1,8 +1,7 @@
 //! `grounds`: set up a board from board code in Testing Grounds.
 //!
 //! Start the game, enter Testing Grounds (Railway Town, the default map), then run
-//! `grounds place board.txt`. Only your own side, and only the part of the zone the default
-//! camera shows, for now. See docs/testing-grounds.md.
+//! `grounds place board.txt`. Runs on Windows and macOS. See docs/testing-grounds.md.
 
 use mechabellum::board::{Board, Half};
 use mechabellum_grounds::{plan, Projection, TOP_DOWN_NORTH, TOP_DOWN_SOUTH};
@@ -23,7 +22,7 @@ struct Cli {
 enum Command {
     /// Show where each unit of the first side would be clicked, without touching the game
     Plan { code: PathBuf },
-    /// Place the first side's units in the running game
+    /// Place the board code's units, both sides, in the running game
     Place {
         code: PathBuf,
         /// Stop after this many units
