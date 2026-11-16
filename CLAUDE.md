@@ -36,7 +36,7 @@ on the extracted `<script>` body.
 - **Formatting.** Don't run `cargo fmt` over the workspace. `crates/mechabellum/src/board.rs` and
   `crates/grounds` carry the owner's formatting; reformatting them buries real changes. Format the
   files you change: `rustfmt --edition 2021 <file>`.
-- **Privacy.** The repository is private until players can sign in with Steam. Nothing committed
+- **Privacy.** The repository is public. Nothing committed
   names another player: not fixtures, docs, comments or commit messages. Refer to a match by its
   battle ID. Don't add fixtures holding other players' names.
 - **Comments.** A comment says what the code does and why. No quotes from chat, no attributions

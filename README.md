@@ -178,7 +178,7 @@ Installed copies update themselves from that file:
   `tauri.conf.json` (`plugins.updater.pubkey`), and refuses anything else. macOS replaces the
   `.app` and restarts; Windows runs the installer in passive mode, which restarts the app.
 - `releases/latest` skips drafts and prereleases: nothing is offered until the draft is
-  published, and manual workflow runs (prereleases) never are. While the repository is private
+  published, and manual workflow runs (prereleases) never are. Until a release is published
   the address answers 404, and Settings says no published release was found. Failures are
   logged and shown in Settings, never as a dialog.
 - A build run from a cargo target folder (`target/debug/...`) never checks: installing over it
