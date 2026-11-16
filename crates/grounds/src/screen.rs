@@ -32,6 +32,13 @@ fn orange_mode(c: [f64; 3]) -> bool {
     c[0] > 55.0 && c[0] > c[2] + 20.0
 }
 
+/// The main menu's MECHABELLUM logo in the top-left corner (game 2.1.0): white and orange on
+/// dark, so bright and nearly grey on average (measured 137,129,123). Every other screen has the
+/// orange mode button, an HP bar or dark there.
+fn bright_logo(c: [f64; 3]) -> bool {
+    c[0] > 100.0 && c[1] > 95.0 && c[2] > 90.0 && (c[0] - c[2]).abs() < 35.0
+}
+
 /// Navy button fill (Testing Grounds Tools label, Enter button, menu buttons).
 fn navy(c: [f64; 3]) -> bool {
     c[2] > c[0] + 25.0 && c[2] > 55.0
@@ -43,7 +50,6 @@ pub fn classify(img: &image::RgbImage) -> Screen {
     let enter_button = mean_color(img, (2140, 1440, 2480, 1500));
     let menu_close = mean_color(img, (1090, 560, 1470, 610));
     let mode_button = mean_color(img, (60, 40, 500, 100));
-    let main_caption = mean_color(img, (90, 700, 960, 760));
     if banner_gold(banner) {
         // The open tools panel covers the label, and it only opens while deploying.
         if navy(tools_label) || crate::tools_open(img) {
@@ -55,7 +61,7 @@ pub fn classify(img: &image::RgbImage) -> Screen {
         Screen::Lobby
     } else if orange_mode(mode_button) {
         Screen::ModeTabs
-    } else if main_caption[2] > main_caption[0] && main_caption[0] > 35.0 && mode_button[0] < 40.0 {
+    } else if bright_logo(mode_button) {
         Screen::MainMenu
     } else if menu_close[2] > menu_close[0] + 25.0 && banner[0] > banner[2] {
         // Dimmed gold banner behind the menu, navy Close button in front.
@@ -116,6 +122,16 @@ mod tests {
                 ((1090, 560, 1470, 610), [27, 35, 73])
             ])),
             Screen::Menu
+        );
+        // The 2.1.0 main menu: the logo where the mode button would be, the 3D hangar behind
+        // (its warm ceiling where the banner is, the mech's blue body where Close would be).
+        assert_eq!(
+            classify(&paint(&[
+                ((60, 40, 500, 100), [137, 129, 123]),
+                ((1100, 60, 1460, 120), [12, 9, 9]),
+                ((1090, 560, 1470, 610), [61, 88, 115])
+            ])),
+            Screen::MainMenu
         );
         assert_eq!(classify(&paint(&[])), Screen::Other);
     }

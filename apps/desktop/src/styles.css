@@ -1793,7 +1793,8 @@ h1 {
   align-content: start;
 }
 
-.round-bar > #copy-board {
+.round-bar > #copy-board,
+.round-bar > #grounds-open {
   width: auto;
   padding: 4px 10px;
   font-size: inherit;

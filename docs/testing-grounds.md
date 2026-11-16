@@ -317,7 +317,29 @@ send nothing more and fail the next screenshot with `stop::Stopped`. A held butt
 first. The app's Stop button sets the same flag. Calibrations are compiled in, so the app and
 a moved binary need no data folder.
 
-Not yet run against the game: the stop, the app panel, and the Windows build of any of it.
+Checked on 2026-11-16 on the 16-inch MacBook Pro, game 2.1.0.0.2369, release build unless
+noted:
+
+- `enter` from a cold start (the tool started the game through Steam) to the sandbox in 71 s,
+  and `verify` of a two-sided, five-unit board on Railway Town ("OK: the replay matches the
+  code", 9 min 18 s, a fight included), neither stopping by mistake.
+- The stop: the mouse moved from another process, as a user would, ended two `verify` runs
+  1.2 and 1.4 s later, `enter --fresh` 1.3 s later, and `place` 0.15 s later in the middle of
+  placing, each time leaving the cursor where it was moved. A first version still
+  sent the release half of every click after stopping, which put the cursor back on the next
+  target; releases now go only to a button that was pressed, and waits end once stopped.
+- The app: "Set up in Testing Grounds", fight ticked, on round 1 of a ranked Railway Town -
+  Dusk match (14 units and 3 buildings over both halves): "Set up and fought; the saved replay
+  matches the board", in 21 min 45 s from a debug build (expect a few minutes from a release
+  build). The debug app inherited the terminal's permissions; a bundled app asking for its
+  own hasn't been tried.
+
+Game 2.1.0 moved the main menu: the Standard Versus card is now the top one of two at the left
+(346,307; the old point is now Star Expedition), and the screen is recognized by the bright
+MECHABELLUM logo in the top-left corner. Standard Versus, Solo, the presets and the sandbox are
+unchanged.
+
+Not run yet: any of this on Windows (the driver changes there weren't compiled here).
 
 ## Research Center blueprints
 

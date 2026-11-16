@@ -12,8 +12,9 @@ use anyhow::{bail, Result};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-/// Main menu: "Standard Versus".
-const MAIN_STANDARD_VERSUS: Px = (512.0, 560.0);
+/// Main menu: the "Standard Versus" card, top left (game 2.1.0; before it, (512, 560), which
+/// is now the Star Expedition card).
+const MAIN_STANDARD_VERSUS: Px = (346.0, 307.0);
 /// Mode lobby: the "Solo" tab.
 const LOBBY_SOLO_TAB: Px = (843.0, 69.0);
 /// Solo tab: the Testing Grounds card.

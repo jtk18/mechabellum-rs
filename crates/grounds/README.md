@@ -98,10 +98,11 @@ The details, measurements and checks are in [docs/testing-grounds.md](../../docs
 
 - **Windows:** `verify` on all five maps; the item and building tiles were checked there too
   (September and October 2026).
-- **macOS:** `enter`, `place` and `verify` on Railway Town (November 2026). `calibrate`, `replay`
-  and the other maps haven't been run on a Mac yet.
-- The mouse-move stop and the desktop app's panel are new and haven't been run against the game
-  yet on either platform. The Windows build hasn't been compiled since the macOS driver arrived.
+- **macOS:** `enter`, `place` and `verify` on Railway Town and its Dusk version, the mouse-move
+  stop, and the desktop app's panel on a ranked round (November 2026, game 2.1.0). `calibrate`,
+  `replay` and the other maps haven't been run on a Mac yet.
+- The Windows build hasn't been compiled since the macOS driver arrived, nor the stop and the
+  panel run there.
 
 ## As a library
 

@@ -41,8 +41,11 @@ pub struct Game {
     held: Option<MOUSE_EVENT_FLAGS>,
 }
 
+/// Wait, unless the run has stopped: then whatever was being waited for won't happen.
 fn ms(n: u64) {
-    sleep(Duration::from_millis(n));
+    if crate::stop::reason().is_none() {
+        sleep(Duration::from_millis(n));
+    }
 }
 
 /// Where the cursor is now, in screen pixels.
@@ -226,6 +229,10 @@ impl Game {
     /// Press or release the left button where the cursor is (for drags made of glides).
     pub fn left_button(&mut self, down: bool) {
         if down && !self.live() {
+            return;
+        }
+        // Let go only of a button this pressed (after a stop the press was never sent).
+        if !down && self.held.take().is_none() {
             return;
         }
         let flag = if down {

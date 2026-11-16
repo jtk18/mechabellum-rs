@@ -279,8 +279,11 @@ pub struct Game {
     held: Option<Button>,
 }
 
+/// Wait, unless the run has stopped: then whatever was being waited for won't happen.
 fn ms(n: u64) {
-    sleep(Duration::from_millis(n));
+    if crate::stop::reason().is_none() {
+        sleep(Duration::from_millis(n));
+    }
 }
 
 /// Read a CFString value from a window-info dictionary.
@@ -584,19 +587,24 @@ impl Game {
     }
 
     fn press(&mut self, button: Button, down: bool, clicks: i64) {
-        // Letting go is always allowed: a stop mustn't leave a button held.
         if down && !self.live() {
             return;
         }
+        // Let go only of a button this pressed: after a stop the press was never sent, and a
+        // release (which carries a position) would move the user's cursor back.
+        if !down && self.held != Some(button) {
+            return;
+        }
+        // A stop mustn't leave a button held: let go where the user has the cursor now.
+        let at = if crate::stop::reason().is_some() {
+            cursor_location().unwrap_or_else(|| self.global(self.cursor))
+        } else {
+            self.global(self.cursor)
+        };
         let (down_kind, up_kind, _) = button.events();
         let kind = if down { down_kind } else { up_kind };
         unsafe {
-            let event = CGEventCreateMouseEvent(
-                std::ptr::null(),
-                kind,
-                self.global(self.cursor),
-                button.number(),
-            );
+            let event = CGEventCreateMouseEvent(std::ptr::null(), kind, at, button.number());
             if !event.is_null() {
                 CGEventSetIntegerValueField(event, FIELD_CLICK_STATE, clicks);
             }
