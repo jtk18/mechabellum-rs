@@ -9,6 +9,30 @@ Replay parsing, stats, and automated testing for [Mechabellum](https://store.ste
 | `crates/tester` | Game UI automation: launches the game, OCR, and a YAML test DSL. See its `CLAUDE.md`. Windows only. |
 | `apps/desktop` | Tauri app that will sit in the background, watch the replay folder, and show stats. Builds with its own `npm run tauri` tooling. |
 
+## Screenshots
+
+The desktop app, with player names replaced by "You" and "Opponent N".
+
+**Stats**: pick and win rates for units and specialists, filtered by patch, mode, and player.
+
+![Stats view](docs/screenshots/stats.png)
+
+**Matches**: every stored match, with MMR, round-1 deployment, and starter packs.
+
+![Matches view](docs/screenshots/matches.png)
+
+**Board**: one match fight by fight, with reactor HP, deployments, and unit placement.
+
+![Match board](docs/screenshots/board.png)
+
+**Loadout**: your unlocked unit modifications, and how your games with each tech went.
+
+![Loadout view](docs/screenshots/loadout.png)
+
+**Settings**: sharing with a community server, Steam sign-in, tray start, and updates.
+
+![Settings view](docs/screenshots/settings.png)
+
 ## Parser
 
 ```sh
